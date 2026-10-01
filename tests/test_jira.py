@@ -134,6 +134,8 @@ def test_a_project_without_a_bug_type_gets_a_task(jira, server_error_defects):
     assert file_jira_issues(defects, run_dir, config, log=lines.append) == [("D1", "created", "SHOP-1")]
     assert server.issues["SHOP-1"]["fields"]["issuetype"] == {"name": "Task"}
     assert lines == ["jira: project SCRUM has no Bug issue type; filing as Task"]
+    file_jira_issues(defects, run_dir, config, log=lines.append)  # only comments: nothing about types
+    assert len(lines) == 1
 
 
 def test_data_center_uses_a_token_and_the_older_search(jira, server_error_defects):

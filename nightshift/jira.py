@@ -100,7 +100,7 @@ def file_jira_issues(defects: list[Defect], run_dir: Path, config: JiraConfig,
     client = client or config.client()
     done = []
     try:
-        issue_type = _issue_type(client, config, log) if defects else config.issue_type
+        issue_type = None  # looked up on the first new issue: a run that only comments never needs it
         for defect in defects:
             label = signature_label(defect)
             existing = _find_open(client, config, label)
@@ -110,6 +110,7 @@ def file_jira_issues(defects: list[Defect], run_dir: Path, config: JiraConfig,
                                f"{_affected(defect)}.\n\n{to_jira_markup(defect_body(defect, run_dir))}"})
                 done.append((defect.id, "commented", existing))
                 continue
+            issue_type = issue_type or _issue_type(client, config, log)
             fields = {
                 "project": {"key": config.project},
                 "summary": f"[{defect.category}] {defect.title}"[:250],

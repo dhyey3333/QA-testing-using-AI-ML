@@ -259,8 +259,10 @@ token.) Each defect becomes one Bug (a Task if the project has no Bug type), wit
 its category, and the failing screenshot and bug report attached. If the same defect is already
 open, from an earlier run, it gets a comment instead of a duplicate ticket; if its issue was
 closed and the defect comes back, it is filed again. Also available as `nightshift triage
-runs/<run> --file-jira` and as a button on the dashboard's Runs page. Tested against a stand-in
-Jira server that speaks the same REST API; not yet against a live Jira site.
+runs/<run> --file-jira` and as a button on the dashboard's Runs page. Tested on a live Jira Cloud
+site: the first run filed the shop's wrong-total bug as a ticket with its evidence attached, and
+the second run commented on that ticket instead of filing it again. `JIRA_URL` can be any Jira
+address copied from the browser, a board's included.
 
 ## The dashboard
 

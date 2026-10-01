@@ -214,6 +214,11 @@ is filed again, as a regression. Jira Cloud moved JQL search to `/rest/api/3/sea
 Center still has `/rest/api/2/search`, so both are tried. Descriptions are converted to Jira's wiki
 markup.
 
+The first run against a real Jira Cloud site found what the stand-in server could not: the
+address pasted from the browser was a board page (now cut back to the site), and a new Scrum
+project has no Bug issue type (now: the project's types are read, and a Task is filed when there
+is no Bug). The stand-in now refuses unknown issue types the way Jira does.
+
 ## D18. Any OpenAI-compatible model, local by default
 A plain HTTP POST to `/chat/completions`: Ollama, vLLM, llama.cpp, OpenRouter, Groq. The default
 is a 4B vision model on a 6 GB laptop GPU, so the whole thing runs offline for free. The judge can
