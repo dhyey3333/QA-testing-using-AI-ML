@@ -34,6 +34,7 @@ from .judge import is_on_page, judge_page
 from .locators import describe_target, resolve
 from .model import Model, ModelError, usage_snapshot
 from .observe import JPEG_QUALITY, Observation, observe, screenshot, watch_form_validation
+from .outcome import categorize, environment_problem
 from .prompts import Context, mask
 from .recording import Recording, RecordingStore
 from .report import write_spec_report
@@ -111,6 +112,7 @@ def run_with_retries(
     history = [{"verdict": a.verdict, "reason": a.reason, "mode": a.mode,
                 "duration_s": a.duration_s, "out_dir": a.out_dir} for a in attempts]
     final = _combine(attempts)
+    final.category = categorize(final)
     final.attempts = history
     final.model_calls = sum(a.model_calls for a in attempts)
     final.prompt_tokens = sum(a.prompt_tokens for a in attempts)
@@ -130,6 +132,10 @@ def _combine(attempts: list[RunResult]) -> RunResult:
             return passed
         first.verdict = "flaky"
         first.reason = f"failed ({first.reason}), then passed on retry"
+        if not any(a.app_errors for a in attempts):
+            # Found on public demo sites: both "flaky" results were the tester slipping, not the app.
+            first.warnings.insert(0, "the failing attempt showed no app error (no crash, no 5xx): "
+                                     "the tester may have slipped rather than the app")
         return first
     failed = [a for a in attempts if a.verdict == "fail"]
     if failed:
@@ -197,6 +203,10 @@ def run_spec(
     # A crash the user never saw is still a bug.
     if result.verdict == "pass" and result.app_errors:
         result.verdict, result.reason = "fail", result.app_errors[0]
+    # A site that was down, or a bot check in the way, tested nothing: not a failure of the app.
+    if result.verdict in ("fail", "error") and (problem := environment_problem(result)):
+        result.verdict, result.reason = "error", f"environment: {problem}"
+    result.category = categorize(result)
 
     usage_after = usage_snapshot(model)
     result.model_calls = usage_after.get("calls", 0) - usage_before.get("calls", 0)
@@ -239,6 +249,7 @@ class _Run:
         self.seen_pages: set[str] = set()
         self.new_tabs = new_tabs if new_tabs is not None else []
         self.started = time.time()
+        self.asked: set[str] = set()  # the checks before a verdict that were already used (each once per run)
 
     def go(self, recording: Recording | None) -> tuple[str, str]:
         self.page.goto(self.spec.url, wait_until="domcontentloaded")
@@ -344,11 +355,21 @@ class _Run:
             steps.append(step)
 
             if action.kind in ("pass", "fail"):
+                if (not_yet := self._before_verdict(action)) is not None:
+                    step.outcome = f"not yet: {not_yet}"
+                    self.log(_step_line(step))
+                    continue
                 step.outcome = "verdict"
                 self.log(_step_line(step))
                 if action.kind == "fail":
-                    return self.overrule(action.reason or "", observation, shot)
-                return self.finish(observation, shot, reason_if_unjudged=action.reason or "")
+                    verdict = self.overrule(action.reason or "", observation, shot)
+                else:
+                    verdict = self.finish(observation, shot, reason_if_unjudged=action.reason or "")
+                if verdict[0] == "fail" and (again := self._second_look(action)) is not None:
+                    step.outcome = f"not accepted yet: {again}"
+                    self.log(f"    (second look: {again})")
+                    continue
+                return verdict
 
             if action.id is not None and self.options.recordings is not None:
                 step.locators = describe_target(self.page, action.id, label)
@@ -366,6 +387,49 @@ class _Run:
             steps[-1].outcome = "done"
             self.log(_step_line(steps[-1]))
         return "error", f"ran out of steps ({self.spec.max_steps}) before the test finished"
+
+    def _before_verdict(self, action) -> str | None:
+        """What a careful tester checks before deciding. Each is asked once per run, so a
+        test that really is done (or really is broken) only costs one more turn.
+
+        Found on the demo shop and public sites: the 4B model typed only the pincode of a
+        delivery form and declared the result, and clicked "Log in" before typing the
+        password, then failed the login. Both were tester mistakes reported as app bugs.
+        """
+        acted = [s for s in self.result.steps if s.action is not None and s.action.kind in ("click", "type", "select", "press")
+                 and not s.outcome.startswith(("invalid", "failed"))]
+        typed = "".join(f"{s.action.text or ''}{s.action.value or ''}" for s in acted).replace(" ", "")
+        unused = [key for key in self.spec.data if "{{" + key + "}}" not in typed]
+        if unused and "data" not in self.asked:
+            self.asked.add("data")
+            names = ", ".join("{{" + key + "}}" for key in unused)
+            return f"you have not typed {names} yet. If a step needs it, type it now; if not, give your verdict again"
+        if action.kind == "fail" and acted and acted[-1].action.kind == "type" and "submit" not in self.asked:
+            self.asked.add("submit")
+            return (f'you typed into "{acted[-1].target_label}" after your last click, and nothing submitted it since. '
+                    "Finish the step (press its button or Enter), then decide")
+        return None
+
+    def _second_look(self, action) -> str | None:
+        """One more chance before a failure stands, the way a tester re-checks before filing.
+
+        If the agent said pass but the judge can't find the expected results, or the agent
+        says the app is broken, it may have skipped a step (an unticked box) or taken a
+        wrong turn (another product, an unrelated page). A real bug stays a bug: the agent
+        says fail again, or the judge still finds nothing.
+        """
+        if "second look" in self.asked or self.result.app_errors:
+            return None
+        if len(self.result.steps) + 3 > self.spec.max_steps:
+            return None
+        self.asked.add("second look")
+        if action.kind == "pass":
+            missing = next((c for c in self.result.checks if not c.holds), None)
+            what = f'"{missing.expected}" is not shown on the page' if missing else "the expected results are not shown"
+            return (f"{what}. If a step is not done yet (a box to tick, a field, a button), do it now. "
+                    "If everything is done and the page still does not show it, say fail")
+        return ("before failing: are you on the right page, and did you act on the right element? If you took a "
+                "wrong turn, go back and redo the step. If the app really is broken, say fail again")
 
     def _data_for(self, action) -> dict[str, str]:
         """The spec's data, plus {{email_code}} / {{email_link}} from the test inbox when the action uses them."""

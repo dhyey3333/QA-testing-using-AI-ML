@@ -280,6 +280,9 @@ def _execute(specs: list[Spec], args: argparse.Namespace, model: HttpModel) -> t
     calls = sum(r.model_calls for r in results)
     print(f"\n{len(results)} spec(s): {counts['pass']} passed, {counts['fail']} failed, {counts['flaky']} flaky, "
           f"{counts['error']} errors. {calls} model calls, {tokens:,} tokens.")
+    categories = Counter(result.category for result in results if result.category)
+    if categories:
+        print("by cause: " + ", ".join(f"{name} {count}" for name, count in sorted(categories.items())))
     if defects:
         failing = sum(len(d.failures) for d in defects)
         print(f"defect analysis: {failing} failing test(s) -> {len(defects)} defect(s)")
@@ -294,7 +297,8 @@ def _execute(specs: list[Spec], args: argparse.Namespace, model: HttpModel) -> t
 
 def _print_verdict(result: RunResult) -> None:
     mode = {"replay": " [replayed, no model steps]", "healed": f" [replay broke at step {result.healed_at}, healed]"}
-    print(f"   {result.verdict.upper()} after {len(result.steps)} steps, {result.duration_s:.1f}s "
+    category = f" [{result.category}]" if result.category else ""
+    print(f"   {result.verdict.upper()}{category} after {len(result.steps)} steps, {result.duration_s:.1f}s "
           f"(model {result.model_s:.1f}s){mode.get(result.mode, '')}: {result.reason}")
     for warning in result.warnings[:3]:
         print(f"   warning: {warning}")

@@ -62,7 +62,7 @@ def row_for(result: RunResult) -> dict:
     """One table row as plain data, so a stopped benchmark can be resumed from its JSON."""
     site, flow = flow_of(result.spec)
     return {
-        "spec": result.spec, "site": site, "flow": flow, "verdict": result.verdict, "reason": result.reason,
+        "spec": result.spec, "site": site, "flow": flow, "verdict": result.verdict, "category": result.category, "reason": result.reason,
         "duration_s": result.duration_s, "model_calls": result.model_calls, "prompt_tokens": result.prompt_tokens,
         "completion_tokens": result.completion_tokens,
         **{f"cost_inr_{m}": round(cost_inr(result.prompt_tokens, result.completion_tokens, m), 3) for m in PRICES},
@@ -149,7 +149,8 @@ def render(rows: list[dict], model_name: str) -> str:
              "|---|---|---|---|---|---|---|---|---|---|"]
     for row in rows:
         tokens = row["prompt_tokens"] + row["completion_tokens"]
-        lines.append(f"| {row['site']} | {row['flow']} | {row['verdict']} | {row['duration_s']:.0f} | {row['model_calls']} | "
+        verdict = row["verdict"] + (f" [{row['category']}]" if row.get("category") else "")
+        lines.append(f"| {row['site']} | {row['flow']} | {verdict} | {row['duration_s']:.0f} | {row['model_calls']} | "
                      f"{tokens:,} | {row['cost_inr_qwen3-vl-8b']:.2f} | {row['cost_inr_qwen3-vl-235b']:.2f} | "
                      f"{row['reason'][:90].replace('|', '/')} | |")
     if rows:

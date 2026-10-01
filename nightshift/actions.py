@@ -218,29 +218,49 @@ def execute(page: Page, action: Action, data: dict[str, str], target: Locator | 
     if target is None and action.id is not None:
         target = element_locator(page, action.id)
     try:
-        match action.kind:
-            case "click":
-                target.click(timeout=ACTION_TIMEOUT_MS)
-            case "type":
-                target.fill(fill_placeholders(action.text, data), timeout=ACTION_TIMEOUT_MS)
-            case "select":
-                _select(target, action.value)
-            case "press":
-                page.keyboard.press(action.key)
-            case "scroll":
-                page.mouse.wheel(0, SCROLL_PX if action.direction == "down" else -SCROLL_PX)
-            case "wait":
-                page.wait_for_timeout(1_000)
-            case "back":
-                page.go_back(wait_until="domcontentloaded", timeout=10_000)
-            case "goto":
-                # A path on the site the page is already on: a test never leaves for another host.
-                url = urljoin(page.url, fill_placeholders(action.value, data))
-                if urlsplit(url).netloc != urlsplit(page.url).netloc:
-                    raise ActionFailed(f"the link goes to another site ({urlsplit(url).netloc}); not following it")
-                page.goto(url, wait_until="domcontentloaded", timeout=15_000)
+        _act(page, action, data, target)
     except PlaywrightError as exc:
-        raise ActionFailed(_short_reason(exc)) from None
+        if action.kind not in ("click", "type", "select") or not _transient(exc):
+            raise ActionFailed(_short_reason(exc)) from None
+        # Covered, not visible yet, still animating, re-rendered: a slow page, not a broken one.
+        # One more try after a pause, before the model hears it failed.
+        page.wait_for_timeout(RETRY_PAUSE_MS)
+        try:
+            _act(page, action, data, target)
+        except PlaywrightError as again:
+            raise ActionFailed(_short_reason(again)) from None
+
+
+RETRY_PAUSE_MS = 1_000
+_TRANSIENT = ("intercepts pointer events", "not visible", "not stable", "detached", "waiting for element")
+
+
+def _transient(exc: PlaywrightError) -> bool:
+    return any(needle in str(exc) for needle in _TRANSIENT)
+
+
+def _act(page: Page, action: Action, data: dict[str, str], target: Locator | None) -> None:
+    match action.kind:
+        case "click":
+            target.click(timeout=ACTION_TIMEOUT_MS)
+        case "type":
+            target.fill(fill_placeholders(action.text, data), timeout=ACTION_TIMEOUT_MS)
+        case "select":
+            _select(target, action.value)
+        case "press":
+            page.keyboard.press(action.key)
+        case "scroll":
+            page.mouse.wheel(0, SCROLL_PX if action.direction == "down" else -SCROLL_PX)
+        case "wait":
+            page.wait_for_timeout(1_000)
+        case "back":
+            page.go_back(wait_until="domcontentloaded", timeout=10_000)
+        case "goto":
+            # A path on the site the page is already on: a test never leaves for another host.
+            url = urljoin(page.url, fill_placeholders(action.value, data))
+            if urlsplit(url).netloc != urlsplit(page.url).netloc:
+                raise ActionFailed(f"the link goes to another site ({urlsplit(url).netloc}); not following it")
+            page.goto(url, wait_until="domcontentloaded", timeout=15_000)
 
 
 class _Network:

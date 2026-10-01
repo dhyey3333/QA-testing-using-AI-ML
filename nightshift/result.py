@@ -54,6 +54,7 @@ class RunResult:
     model: str
     verdict: str = "error"
     reason: str = ""
+    category: str = ""  # BUG | FLAKY | TEST_OUTDATED | ENV_ISSUE for anything but a pass (outcome.py)
     mode: str = "agent"  # agent | replay (a saved run, no model steps) | healed (replay broke, agent finished)
     healed_at: int | None = None  # the replay step that broke
     steps: list[Step] = field(default_factory=list)
@@ -89,6 +90,7 @@ class RunResult:
             "spec": self.spec,
             "verdict": self.verdict,
             "reason": self.reason,
+            "category": self.category,
             "mode": self.mode,
             "steps": len(self.steps),
             "duration_s": self.duration_s,

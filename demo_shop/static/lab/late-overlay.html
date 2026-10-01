@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Lab: slow overlay</title></head>
+<body>
+  <!-- Test fixture: a loading overlay covers the button for 6 s, longer than one action's
+       5 s timeout. A slow page, not a broken one. -->
+  <button id="go" onclick="document.getElementById('done').hidden = false">Continue</button>
+  <p id="done" hidden>All set.</p>
+  <div id="overlay" style="position:fixed;inset:0;background:rgba(255,255,255,.9)">Loading...</div>
+  <script>setTimeout(() => document.getElementById("overlay").remove(), 6000);</script>
+</body>
+</html>

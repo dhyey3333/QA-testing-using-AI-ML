@@ -72,7 +72,9 @@ def test_a_lying_judge_cannot_pass_a_wrong_total(run):
                          evidence=["Total: ₹600"], holds=True)
     result = run("add-to-cart", bugs={"wrong-total"}, model=liar)
     assert result.verdict == "fail"
-    assert liar.judgements == 2  # rejected once, given a second chance, still unproven
+    # Judged twice (the agent gets one second look), and each time the made-up quote is
+    # rejected, the judge gets one more try, and it is still unproven.
+    assert liar.judgements == 4
     assert not any(check.holds for check in result.checks)
 
 
@@ -88,8 +90,12 @@ def test_an_agent_fail_is_overruled_when_every_expected_result_is_proven(run):
 
 
 def test_an_agent_fail_stands_when_the_expected_results_are_missing(run):
-    result = run("add-to-cart", [("raw", {"action": "fail", "reason": "the shop looks broken"})], evidence=["Total"])
-    assert result.verdict == "fail" and result.reason == "the shop looks broken"
+    # The agent gets one second look before a failure stands; saying fail again keeps it.
+    script = [("raw", {"action": "fail", "reason": "the shop looks broken"}),
+              ("raw", {"action": "fail", "reason": "still broken"})]
+    result = run("add-to-cart", script, evidence=["Total"])
+    assert result.verdict == "fail" and result.reason == "still broken"
+    assert result.steps[0].outcome.startswith("not accepted yet: before failing")
 
 
 def test_an_uncaught_js_error_fails_a_page_that_looks_fine(run):
