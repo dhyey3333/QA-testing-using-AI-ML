@@ -255,7 +255,7 @@ uv run nightshift run specs/ --file-jira
 ```
 
 (Jira Data Center: set `JIRA_TOKEN` to a personal access token instead of the email and API
-token.) Each defect becomes one Bug with the write-up as its description, labels `nightshift` and
+token.) Each defect becomes one Bug (a Task if the project has no Bug type), with the write-up as its description, labels `nightshift` and
 its category, and the failing screenshot and bug report attached. If the same defect is already
 open, from an earlier run, it gets a comment instead of a duplicate ticket; if its issue was
 closed and the defect comes back, it is filed again. Also available as `nightshift triage

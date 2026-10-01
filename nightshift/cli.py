@@ -530,7 +530,7 @@ def _file_in_jira(defects: list[Defect], run_dir: Path) -> None:
               "or JIRA_TOKEN (Data Center).", file=sys.stderr)
         return
     try:
-        for defect_id, action, key in file_jira_issues(defects, run_dir, config):
+        for defect_id, action, key in file_jira_issues(defects, run_dir, config, log=print):
             print(f"jira: {defect_id} {action} {key}  {config.url}/browse/{key}")
     except (JiraError, httpx.HTTPError) as exc:
         print(f"jira: could not file the defects ({exc})", file=sys.stderr)

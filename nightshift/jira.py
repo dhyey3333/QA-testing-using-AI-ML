@@ -93,12 +93,14 @@ def signature_label(defect: Defect) -> str:
 
 
 def file_jira_issues(defects: list[Defect], run_dir: Path, config: JiraConfig,
-                     client: httpx.Client | None = None) -> list[tuple[str, str, str]]:
+                     client: httpx.Client | None = None, log=None) -> list[tuple[str, str, str]]:
     """File or update one issue per defect. Returns (defect id, "created" | "commented", issue key)."""
+    log = log or (lambda line: None)
     own = client is None
     client = client or config.client()
     done = []
     try:
+        issue_type = _issue_type(client, config, log) if defects else config.issue_type
         for defect in defects:
             label = signature_label(defect)
             existing = _find_open(client, config, label)
@@ -112,7 +114,7 @@ def file_jira_issues(defects: list[Defect], run_dir: Path, config: JiraConfig,
                 "project": {"key": config.project},
                 "summary": f"[{defect.category}] {defect.title}"[:250],
                 "description": to_jira_markup(defect_body(defect, run_dir)),
-                "issuetype": {"name": config.issue_type},
+                "issuetype": {"name": issue_type},
                 "labels": ["nightshift", re.sub(r"\W+", "-", defect.category), label],
             }
             key = _post(client, "/rest/api/2/issue", {"fields": fields})["key"]
@@ -123,6 +125,28 @@ def file_jira_issues(defects: list[Defect], run_dir: Path, config: JiraConfig,
         if own:
             client.close()
     return done
+
+
+# Found on the first live run: a new Jira Cloud Scrum project has no Bug type, and Jira
+# refuses the issue ("Specify a valid issue type"). So: the configured type if the project
+# has it, else the closest one it does have.
+_FALLBACK_TYPES = ("Bug", "Defect", "Task", "Story")
+
+
+def _issue_type(client: httpx.Client, config: JiraConfig, log) -> str:
+    response = client.get(f"/rest/api/2/project/{config.project}")
+    if response.status_code == 404:
+        raise JiraError(f"Jira has no project with the key {config.project}, or this account can't see it")
+    _raise_for(response, "the project")
+    types = [t["name"] for t in _data(response).get("issueTypes") or [] if not t.get("subtask")]
+    if not types:
+        return config.issue_type
+    by_name = {name.lower(): name for name in types}
+    chosen = next((by_name[w.lower()] for w in (config.issue_type, *_FALLBACK_TYPES) if w.lower() in by_name),
+                  next((n for n in types if n.lower() != "epic"), types[0]))
+    if chosen.lower() != config.issue_type.lower():
+        log(f"jira: project {config.project} has no {config.issue_type} issue type; filing as {chosen}")
+    return chosen
 
 
 def to_jira_markup(markdown: str) -> str:

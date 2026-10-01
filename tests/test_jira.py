@@ -16,9 +16,10 @@ from test_e2e import CHECKOUT, CHECKOUT_EVIDENCE
 
 
 class FakeJira(ThreadingHTTPServer):
-    def __init__(self, cloud: bool):
+    def __init__(self, cloud: bool, issue_types=("Bug", "Task", "Story", "Epic")):
         super().__init__(("127.0.0.1", 0), FakeJiraHandler)
         self.cloud = cloud
+        self.issue_types = issue_types
         self.issues: dict[str, dict] = {}
         self.comments: list[tuple[str, str]] = []
         self.attachments: list[tuple[str, str]] = []
@@ -30,6 +31,12 @@ class FakeJiraHandler(BaseHTTPRequestHandler):
 
     def log_message(self, *args):
         pass
+
+    def do_GET(self):
+        if match := re.fullmatch(r"/rest/api/2/project/(\w+)", self.path):
+            types = [{"name": name, "subtask": False} for name in self.server.issue_types]
+            return self._send(200, {"key": match.group(1), "issueTypes": types + [{"name": "Subtask", "subtask": True}]})
+        self._send(404, {})
 
     def do_POST(self):
         self.server.auth.append(self.headers.get("Authorization", ""))
@@ -43,6 +50,8 @@ class FakeJiraHandler(BaseHTTPRequestHandler):
                     if label in issue["fields"]["labels"] and issue["status"] != "Done"]
             return self._send(200, {"issues": hits})
         if path == "/rest/api/2/issue":
+            if json.loads(body)["fields"]["issuetype"]["name"] not in self.server.issue_types:
+                return self._send(400, {"errorMessages": [], "errors": {"issuetype": "Specify a valid issue type"}})
             key = f"SHOP-{len(self.server.issues) + 1}"
             self.server.issues[key] = {"fields": json.loads(body)["fields"], "status": "To Do"}
             return self._send(201, {"key": key})
@@ -69,8 +78,8 @@ class FakeJiraHandler(BaseHTTPRequestHandler):
 def jira():
     servers = []
 
-    def _start(cloud=True):
-        server = FakeJira(cloud)
+    def _start(cloud=True, **options):
+        server = FakeJira(cloud, **options)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         servers.append(server)
         return server
@@ -114,6 +123,17 @@ def test_the_same_open_defect_gets_a_comment_not_a_duplicate(jira, server_error_
 
     server.issues["SHOP-1"]["status"] = "Done"  # fixed and closed... then it comes back
     assert file_jira_issues(defects, run_dir, config) == [("D1", "created", "SHOP-2")]
+
+
+def test_a_project_without_a_bug_type_gets_a_task(jira, server_error_defects):
+    # From the first live run: a new Jira Cloud Scrum project has Task, Story and Epic, no Bug.
+    defects, run_dir = server_error_defects
+    server = jira(cloud=True, issue_types=("Task", "Story", "Epic"))
+    config = JiraConfig(url=f"http://127.0.0.1:{server.server_port}", project="SCRUM", email="qa@example.test", token="t")
+    lines = []
+    assert file_jira_issues(defects, run_dir, config, log=lines.append) == [("D1", "created", "SHOP-1")]
+    assert server.issues["SHOP-1"]["fields"]["issuetype"] == {"name": "Task"}
+    assert lines == ["jira: project SCRUM has no Bug issue type; filing as Task"]
 
 
 def test_data_center_uses_a_token_and_the_older_search(jira, server_error_defects):
