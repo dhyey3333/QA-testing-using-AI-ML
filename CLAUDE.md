@@ -3,7 +3,7 @@
 ## Project
 Nightshift (working name): an AI QA tester. Plain-English specs (`specs/*.yaml`) run by an agent in a real browser (Playwright); a grounded judge must prove every expected result from the page before a pass counts. Also: exploratory testing, spec generation, self-healing replay, Playwright export, bug reports, CI integration.
 
-The user's personal startup/CV project, separate from PrivAgent (their SIH repo). Design reasoning: `docs/DECISIONS.md`.
+Design reasoning: `docs/DECISIONS.md`.
 
 ## Layout
 - `nightshift/`: the product. `runner.py` (replay, agent loop, judge gate, retries), `judge.py`, `observe.py`, `locators.py`, `recording.py`, `checks.py`, `explore.py`, `generate.py`, `export.py`, `report.py`, `notify.py`, `prompts.py` (every prompt), `cli.py`.
