@@ -151,8 +151,13 @@ def _issue_type(client: httpx.Client, config: JiraConfig, log) -> str:
 
 
 def to_jira_markup(markdown: str) -> str:
-    """The defect write-up in Jira's wiki markup (what API v2 descriptions use)."""
-    out, in_code, table_header = [], False, False
+    """The defect write-up in Jira's wiki markup (what API v2 descriptions use).
+
+    Checked against the first issue filed on a live site: links to files in the run folder
+    can't be opened from Jira, so they become text with the path (the bug report itself is
+    attached to the issue), and an empty table header would show as a blank row, so it goes.
+    """
+    out, in_code = [], False
     for line in markdown.splitlines():
         if line.startswith("```"):
             out.append("{code}")  # Jira opens and closes a code block with the same tag
@@ -162,16 +167,18 @@ def to_jira_markup(markdown: str) -> str:
             out.append(line)
             continue
         if re.fullmatch(r"\|?(\s*:?-+:?\s*\|)+\s*:?-*:?\s*\|?", line.strip()):
-            table_header = False  # the |---|---| row: the line before it was the header
+            # The |---|---| row: the row before it is the header.
+            if out and out[-1].startswith("|"):
+                header = out.pop()
+                if header.strip("| "):
+                    out.append(header.replace("|", "||"))
             continue
         if heading := re.match(r"^(#{1,6})\s+(.*)$", line):
             line = f"h{len(heading.group(1))}. {heading.group(2)}"
         line = re.sub(r"\*\*(.+?)\*\*", r"*\1*", line)
         line = re.sub(r"`([^`]+)`", r"{{\1}}", line)
-        line = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"[\1|\2]", line)
-        if line.startswith("|") and out and not out[-1].startswith("|") and not table_header:
-            table_header = True
-            line = line.replace("|", "||")  # the first row of a table is its header
+        line = re.sub(r"\[([^\]]+)\]\((https?://[^)]+)\)", r"[\1|\2]", line)
+        line = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1 ({{\2}})", line)
         out.append(line)
     return "\n".join(out)
 

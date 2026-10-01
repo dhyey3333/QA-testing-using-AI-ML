@@ -159,7 +159,7 @@ def run_api_spec(spec, out_dir: Path, log=None) -> RunResult:
             if failing:
                 step.outcome = "failed: expectations not met"
                 result.verdict = "fail"
-                result.reason = f"not shown: {failing[0].expected} ({failing[0].why})"
+                result.reason = f"not returned: {failing[0].expected} ({failing[0].why})"
                 break
             for name, path in request.save.items():
                 found, value = _lookup(_json(response), str(path))

@@ -180,9 +180,13 @@ def test_a_wrong_address_or_login_says_what_to_fix(server_error_defects, status,
 
 
 def test_markdown_becomes_jira_markup():
-    markdown = "## Steps\n\n| | |\n|---|---|\n| Category | server error |\n\n**Analysis.** see `trace.zip` and [report](r.html)\n\n```diff\n-Total: ₹600\n```"
+    markdown = ("## Steps\n\n| | |\n|---|---|\n| Category | server error |\n\n"
+                "**Analysis.** see `trace.zip`, [report](api-order/r.html) and [docs](https://example.test/d)\n\n"
+                "| Spec | Verdict |\n|---|---|\n| checkout | fail |\n\n```diff\n-Total: ₹600\n```")
     markup = to_jira_markup(markdown)
     assert "h2. Steps" in markup
-    assert "|| || ||" in markup and "|---|" not in markup
-    assert "*Analysis.* see {{trace.zip}} and [report|r.html]" in markup
+    assert markup.startswith("h2. Steps\n\n| Category | server error |")  # an empty header is a blank row in Jira
+    assert "|| Spec || Verdict ||\n| checkout | fail |" in markup and "|---|" not in markup
+    # A file in the run folder can't be opened from Jira: its path stays, as text.
+    assert "*Analysis.* see {{trace.zip}}, report ({{api-order/r.html}}) and [docs|https://example.test/d]" in markup
     assert "{code}\n-Total: ₹600\n{code}" in markup

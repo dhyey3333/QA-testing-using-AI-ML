@@ -22,7 +22,7 @@ from html import escape
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .report import page_html, severity
+from .report import is_api, page_html, severity
 from .result import RunResult
 
 _RUNS_SUFFIX = re.compile(r"\s*\(failed \d+ of \d+ runs\)$")
@@ -39,6 +39,13 @@ HINTS = {
 }
 AREA = {"server error": "backend", "frontend crash": "frontend", "dead control": "frontend",
         "wrong or missing result": "backend or frontend"}
+# An API test talks to the backend directly: no page, no trace, and no frontend to suspect.
+API_HINTS = {
+    "server error": "The server failed on {where}. Start with the backend handler for that endpoint; "
+                    "the request is in the bug report.",
+    "wrong or missing result": "The request went through but the response is wrong. Compare it with "
+                               "the last passing run below.",
+}
 
 
 @dataclass
@@ -114,9 +121,11 @@ def analyse(results: list[RunResult], runs_root: Path | None = None) -> list[Def
         lead = failures_in_group[0]
         category = lead.category
         title = _title(lead)
+        api = all(is_api(f.result) for f in failures_in_group)
+        hint = (API_HINTS if api else HINTS).get(category, HINTS[category])
         defects.append(Defect(
-            id="", title=title, category=category, area=AREA[category],
-            severity=severity(lead.result), hint=HINTS[category].format(where=lead.where),
+            id="", title=title, category=category, area="backend" if api else AREA[category],
+            severity=severity(lead.result), hint=hint.format(where=lead.where),
             failures=failures_in_group,
         ))
     defects.sort(key=lambda d: (rank.get(d.severity.split(":")[0], 3), -len(d.failures)))
@@ -159,7 +168,7 @@ def defect_body(defect: Defect, run_dir: Path) -> str:
     ]
     for check in lead.result.checks:
         if not check.holds:
-            lines.append(f"- Expected: {check.expected}" + (f" ({check.why})" if check.why else ""))
+            lines.append(f"- Expected: {check.expected}" + (f" — {check.why}" if check.why else ""))
     if lead.changes:
         lines += ["", f"**What changed since it last passed** (`{_rel(lead.last_pass, run_dir)}`):", "", "```diff",
                   *lead.changes, "```"]
@@ -168,8 +177,9 @@ def defect_body(defect: Defect, run_dir: Path) -> str:
     lines += ["", "**Evidence and steps to reproduce:**"]
     for failure in defect.failures:
         out = Path(failure.result.out_dir)
+        trace = f", trace `{out / 'trace.zip'}`" if (out / "trace.zip").exists() else ""
         lines.append(f"- `{failure.result.spec}`: [bug report]({_rel(out / 'bug.md', run_dir)}), "
-                     f"[report]({_rel(out / 'report.html', run_dir)}), trace `{out / 'trace.zip'}`")
+                     f"[report]({_rel(out / 'report.html', run_dir)}){trace}")
     return "\n".join(line for line in lines if line is not None)
 
 
@@ -199,7 +209,8 @@ def defects_html(defects: list[Defect], run_dir: Path) -> str:
             f'<p class="muted">{escape(defect.category)} · likely {escape(defect.area)} · {escape(defect.severity)}'
             f' · affects {len(defect.specs)} test(s)</p>'
             f"<p><strong>Analysis.</strong> {escape(defect.hint)}</p>"
-            + (f"<p><strong>Not shown:</strong></p><ul>{checks}</ul>" if checks else "")
+            + (f"<p><strong>{'Not returned' if is_api(lead.result) else 'Not shown'}:</strong></p><ul>{checks}</ul>"
+               if checks else "")
             + (f'<p><strong>What changed since it last passed:</strong></p><div class="diff">{diff}</div>' if diff else "")
             + (f'<div class="shots">{images}</div>' if images else "")
             + f"<p><strong>Failing tests:</strong></p><ul>{links}</ul></section>"

@@ -49,6 +49,19 @@ def test_a_server_error_from_the_api_is_classified_like_one_from_the_browser(api
     assert defect.category == "server error" and defect.area == "backend"
 
 
+def test_an_api_bug_report_shows_the_response_not_browser_details(api_run):
+    # From the first issue filed on a live Jira: the report said "Browser: none,", listed the
+    # failure twice, and pointed at a trace an API test never records.
+    result = api_run("api-order", bugs={"order-total-mismatch"})
+    report = (Path(result.out_dir) / "bug.md").read_text(encoding="utf-8")
+    assert "| Kind | API test" in report and "Browser" not in report and "trace" not in report
+    assert report.count("total is 480") == 3  # the title, the expected list, and the actual list once
+    assert "- Not returned: place an order: total is 480 — got 530" in report
+    assert '"total": 530' in report  # the response itself is the evidence
+    [defect] = analyse([result])
+    assert defect.area == "backend" and "the response is wrong" in defect.hint
+
+
 def test_paths_and_matchers():
     data = {"user": {"name": "T"}, "items": [{"id": "a"}, {"id": "b"}]}
     assert _lookup(data, "user.name") == (True, "T")

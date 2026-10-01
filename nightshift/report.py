@@ -194,6 +194,11 @@ def instruction(step: Step) -> str | None:
     return None
 
 
+def is_api(result: RunResult) -> bool:
+    """An API test: HTTP requests only, so no browser, page, screenshot or trace."""
+    return result.browser == "none"
+
+
 def severity(result: RunResult) -> str:
     if result.verdict == "flaky":
         return "Low: intermittent, passed on retry"
@@ -202,11 +207,14 @@ def severity(result: RunResult) -> str:
         return "High: the app crashed or the server failed"
     if "had no effect" in reason or "times in a row" in reason:
         return "High: a control the flow needs does not work"
+    if is_api(result):
+        return "Medium: the API returns a wrong or missing result"
     return "Medium: the page shows a wrong or missing result"
 
 
 def bug_report(result: RunResult, spec: Spec) -> str:
     out_dir = Path(result.out_dir)
+    api = is_api(result)
     lines = [f"# {result.reason}", ""]
     if result.attempts:
         runs = f"failed {sum(a['verdict'] == 'fail' for a in result.attempts)} of {len(result.attempts)} runs"
@@ -215,15 +223,15 @@ def bug_report(result: RunResult, spec: Spec) -> str:
     rows = [
         ("Spec", f"`{spec.name}`" + (f" ({spec.path})" if spec.path else "")),
         ("URL", result.url),
-        ("Browser", f"{result.browser}, {result.viewport}"),
-        ("Found", f"{result.started_at} by Nightshift ({result.model})"),
+        ("Kind", "API test (HTTP requests, no browser)") if api else ("Browser", f"{result.browser}, {result.viewport}"),
+        ("Found", f"{result.started_at} by Nightshift" + ("" if api else f" ({result.model})")),
         ("Reproduced", runs),
         ("Severity (suggested)", severity(result)),
     ]
     lines += ["| | |", "|---|---|", *[f"| {k} | {v} |" for k, v in rows], ""]
 
-    lines += ["## Steps to reproduce", "", f"1. Open {result.url}"]
-    n = 2
+    lines += ["## Steps to reproduce", ""] + ([] if api else [f"1. Open {result.url}"])
+    n = 1 if api else 2
     for step in result.steps:
         if step.outcome.startswith("invalid"):
             continue
@@ -239,17 +247,25 @@ def bug_report(result: RunResult, spec: Spec) -> str:
     if spec.data:
         lines += ["", "Values in `{{double braces}}` are test data from the spec."]
 
-    lines += ["", "## Expected", "", *[f"- {e}" for e in spec.expect], "", "## Actual", "", f"- {result.reason}"]
-    for check in result.checks:
-        if not check.holds:
-            lines.append(f"- Not shown: {check.expected}" + (f" ({check.why})" if check.why else ""))
-    lines += [f"- Browser: {e}" for e in result.app_errors]
+    # Each failing check once, with what was there instead. The reason only summarises them,
+    # so it is listed only when no check failed (a crash, a dead control).
+    failing = [c for c in result.checks if not c.holds]
+    missing = "Not returned" if api else "Not shown"
+    lines += ["", "## Expected", "", *[f"- {e}" for e in spec.expect], "", "## Actual", ""]
+    lines += [f"- {missing}: {c.expected}" + (f" — {c.why}" if c.why else "") for c in failing] or [f"- {result.reason}"]
+    lines += [f"- {'Server' if api else 'Browser'}: {e}" for e in result.app_errors]
 
     last_shot = next((s.screenshot for s in reversed(result.steps) if s.screenshot), None)
     lines += ["", "## Evidence", ""]
     if last_shot:
         lines.append(f"- Last screenshot: `{out_dir / last_shot}`")
-    lines.append(f"- Trace (every action, DOM, network, console): `uv run playwright show-trace {out_dir / 'trace.zip'}`")
+    if api:
+        # The response is the evidence for an API bug. Test data in it is already masked.
+        body = result.final_text[:1500] + ("\n..." if len(result.final_text) > 1500 else "")
+        lines += [f"- Last response, to `{result.steps[-1].description if result.steps else result.url}`:",
+                  "", "```", body, "```"]
+    else:
+        lines.append(f"- Trace (every action, DOM, network, console): `uv run playwright show-trace {out_dir / 'trace.zip'}`")
     if (out_dir / "video.webm").exists():
         lines.append(f"- Video: `{out_dir / 'video.webm'}`")
     if result.warnings:
