@@ -1,0 +1,20 @@
+name: checkout
+url: http://localhost:5180/
+steps:
+  - log in with the test account
+  - add Filter Coffee to the cart
+  - open the cart and proceed to checkout
+  - fill in the delivery details with the test data
+  - choose cash on delivery and place the order
+expect:
+  - a page says the order was placed
+  - it shows an order number that looks like KC-12345
+  - the amount to pay is ₹240
+data:
+  email: shopper@kulhad.test
+  password: chai-time-42
+  full_name: Test Shopper
+  address: 12 Example Lane
+  city: Pune
+  pincode: "411001"
+max_steps: 30

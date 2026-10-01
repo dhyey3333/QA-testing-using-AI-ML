@@ -1,0 +1,13 @@
+diff --git a/bakerydemo/blog/models.py b/bakerydemo/blog/models.py
+index 044fca3..7e04d34 100644
+--- a/bakerydemo/blog/models.py
++++ b/bakerydemo/blog/models.py
+@@ -233,7 +233,7 @@ class BlogIndexPage(RoutablePageMixin, Page):
+     def get_posts(self, tag=None):
+         posts = BlogPage.objects.live().descendant_of(self)
+         if tag:
+-            posts = posts.filter(tags=tag)
++            posts.filter(tags=tag)
+         return posts
+ 
+     # Returns the list of Tags for all child posts of this BlogPage.

@@ -1,0 +1,8 @@
+name: search
+url: http://127.0.0.1:8000/
+steps:
+  - search the site for "bread" using the search box
+expect:
+  - the results page says 8 results were found for "bread"
+  - Anadama is among the results
+max_steps: 8

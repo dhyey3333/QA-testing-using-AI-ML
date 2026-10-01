@@ -1,0 +1,12 @@
+name: add-to-cart
+url: http://localhost:5180/
+steps:
+  - add Masala Chai to the cart
+  - add the Clay Kulhad (set of 6) to the cart
+  - open the cart
+expect:
+  - the cart lists Masala Chai and Clay Kulhad, each with quantity 1
+  - the cart prices Masala Chai at ₹180 and Clay Kulhad at ₹420
+  - the total equals the sum of the line totals
+  - the header's cart link shows 2 items
+max_steps: 15

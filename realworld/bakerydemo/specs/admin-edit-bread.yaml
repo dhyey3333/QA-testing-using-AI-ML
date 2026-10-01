@@ -1,0 +1,14 @@
+name: admin-edit-bread
+url: http://127.0.0.1:8000/admin/
+steps:
+  - sign in to the admin with the test account
+  - find the Baguette page (it is under Breads) and edit it
+  - change its title to "Baguette Parisienne"
+  - publish the change
+  - open the live Baguette page on the public site
+expect:
+  - the live page's heading reads Baguette Parisienne
+data:
+  username: admin
+  password: changeme
+max_steps: 30

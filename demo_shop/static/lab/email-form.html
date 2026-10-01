@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Lab: native validation</title></head>
+<body>
+  <!-- Test fixture: the browser, not the page, rejects a bad email here. -->
+  <form id="f">
+    <label>Email <input type="email" name="email" required></label>
+    <input type="submit">
+  </form>
+  <p id="sent" hidden>Sent!</p>
+  <script>
+    document.getElementById("f").onsubmit = (e) => { e.preventDefault(); document.getElementById("sent").hidden = false; };
+  </script>
+</body>
+</html>

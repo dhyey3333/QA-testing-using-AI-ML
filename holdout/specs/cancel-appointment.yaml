@@ -1,0 +1,9 @@
+name: cancel-appointment
+url: http://localhost:5190/
+steps:
+  - open My appointments
+  - cancel appointment SC-1001 and confirm when asked
+expect:
+  - a message says appointment SC-1001 was cancelled
+  - SC-1001 is no longer in the appointments list
+max_steps: 12

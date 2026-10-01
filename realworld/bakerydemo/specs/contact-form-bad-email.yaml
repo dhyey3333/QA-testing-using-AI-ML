@@ -1,0 +1,15 @@
+name: contact-form-bad-email
+url: http://127.0.0.1:8000/
+steps:
+  - open Contact Us
+  - fill in every field of the form with the test data, using bad_email as the email and Comment as the purpose
+  - submit the form
+expect:
+  - the form is not sent; the contact form is still shown and no thank-you message appears
+  - the email field is flagged as invalid
+data:
+  subject: Opening hours
+  name: Test Visitor
+  bad_email: not-an-email
+  body: Are you open on public holidays?
+max_steps: 15

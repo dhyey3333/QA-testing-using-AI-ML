@@ -1,0 +1,13 @@
+name: guest-checkout
+url: http://localhost:5180/
+steps:
+  - without logging in, add Filter Coffee to the cart
+  - open the cart and proceed to checkout
+  - when asked to log in, log in with the test account
+expect:
+  - the checkout form is shown
+  - the order total is ₹240
+data:
+  email: shopper@kulhad.test
+  password: chai-time-42
+max_steps: 20

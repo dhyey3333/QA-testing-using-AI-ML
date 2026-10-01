@@ -1,0 +1,11 @@
+name: login-email-case
+url: http://localhost:5180/
+steps:
+  - open the login page
+  - log in with the test account, typing the email exactly as the test data has it (with capital letters)
+expect:
+  - the header greets the logged-in user by name
+data:
+  email: Shopper@Kulhad.test
+  password: chai-time-42
+max_steps: 12

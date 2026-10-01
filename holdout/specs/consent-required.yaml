@@ -1,0 +1,16 @@
+name: consent-required
+url: http://localhost:5190/book
+steps:
+  - choose Dr. Rahul Menon as the doctor
+  - set the date to the test data's appointment_date and the time to 16:30
+  - fill in the patient's name and mobile number from the test data
+  - leave the privacy policy box unticked
+  - review the booking
+expect:
+  - an error says you must agree to the privacy policy
+  - no booking is confirmed; the booking form is still shown
+data:
+  appointment_date: "2031-03-14"
+  patient_name: Test Patient
+  mobile: "9876543210"
+max_steps: 20

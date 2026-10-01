@@ -1,0 +1,7 @@
+name: search-no-results
+url: http://127.0.0.1:8000/
+steps:
+  - search the site for "zzzz" using the search box
+expect:
+  - a message says no results were found for "zzzz"
+max_steps: 8

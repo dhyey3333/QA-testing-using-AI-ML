@@ -1,0 +1,76 @@
+name: Nightshift AI QA
+description: Run plain-English UI tests with an AI agent in a real browser, and get a bug report for every failure.
+branding:
+  icon: check-circle
+  color: green
+
+inputs:
+  specs:
+    description: Spec files or folders, space-separated
+    default: specs/
+  base-url:
+    description: Run the specs against this deployment (a preview or staging URL), keeping each spec's path
+    default: ""
+  retries:
+    description: Re-run a failure this many times with a fresh agent before reporting it
+    default: "1"
+  model-base-url:
+    description: OpenAI-compatible endpoint. Hosted runners have no GPU, so use a hosted open-weights model.
+    required: true
+  model-name:
+    description: A vision model name at that endpoint
+    required: true
+  model-api-key:
+    description: API key for the endpoint (pass a secret)
+    default: ""
+  judge-name:
+    description: Optional bigger model for the judge; defaults to model-name
+    default: ""
+  slack-webhook:
+    description: Optional Slack incoming-webhook URL (pass a secret); posts when something fails
+    default: ""
+  args:
+    description: Extra arguments for `nightshift run`, e.g. "--device 'iPhone 13' --video"
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v6
+
+    - name: Install Nightshift and Chromium
+      shell: bash
+      run: |
+        uv sync --project "$GITHUB_ACTION_PATH" --no-dev
+        uv run --project "$GITHUB_ACTION_PATH" playwright install --with-deps chromium
+
+    - name: Run the specs
+      shell: bash
+      # Inputs go through env, never pasted into the script: that is what keeps a
+      # crafted input from becoming a shell command.
+      env:
+        NS_SPECS: ${{ inputs.specs }}
+        NS_BASE_URL: ${{ inputs.base-url }}
+        NS_RETRIES: ${{ inputs.retries }}
+        NS_ARGS: ${{ inputs.args }}
+        MODEL_BASE_URL: ${{ inputs.model-base-url }}
+        MODEL_NAME: ${{ inputs.model-name }}
+        MODEL_API_KEY: ${{ inputs.model-api-key }}
+        JUDGE_NAME: ${{ inputs.judge-name }}
+        SLACK_WEBHOOK_URL: ${{ inputs.slack-webhook }}
+      run: |
+        args=(run $NS_SPECS --retries "$NS_RETRIES" --junit nightshift-junit.xml)
+        if [ -n "$NS_BASE_URL" ]; then args+=(--base-url "$NS_BASE_URL"); fi
+        # xargs splits "--device 'iPhone 13'" respecting quotes, without running anything.
+        extra=()
+        if [ -n "$NS_ARGS" ]; then mapfile -t extra < <(xargs -n1 printf '%s\n' <<< "$NS_ARGS"); fi
+        uv run --project "$GITHUB_ACTION_PATH" nightshift "${args[@]}" "${extra[@]}"
+
+    - name: Upload reports, traces and bug reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: nightshift-results
+        path: |
+          runs/
+          nightshift-junit.xml

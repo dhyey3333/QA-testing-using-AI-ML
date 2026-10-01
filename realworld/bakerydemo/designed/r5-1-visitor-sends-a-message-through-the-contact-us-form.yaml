@@ -1,0 +1,22 @@
+# Draft written by `nightshift generate` from requirement R5 on 2026-10-01.
+# Read it before trusting it: a wrong spec makes a wrong test.
+# Review: No case checks these values the requirement names: "Visitors", "Contact", "Us". Test the requirement's own example.
+name: r5-1-visitor-sends-a-message-through-the-contact-us-form
+title: Visitor sends a message through the Contact Us form
+requirements:
+- R5
+technique: positive
+priority: high
+url: http://127.0.0.1:8000/contact-us/
+steps:
+- Click the 'Subject' field and type 'Comment'
+- Click the 'Your Name' field and type 'Test Visitor'
+- Click the 'Your Email' field and type 'test@example.com'
+- Click the 'Purpose' dropdown and select 'Comment'
+- Click the 'Body' field and type 'This is a test message.'
+- Click the 'Submit' button
+expect:
+- A thank-you message is shown confirming the message was received
+data:
+  username: ${NS_USERNAME}
+  password: ${NS_PASSWORD}

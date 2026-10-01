@@ -1,0 +1,22 @@
+# Draft written by `nightshift generate` from requirement R6 on 2026-10-01.
+# HUMAN REVIEW (see REVIEW.md): the draft typed the bad email but never filled the other
+# required fields or pressed Submit, so the browser would never complain. Steps added.
+name: r6-1-contact-us-form-with-invalid-email
+title: Contact Us form with invalid email
+requirements:
+- R6
+technique: negative
+priority: high
+url: http://127.0.0.1:8000/contact-us/
+steps:
+- fill in Subject, Your Name and Body from the test data, and choose Question as the purpose
+- type the invalid_email into Your Email
+- click Submit
+expect:
+- The form shows an error message indicating the email is invalid
+- the contact form is still shown, so the message was not sent
+data:
+  invalid_email: not-an-email
+  subject: Opening hours
+  name: Test Visitor
+  body: Are you open on public holidays?

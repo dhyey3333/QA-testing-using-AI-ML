@@ -1,0 +1,13 @@
+diff --git a/bakerydemo/templates/breads/bread_page.html b/bakerydemo/templates/breads/bread_page.html
+index 72fbd96..f2bfa63 100644
+--- a/bakerydemo/templates/breads/bread_page.html
++++ b/bakerydemo/templates/breads/bread_page.html
+@@ -36,7 +36,7 @@
+                                 {% if ingredients %}
+                                     <p class="bread-detail__meta-title">Ingredients</p>
+                                     <ul>
+-                                        {% for ingredient in ingredients %}
++                                        {% for ingredient in ingredients|slice:":3" %}
+                                             <li>
+                                                 {% if ingredient.live %}
+                                                     {# If it's live, show as-is #}

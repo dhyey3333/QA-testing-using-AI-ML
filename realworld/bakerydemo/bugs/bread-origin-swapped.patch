@@ -1,0 +1,13 @@
+diff --git a/bakerydemo/templates/breads/bread_page.html b/bakerydemo/templates/breads/bread_page.html
+index 72fbd96..f750407 100644
+--- a/bakerydemo/templates/breads/bread_page.html
++++ b/bakerydemo/templates/breads/bread_page.html
+@@ -26,7 +26,7 @@
+                         <div class="bread-detail__meta">
+                             {% if page.origin %}
+                                 <p class="bread-detail__meta-title">Origin</p>
+-                                <p class="bread-detail__meta-content">{{ page.origin }}</p>
++                                <p class="bread-detail__meta-content">{{ page.bread_type }}</p>
+                             {% endif %}
+                             {% if page.bread_type %}
+                                 <p class="bread-detail__meta-title">Type</p>

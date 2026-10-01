@@ -1,0 +1,13 @@
+diff --git a/bakerydemo/search/views.py b/bakerydemo/search/views.py
+index e1a2623..5973108 100644
+--- a/bakerydemo/search/views.py
++++ b/bakerydemo/search/views.py
+@@ -36,7 +36,7 @@ def search(request):
+             recipe_page_ids = [p.page_ptr.id for p in recipe_results]
+ 
+             page_ids = (
+-                blog_page_ids + bread_page_ids + location_result_ids + recipe_page_ids
++                blog_page_ids + location_result_ids + recipe_page_ids
+             )
+             search_results = Page.objects.live().filter(id__in=page_ids)
+ 

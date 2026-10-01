@@ -1,0 +1,12 @@
+name: remove-from-cart
+url: http://localhost:5180/
+steps:
+  - add Masala Chai to the cart
+  - add Filter Coffee to the cart
+  - open the cart
+  - remove Masala Chai from the cart
+expect:
+  - the cart lists Filter Coffee
+  - Masala Chai is no longer in the cart
+  - the total is ₹240
+max_steps: 15

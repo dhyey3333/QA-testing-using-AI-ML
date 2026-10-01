@@ -1,0 +1,10 @@
+diff --git a/bakerydemo/static/js/main.js b/bakerydemo/static/js/main.js
+index 54d9f05..0007833 100644
+--- a/bakerydemo/static/js/main.js
++++ b/bakerydemo/static/js/main.js
+@@ -1,4 +1,5 @@
+ document.addEventListener('DOMContentLoaded', () => {
++  document.querySelector('[data-mega-menu]').dataset.ready = 'true';
+   const navigation = document.querySelector('[data-navigation]');
+   const themeToggle = document.querySelector('[data-theme-toggle]');
+   const htmlElement = document.documentElement;

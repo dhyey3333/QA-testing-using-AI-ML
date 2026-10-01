@@ -1,0 +1,17 @@
+# Draft written by `nightshift generate` from requirement R2 on 2026-10-01.
+# Read it before trusting it: a wrong spec makes a wrong test.
+name: r2-1-search-for-baguette-and-verify-result
+title: Search for 'Baguette' and verify result
+requirements:
+- R2
+technique: positive
+priority: high
+url: http://127.0.0.1:8000/
+steps:
+- Type 'Baguette' into Search the bakery
+- Press Enter or click the search button (if visible)
+expect:
+- The page displays 'Baguette' in the search results
+data:
+  username: ${NS_USERNAME}
+  password: ${NS_PASSWORD}

@@ -1,0 +1,11 @@
+name: login
+url: http://localhost:5180/
+steps:
+  - open the login page
+  - log in with the test account
+expect:
+  - the header greets the logged-in user by name
+data:
+  email: shopper@kulhad.test
+  password: chai-time-42
+max_steps: 12

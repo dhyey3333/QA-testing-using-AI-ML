@@ -1,0 +1,16 @@
+# Draft written by `nightshift generate` from requirement R3 on 2026-10-01.
+# Read it before trusting it: a wrong spec makes a wrong test.
+name: r3-1-search-for-non-existent-term-and-confirm-no-results-fou
+title: Search for non-existent term and confirm no results found
+requirements:
+- R3
+technique: positive
+priority: medium
+url: http://127.0.0.1:8000/
+steps:
+- type the text 'nonexistent bread' into Search the bakery
+expect:
+- a message is shown indicating no results were found
+data:
+  username: ${NS_USERNAME}
+  password: ${NS_PASSWORD}

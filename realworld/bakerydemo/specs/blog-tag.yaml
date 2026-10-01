@@ -1,0 +1,10 @@
+name: blog-tag
+url: http://127.0.0.1:8000/
+steps:
+  - open the Blog
+  - show only the posts tagged Yeast
+expect:
+  - the page says it is showing posts tagged Yeast
+  - 'the post "Tracking Wild Yeast" is listed'
+  - 'the post "Desserts with Benefits" is not listed'
+max_steps: 10

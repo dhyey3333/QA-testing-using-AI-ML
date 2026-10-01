@@ -1,0 +1,10 @@
+name: browse-breads
+url: http://127.0.0.1:8000/
+steps:
+  - open the Breads section from the main menu
+  - open the Baguette page
+expect:
+  - the page is titled Baguette
+  - it says the origin is France and the type is Yeast bread
+  - the ingredients listed are Flour, Salt, Water and Yeast
+max_steps: 10

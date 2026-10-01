@@ -1,0 +1,15 @@
+# Draft written by `nightshift generate` from requirement R4 on 2026-10-01.
+# Read it before trusting it: a wrong spec makes a wrong test.
+name: r4-1-choosing-the-yeast-tag-shows-only-posts-with-that-tag
+title: Choosing the Yeast tag shows only posts with that tag
+requirements:
+- R4
+technique: positive
+priority: medium
+url: http://127.0.0.1:8000/
+steps:
+- click the 'Blog' link in the top navigation
+- click the 'Yeast' tag in the blog section
+expect:
+- the page shows only posts tagged 'Yeast', such as 'Tracking Wild Yeast'
+- the post 'Desserts with Benefits' is not shown

@@ -1,0 +1,15 @@
+# Draft written by `nightshift generate` from requirement R1 on 2026-10-01.
+# Read it before trusting it: a wrong spec makes a wrong test.
+name: r1-1-verify-baguette-page-displays-origin-type-and-ingredien
+title: Verify Baguette page displays origin, type, and ingredients as specified
+requirements:
+- R1
+technique: positive
+priority: high
+url: http://127.0.0.1:8000/
+steps:
+- Click the 'Breads' link in the top navigation
+- Click the 'View more of breads' link
+- Locate and click the 'Baguette' bread item in the list
+expect:
+- 'The page displays: origin France, type Yeast bread, ingredients Flour, Salt, Water and Yeast'

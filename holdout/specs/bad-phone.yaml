@@ -1,0 +1,16 @@
+name: bad-phone
+url: http://localhost:5190/book
+steps:
+  - choose Dr. Rahul Menon as the doctor
+  - set the date to the test data's appointment_date and the time to 16:00
+  - fill in the patient's name from the test data, and use short_mobile (only 5 digits) as the mobile number
+  - agree to the privacy policy
+  - review the booking
+expect:
+  - an error says a 10-digit mobile number is needed
+  - no booking is confirmed; the booking form is still shown
+data:
+  appointment_date: "2031-03-14"
+  patient_name: Test Patient
+  short_mobile: "98765"
+max_steps: 20

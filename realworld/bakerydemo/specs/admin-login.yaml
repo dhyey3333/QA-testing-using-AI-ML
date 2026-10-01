@@ -1,0 +1,11 @@
+name: admin-login
+url: http://127.0.0.1:8000/admin/
+steps:
+  - sign in to the admin with the test account
+expect:
+  - the admin dashboard is shown with a site summary
+  - the site summary reports 34 pages
+data:
+  username: admin
+  password: changeme
+max_steps: 10

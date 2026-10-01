@@ -1,0 +1,14 @@
+name: contact-form
+url: http://127.0.0.1:8000/
+steps:
+  - open Contact Us
+  - fill in every field of the form with the test data, choosing Question as the purpose
+  - submit the form
+expect:
+  - a thank-you message says the message was received
+data:
+  subject: Opening hours
+  name: Test Visitor
+  email: visitor@example.test
+  body: Are you open on public holidays?
+max_steps: 15

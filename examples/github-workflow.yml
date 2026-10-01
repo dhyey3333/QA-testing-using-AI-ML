@@ -1,0 +1,30 @@
+# Copy to .github/workflows/nightshift.yml in the app's repo.
+# Runs the specs on every pull request and every night, posts failures to Slack,
+# and attaches reports, traces and bug reports to the run.
+name: Nightshift QA
+
+on:
+  pull_request:
+  schedule:
+    - cron: "30 20 * * *" # 02:00 IST every night
+  workflow_dispatch:
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # Start the app here (docker compose up -d, npm start &), or point base-url
+      # at a preview deployment. The specs' own URLs are used if base-url is empty.
+
+      - uses: dhyey3333/nightshift@main
+        with:
+          specs: specs/
+          base-url: ${{ vars.STAGING_URL }}
+          # Hosted runners have no GPU: use a hosted open-weights vision model.
+          model-base-url: https://openrouter.ai/api/v1
+          model-name: qwen/qwen3-vl-8b-instruct
+          model-api-key: ${{ secrets.MODEL_API_KEY }}
+          slack-webhook: ${{ secrets.SLACK_WEBHOOK_URL }}

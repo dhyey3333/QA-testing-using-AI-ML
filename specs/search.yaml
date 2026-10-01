@@ -1,0 +1,8 @@
+name: search
+url: http://localhost:5180/
+steps:
+  - search the shop for "coffee"
+expect:
+  - Filter Coffee (200 g) is shown
+  - Masala Chai is not shown
+max_steps: 10

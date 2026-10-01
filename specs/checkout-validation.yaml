@@ -1,0 +1,19 @@
+name: checkout-validation
+url: http://localhost:5180/
+steps:
+  - log in with the test account
+  - add Masala Chai to the cart
+  - open the cart and proceed to checkout
+  - fill in the delivery details from the test data, using bad_pincode (only 5 digits) as the pincode
+  - choose cash on delivery and try to place the order
+expect:
+  - an error message says the pincode must be 6 digits
+  - the order was not placed; the checkout form is still shown
+data:
+  email: shopper@kulhad.test
+  password: chai-time-42
+  full_name: Test Shopper
+  address: 12 Example Lane
+  city: Pune
+  bad_pincode: "41100"
+max_steps: 30

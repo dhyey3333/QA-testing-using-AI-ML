@@ -1,0 +1,13 @@
+diff --git a/bakerydemo/templates/search/search_results.html b/bakerydemo/templates/search/search_results.html
+index 51d7912..bc1ebff 100644
+--- a/bakerydemo/templates/search/search_results.html
++++ b/bakerydemo/templates/search/search_results.html
+@@ -94,7 +94,7 @@
+                             {% endfor %}
+                         </ul>
+                     {% else %}
+-                        <p class="search__introduction">No results found for “{{ search_query }}”.</p>
++                        
+                     {% endif %}
+                 {% else %}
+                     <p class="search__introduction">You didn&apos;t search for anything!</p>

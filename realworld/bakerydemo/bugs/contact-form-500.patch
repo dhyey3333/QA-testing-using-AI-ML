@@ -1,0 +1,19 @@
+diff --git a/bakerydemo/base/models.py b/bakerydemo/base/models.py
+index 6a720c3..567d2dd 100644
+--- a/bakerydemo/base/models.py
++++ b/bakerydemo/base/models.py
+@@ -542,6 +542,14 @@ class FormPage(AbstractEmailForm):
+ 
+     # Note how we include the FormField object via an InlinePanel using the
+     # related_name value
++    def process_form_submission(self, form):
++        submission = super().process_form_submission(form)
++        # Normalise the sender's address for the CRM export.
++        email = submission.form_data["email"].strip().lower()
++        submission.form_data["email"] = email
++        submission.save()
++        return submission
++
+     content_panels = AbstractEmailForm.content_panels + [
+         FormSubmissionsPanel(),
+         FieldPanel("image"),

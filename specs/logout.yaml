@@ -1,0 +1,12 @@
+name: logout
+url: http://localhost:5180/
+steps:
+  - log in with the test account
+  - log out
+expect:
+  - the header shows a "Log in" link again
+  - the header no longer greets the user by name
+data:
+  email: shopper@kulhad.test
+  password: chai-time-42
+max_steps: 15
