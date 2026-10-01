@@ -125,7 +125,8 @@ function viewLogin(params) {
       <label>Password <input name="password" type="password" autocomplete="current-password"></label>
       <p class="error" id="login-error" role="alert"></p>
       <button type="submit">Log in</button>
-    </form>`;
+    </form>
+    <p><a href="#/login-code${next ? `?next=${encodeURIComponent(next)}` : ""}">Sign in with an email code instead</a></p>`;
   const form = document.getElementById("login-form");
   form.onsubmit = async (event) => {
     event.preventDefault();
@@ -137,6 +138,48 @@ function viewLogin(params) {
     state.user = data.user;
     // BUG guest-cart-lost: logging in mid-checkout swaps the guest cart for the account's (empty) one.
     if (BUGS.has("guest-cart-lost") && next === "checkout") state.cart = [];
+    saveState();
+    toast(`Welcome back, ${data.user.name}.`);
+    location.hash = next ? `#/${next}` : "#/";
+  };
+}
+
+// Sign in with a one-time code sent by email. The "email" lands in the shop's outbox,
+// readable at /mail like a Mailpit inbox, which is how Nightshift's test inbox finds it.
+function viewLoginCode(params) {
+  document.title = "Sign in with a code | Kulhad & Co.";
+  const next = params.get("next") || "";
+  view.innerHTML = `
+    <h1>Sign in with an email code</h1>
+    <form id="code-request" class="form" novalidate>
+      <label>Email <input name="email" type="email" autocomplete="username"></label>
+      <button type="submit">Email me a code</button>
+    </form>
+    <form id="code-verify" class="form" novalidate hidden>
+      <p id="code-sent"></p>
+      <label>Sign-in code <input name="code" inputmode="numeric" autocomplete="one-time-code"></label>
+      <p class="error" id="code-error" role="alert"></p>
+      <button type="submit">Sign in</button>
+    </form>`;
+  const request = document.getElementById("code-request");
+  const verify = document.getElementById("code-verify");
+  let email = "";
+  request.onsubmit = async (event) => {
+    event.preventDefault();
+    email = new FormData(request).get("email").trim();
+    await api("/api/login-code", { email });
+    request.hidden = true;
+    verify.hidden = false;
+    document.getElementById("code-sent").textContent = `We emailed a 6-digit code to ${email}.`;
+  };
+  verify.onsubmit = async (event) => {
+    event.preventDefault();
+    const { ok, data } = await api("/api/login-code/verify", { email, code: new FormData(verify).get("code") });
+    if (!ok) {
+      document.getElementById("code-error").textContent = data.error || "Could not sign in.";
+      return;
+    }
+    state.user = data.user;
     saveState();
     toast(`Welcome back, ${data.user.name}.`);
     location.hash = next ? `#/${next}` : "#/";
@@ -272,7 +315,7 @@ function viewNotFound() {
   view.innerHTML = `<h1>Page not found</h1><p><a href="#/">Back to the shop</a></p>`;
 }
 
-const views = { "": viewProducts, login: viewLogin, cart: viewCart, checkout: viewCheckout, order: viewOrder };
+const views = { "": viewProducts, login: viewLogin, "login-code": viewLoginCode, cart: viewCart, checkout: viewCheckout, order: viewOrder };
 
 function route() {
   const [name, query] = location.hash.replace(/^#\/?/, "").split("?");

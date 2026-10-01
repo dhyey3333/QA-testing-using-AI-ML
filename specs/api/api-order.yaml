@@ -1,0 +1,24 @@
+name: api-order
+title: An order through the API is priced from the catalogue and gets an order number
+url: http://localhost:5180/
+requests:
+  - name: the catalogue
+    get: /api/products
+    expect:
+      status: 200
+      json: {"[1].name": Filter Coffee (200 g), "[1].price": 240, length: 6}
+  - name: place an order
+    post: /api/order
+    json:
+      items: [{id: coffee, qty: 2}]
+      name: Test Shopper
+      address: 12 Example Lane
+      city: Pune
+      pincode: "411001"
+      payment: cod
+    expect:
+      status: 201
+      json:
+        orderId: /^KC-\d+$/
+        total: 480
+      max_ms: 2000

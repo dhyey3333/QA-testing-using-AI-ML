@@ -188,7 +188,33 @@ Jobs run one at a time (one GPU, one model) as a `nightshift` subprocess in its 
 group, so Stop also stops the browser it started. The page is plain HTML, CSS and JS with no build step,
 and no new dependencies.
 
-## D15. Any OpenAI-compatible model, local by default
+## D15. API tests use no model
+A backend check is deterministic: send this, expect that status and these fields. A model would
+add cost, latency and doubt for nothing, so `requests:` specs are plain HTTP with declarative
+checks, stop at the first request that fails (later ones usually depend on it), and are never
+retried (a retry repeats the same answer). They still produce ordinary RunResults, so reports,
+defect analysis and the dashboard treat them like browser tests.
+
+A live run taught one thing: on Windows, "localhost" is tried over IPv6 first, with a two-second
+wait before falling back to IPv4. A `max_ms` check blamed the app for that. When an IPv4 server is
+listening on localhost, API tests now connect over IPv4.
+
+## D16. The model never reads the inbox
+For a sign-in code, the agent only says where the code goes (`{{email_code}}`). Code fetches the
+newest email to the test address *since this test started* (an old code from an earlier run is
+wrong by design), finds the code (a 4 to 8 digit number, preferring a line that mentions a code)
+and types it. Small models copy six digits badly, and an inbox is full of things that are none of
+the model's business. Magic links must stay on the app's own site.
+
+## D17. Jira: one defect, one ticket
+Each defect's signature (the same one defect analysis groups by) is hashed into a label. Before
+filing, Nightshift searches for an open issue with that label: if there is one, it comments
+("seen again") instead of filing a duplicate. A defect whose issue was closed and that comes back
+is filed again, as a regression. Jira Cloud moved JQL search to `/rest/api/3/search/jql`; Data
+Center still has `/rest/api/2/search`, so both are tried. Descriptions are converted to Jira's wiki
+markup.
+
+## D18. Any OpenAI-compatible model, local by default
 A plain HTTP POST to `/chat/completions`: Ollama, vLLM, llama.cpp, OpenRouter, Groq. The default
 is a 4B vision model on a 6 GB laptop GPU, so the whole thing runs offline for free. The judge can
 be a different, bigger model (`JUDGE_NAME`), since it runs once per test instead of once per step.

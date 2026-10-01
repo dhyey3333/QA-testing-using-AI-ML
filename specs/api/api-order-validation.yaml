@@ -1,0 +1,16 @@
+name: api-order-validation
+title: The order API refuses an empty cart and a product that does not exist
+url: http://localhost:5180/
+requests:
+  - name: empty cart
+    post: /api/order
+    json: {items: [], name: T, address: A, city: C, pincode: "411001", payment: cod}
+    expect:
+      status: 400
+      json: {error: Your cart is empty.}
+  - name: unknown product
+    post: /api/order
+    json: {items: [{id: no-such-thing, qty: 1}], name: T, address: A, city: C, pincode: "411001", payment: cod}
+    expect:
+      status: 400
+      json: {orderId: <missing>}

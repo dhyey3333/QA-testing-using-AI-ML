@@ -114,7 +114,15 @@ class Dashboard:
             "model": self.model_status(),
             "job": self.job_view(0),
             "demo": self.demo_view(),
+            "jira": self.jira_view(),
         }
+
+    def jira_view(self) -> dict:
+        from ..jira import JiraConfig
+
+        config = JiraConfig.from_env()
+        return {"configured": config is not None, "url": config.url if config else "",
+                "project": config.project if config else ""}
 
     def model_status(self) -> dict:
         """Is the model endpoint answering? Cached for 15 s: the page asks every few seconds."""
@@ -413,7 +421,8 @@ class Dashboard:
             run = (self.runs / str(p.get("run") or "")).resolve()
             if not run.is_relative_to(self.runs) or not (run / "summary.json").exists():
                 raise BadRequest("no such run")
-            return base + ["triage", str(run)], f"Defect analysis of {run.name}"
+            args = ["triage", str(run)] + (["--file-jira"] if p.get("jira") else [])
+            return base + args, ("File the defects of " if p.get("jira") else "Defect analysis of ") + run.name
         raise BadRequest(f"unknown job kind {kind!r}")
 
     # --- the demo shop ------------------------------------------------------------
@@ -473,6 +482,13 @@ def make_handler(dashboard: Dashboard, port: int):
             self._handle("DELETE")
 
         def _handle(self, method: str) -> None:
+            if method in ("POST", "PUT"):
+                # Read the body before any refusal: on Windows, closing a connection with unread
+                # data resets it, and the client sees a dropped connection instead of the 403.
+                length = int(self.headers.get("Content-Length") or 0)
+                self._raw_body = self.rfile.read(length) if 0 < length <= MAX_BODY else b""
+                if length > MAX_BODY:
+                    return self._send(413, {"error": "request too large"})
             if self.headers.get("Host", "") not in allowed_hosts:
                 return self._send(403, {"error": "this dashboard only answers to localhost"})
             if method != "GET" and not secrets.compare_digest(self.headers.get("X-Nightshift-Token", ""), dashboard.token):
@@ -538,11 +554,7 @@ def make_handler(dashboard: Dashboard, port: int):
             raise FileNotFoundError(path)
 
         def _body(self) -> dict:
-            length = int(self.headers.get("Content-Length") or 0)
-            if length > MAX_BODY:
-                raise BadRequest("request too large")
-            raw = self.rfile.read(length) if length else b"{}"
-            value = json.loads(raw or b"{}")
+            value = json.loads(getattr(self, "_raw_body", b"") or b"{}")  # read in _handle, before any check
             if not isinstance(value, dict):
                 raise BadRequest("expected a JSON object")
             return value

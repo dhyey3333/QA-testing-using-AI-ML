@@ -11,10 +11,12 @@ that replay heals itself instead of reporting a bug.
 from __future__ import annotations
 
 import json
+import secrets
 import threading
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -56,6 +58,8 @@ BUGS: dict[str, Bug] = {
     "validation-message-missing": Bug("A bad pincode blocks the order but shows no message", ("checkout-validation",)),
     "search-broken": Bug("Search never finds anything", ("search",)),
     "guest-cart-lost": Bug("Logging in during checkout empties the cart", ("guest-checkout",)),
+    # server, added with the test inbox
+    "otp-wrong-code": Bug("The emailed sign-in code is never accepted", ("login-with-code",)),
 }
 
 VARIANTS: dict[str, str] = {
@@ -88,6 +92,9 @@ class ShopServer(ThreadingHTTPServer):
         self.variants: set[str] = set(variants)
         self.verbose = verbose
         self.orders = 0
+        # Emails the shop "sends", readable through a Mailpit-style API at /mail: a test inbox.
+        self.outbox: list[dict] = []
+        self.codes: dict[str, str] = {}
         self.lock = threading.Lock()
 
 
@@ -125,6 +132,18 @@ class ShopHandler(SimpleHTTPRequestHandler):
             self._send(200, "text/javascript; charset=utf-8", script.encode())
         elif path == "/api/products":
             self._json(200, PRODUCTS)
+        elif path == "/mail/api/v1/messages":
+            with self.server.lock:
+                newest = list(reversed(self.server.outbox))
+            summaries = [{k: m[k] for k in ("ID", "To", "Subject", "Created")} for m in newest]
+            self._json(200, {"total": len(summaries), "messages": summaries})
+        elif path.startswith("/mail/api/v1/message/"):
+            wanted = path.removeprefix("/mail/api/v1/message/")
+            found = next((m for m in self.server.outbox if m["ID"] == wanted), None)
+            if found is None:
+                self._json(404, {"error": "no such message"})
+            else:
+                self._json(200, {**found, "HTML": "", "Date": found["Created"]})
         else:
             super().do_GET()
 
@@ -135,6 +154,10 @@ class ShopHandler(SimpleHTTPRequestHandler):
             time.sleep(1.2)
         if path == "/api/login":
             self._login(body)
+        elif path == "/api/login-code":
+            self._send_code(body)
+        elif path == "/api/login-code/verify":
+            self._verify_code(body)
         elif path == "/api/order":
             self._order(body)
         else:
@@ -147,6 +170,33 @@ class ShopHandler(SimpleHTTPRequestHandler):
         correct = email == TEST_USER["email"] and body.get("password") == TEST_USER["password"]
         if not correct or "login-rejects" in self.server.bugs:
             self._json(401, {"error": "Wrong email or password."})
+            return
+        self._json(200, {"user": {"name": TEST_USER["name"], "email": TEST_USER["email"]}})
+
+    def _send_code(self, body: dict) -> None:
+        """Email a 6-digit sign-in code. Unknown addresses get the same answer and no email."""
+        email = str(body.get("email", "")).strip().lower()
+        if email == TEST_USER["email"]:
+            code = f"{secrets.randbelow(900_000) + 100_000}"
+            with self.server.lock:
+                self.server.codes[email] = code
+                self.server.outbox.append({
+                    "ID": secrets.token_hex(8),
+                    "To": [{"Name": TEST_USER["name"], "Address": email}],
+                    "Subject": "Your Kulhad & Co. sign-in code",
+                    "Text": f"Hi {TEST_USER['name']},\n\nYour sign-in code is {code}. It expires in 10 minutes.\n\n"
+                            "If you did not ask for it, you can ignore this email.",
+                    "Created": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                })
+        self._json(200, {"sent": True})
+
+    def _verify_code(self, body: dict) -> None:
+        email = str(body.get("email", "")).strip().lower()
+        expected = self.server.codes.get(email)
+        if expected and "otp-wrong-code" in self.server.bugs:
+            expected = expected[::-1]  # checks against the code reversed: the emailed one never works
+        if not expected or str(body.get("code", "")).strip() != expected:
+            self._json(401, {"error": "That code is not right."})
             return
         self._json(200, {"user": {"name": TEST_USER["name"], "email": TEST_USER["email"]}})
 

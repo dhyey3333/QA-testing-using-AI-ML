@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import re
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -13,6 +13,7 @@ from weakref import WeakKeyDictionary
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Locator, Page
 
+from .inbox import DYNAMIC
 from .observe import Observation
 
 ACTION_TIMEOUT_MS = 5_000
@@ -124,7 +125,7 @@ def validate_action(
         text = raw.get("text")
         if not isinstance(text, str):
             raise InvalidAction('"type" needs a "text" string')
-        unknown = [key for key in _PLACEHOLDER_RE.findall(text) if key not in data]
+        unknown = [key for key in _PLACEHOLDER_RE.findall(text) if key not in data and key not in DYNAMIC]
         if unknown:
             available = ", ".join("{{" + key + "}}" for key in data) or "none"
             raise InvalidAction("there is no test data called {{" + unknown[0] + "}}; available: " + available)
@@ -140,9 +141,12 @@ def validate_action(
         fields["value"] = value
     elif kind == "goto":
         path = str(raw.get("url") or raw.get("value") or "").strip()
-        if not path.startswith("/") or path.startswith("//"):
+        if path == "{{email_link}}":
+            fields["value"] = path  # the link in the newest test email, filled in when it runs
+        elif not path.startswith("/") or path.startswith("//"):
             raise InvalidAction('"goto" needs "url": a path on this site that starts with /, e.g. "/admin/"')
-        fields["value"] = path
+        else:
+            fields["value"] = path
     elif kind == "press":
         key = raw.get("key")
         if not isinstance(key, str) or not key:
@@ -225,7 +229,10 @@ def execute(page: Page, action: Action, data: dict[str, str], target: Locator | 
                 page.go_back(wait_until="domcontentloaded", timeout=10_000)
             case "goto":
                 # A path on the site the page is already on: a test never leaves for another host.
-                page.goto(urljoin(page.url, action.value), wait_until="domcontentloaded", timeout=15_000)
+                url = urljoin(page.url, fill_placeholders(action.value, data))
+                if urlsplit(url).netloc != urlsplit(page.url).netloc:
+                    raise ActionFailed(f"the link goes to another site ({urlsplit(url).netloc}); not following it")
+                page.goto(url, wait_until="domcontentloaded", timeout=15_000)
     except PlaywrightError as exc:
         raise ActionFailed(_short_reason(exc)) from None
 

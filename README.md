@@ -58,6 +58,9 @@ a 4B open-weights model on a 6 GB laptop GPU (RTX 3050), no retries.
 | Median time per run | 22 s | 31 s |
 | Median model time per step | 2.5 s | 2.8 s |
 
+The shop's 21st bug (an emailed sign-in code that is never accepted) came after this run. It was
+checked on its own: `login-with-code` passes on the clean shop and fails with the bug planted.
+
 Both remaining false alarms are the agent not doing a step as written. It filled in only the
 pincode, or it ticked a box it was told to leave empty (and said so: "the checkbox was accidentally
 ticked, violating the test requirement"). The judge was right that the expected result wasn't on
@@ -190,7 +193,7 @@ uv run python -m demo_shop
 uv run nightshift run specs/ --headed
 ```
 
-Plant a bug and watch it get caught (`--list-bugs` shows all 20):
+Plant a bug and watch it get caught (`--list-bugs` shows all 21):
 
 ```bash
 uv run python -m demo_shop --bugs checkout-500
@@ -202,6 +205,63 @@ In your own project:
 uv run nightshift init --url http://localhost:3000/
 ```
 
+## API tests
+
+A spec with `requests:` instead of steps tests the backend directly: no browser, no model,
+deterministic, and fast (a few hundred milliseconds).
+
+```yaml
+name: api-order
+url: http://localhost:5180/
+requests:
+  - name: place an order
+    post: /api/order
+    json: {items: [{id: coffee, qty: 2}], name: T, address: A, city: C, pincode: "411001", payment: cod}
+    expect:
+      status: 201
+      json: {orderId: /^KC-\d+$/, total: 480}   # /.../ is a regular expression; * means "present"
+      max_ms: 2000
+    save: {order: orderId}                      # use {{order}} in later requests
+```
+
+Checks: `status`, `json` (paths like `user.name`, `items[0].id`, `items.length`; a value,
+`/regex/`, `*` for present, `<missing>` for absent), `headers`, `contains`, `max_ms`. Results
+go into the same reports, defect analysis, JUnit and dashboard as browser tests, and a 5xx is
+classified as a server error just the same. `specs/api/` has three for the demo shop. They catch
+its five backend bugs, for example `total is 480 (got 530)`.
+
+## Email codes and magic links
+
+For flows that email the user, the agent types `{{email_code}}` (or does `goto {{email_link}}`).
+Right before acting, Nightshift reads the newest email sent to the test address since the test
+started, and fills in the code or link. The model never sees the inbox. The inbox is either:
+
+- a Mailpit-style HTTP API: `inbox: http://localhost:8025` in the spec, or `INBOX_URL`
+  ([Mailpit](https://mailpit.axllent.org) is the usual mail catcher for development and CI), or
+- an IMAP mailbox: `INBOX_IMAP_HOST`, `INBOX_IMAP_USER`, `INBOX_IMAP_PASSWORD`.
+
+The demo shop has "Sign in with an email code" with an outbox at `/mail` that speaks Mailpit's
+API, so `specs/login-with-code.yaml` runs out of the box. With the real 4B model it signed in
+using a code it never saw, and caught the planted `otp-wrong-code` bug. SMS codes are not supported.
+
+## Filing defects in Jira
+
+```bash
+set JIRA_URL=https://yourteam.atlassian.net
+set JIRA_PROJECT=SHOP
+set JIRA_EMAIL=you@company.com
+set JIRA_API_TOKEN=your-token
+uv run nightshift run specs/ --file-jira
+```
+
+(Jira Data Center: set `JIRA_TOKEN` to a personal access token instead of the email and API
+token.) Each defect becomes one Bug with the write-up as its description, labels `nightshift` and
+its category, and the failing screenshot and bug report attached. If the same defect is already
+open, from an earlier run, it gets a comment instead of a duplicate ticket; if its issue was
+closed and the defect comes back, it is filed again. Also available as `nightshift triage
+runs/<run> --file-jira` and as a button on the dashboard's Runs page. Tested against a stand-in
+Jira server that speaks the same REST API; not yet against a live Jira site.
+
 ## The dashboard
 
 ```bash
@@ -211,7 +271,7 @@ uv run nightshift serve
 A web page on your own machine (http://127.0.0.1:8765) for everything the commands do:
 
 - **Overview**: the last run, pass rate across recent runs, open defects, and a switch to start
-  the demo shop with any of its 20 bugs planted
+  the demo shop with any of its 21 bugs planted
 - **Test cases**: every spec with its requirements, technique, priority and last result; read,
   edit (checked before saving), create, run one or a folder; export the test-case document
 - **Run tests**: watch it live, with the log and the screenshot the agent is looking at; stop it
@@ -340,7 +400,7 @@ nightshift/
   export.py     Playwright test export
   report.py     HTML reports, bug reports, history, JUnit
   prompts.py    every prompt, in one place
-demo_shop/      Kulhad & Co.: the development app, 20 planted bugs
+demo_shop/      Kulhad & Co.: the development app, 21 planted bugs
 holdout/        Sehat Clinic: the holdout app, 8 planted bugs, never tuned on
 benchmark/      scores the tester against either app
 ```

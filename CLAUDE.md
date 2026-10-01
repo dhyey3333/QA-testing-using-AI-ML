@@ -7,7 +7,7 @@ Design reasoning: `docs/DECISIONS.md`.
 
 ## Layout
 - `nightshift/`: the product. `runner.py` (replay, agent loop, judge gate, retries), `judge.py`, `observe.py`, `locators.py`, `recording.py`, `checks.py`, `explore.py`, `generate.py`, `export.py`, `report.py`, `notify.py`, `prompts.py` (every prompt), `cli.py`.
-- `demo_shop/`: Kulhad & Co., the development app. 20 planted bugs in `server.py` -> `BUGS`; the `redesign` variant tests self-healing.
+- `demo_shop/`: Kulhad & Co., the development app. 21 planted bugs in `server.py` -> `BUGS`; the `redesign` variant tests self-healing.
 - `holdout/`: Sehat Clinic, the holdout app. 8 planted bugs, specs in `holdout/specs/`.
 - `benchmark/`: `python -m benchmark [--app shop|clinic]`.
 - `realworld/bakerydemo/`: Wagtail's real bakerydemo site: specs, 8 bug patches for its real source, and `eval.py`. Needs a checkout at `../realapps/bakerydemo` (or `BAKERYDEMO_DIR`) set up per its README (Python 3.12 venv in `.venv`, migrate, load_initial_data). The harness resets the checkout and database before every run and refuses to run over uncommitted edits.
@@ -22,8 +22,11 @@ Design reasoning: `docs/DECISIONS.md`.
 - `uv run nightshift generate --story TEXT [--from discovered.json] [--url URL]`
 - `uv run nightshift export specs/`, `uv run nightshift report`, `uv run nightshift init`
 - `uv run nightshift validate reqs.md --url URL [--data k=v] [--design-only] [--redesign R5,R6] [--from discovered.json | --explore-steps N]`: requirements -> designed test cases (specs/requirements/) -> run -> traceability.html, defects.html, test-cases.csv
-- `uv run nightshift cases specs/ [--run runs/<run>]` (test-case document), `uv run nightshift triage runs/<run> [--file-github owner/repo]` (defect analysis)
+- `uv run nightshift cases specs/ [--run runs/<run>]` (test-case document), `uv run nightshift triage runs/<run> [--file-github owner/repo] [--file-jira]` (defect analysis)
 - `uv run python -m realworld.bakerydemo.validate_demo`: requirement validation on the real app, clean then with 3 bugs (about 20 min)
+- API specs (`requests:` instead of steps, `nightshift/api.py`): `uv run nightshift run specs/api`. No model.
+- Email codes: `{{email_code}}` / `{{email_link}}` in specs, inbox from the spec's `inbox:` or `INBOX_URL` (Mailpit API) or `INBOX_IMAP_*` (`nightshift/inbox.py`). The demo shop's outbox is at `/mail`.
+- Jira: `--file-jira` on run/validate/triage, configured by `JIRA_URL`, `JIRA_PROJECT`, `JIRA_EMAIL` + `JIRA_API_TOKEN` (Cloud) or `JIRA_TOKEN` (Data Center) (`nightshift/jira.py`).
 - `uv run nightshift serve [--port 8765] [--specs DIR]`: the local dashboard (`nightshift/dashboard/`: server.py + static/ plain JS). Keep its guards: 127.0.0.1 only, Host check, token on every change, paths confined to the workspace.
 - `uv run python -m benchmark [--app clinic] [--only bug1,bug2] [--no-judge] [--no-vision] [--clean-only]` writes `runs/bench-*/bench.md`
 - `uv run python -m realworld.bakerydemo.eval [--only bug,...] [--clean-only] [--skip-clean]` (real app; about 12 min)

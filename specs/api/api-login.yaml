@@ -1,0 +1,25 @@
+name: api-login
+title: The login API accepts the test account, in any letter case, and rejects a wrong password
+url: http://localhost:5180/
+requests:
+  - name: sign in
+    post: /api/login
+    json: {email: "{{email}}", password: "{{password}}"}
+    expect:
+      status: 200
+      json: {user.name: Test Shopper}
+  - name: sign in with capitals in the email
+    post: /api/login
+    json: {email: "{{email_capitals}}", password: "{{password}}"}
+    expect:
+      status: 200
+  - name: wrong password
+    post: /api/login
+    json: {email: "{{email}}", password: "not-the-password"}
+    expect:
+      status: 401
+      json: {error: Wrong email or password., user: <missing>}
+data:
+  email: shopper@kulhad.test
+  email_capitals: Shopper@Kulhad.test
+  password: chai-time-42

@@ -28,6 +28,7 @@ from playwright.sync_api import Error as PlaywrightError
 
 from .actions import TEST_KINDS, ActionFailed, InvalidAction, execute, settle, track_network, validate_action
 from .checks import check_page, listen
+from .inbox import DYNAMIC, InboxError, extract_code, extract_link, inbox_for, recipient, wait_for_email
 from .judge import judge_page
 from .locators import describe_target, resolve
 from .model import Model, ModelError, usage_snapshot
@@ -91,6 +92,9 @@ def run_with_retries(
     """Run a spec, and re-run any failure with a fresh agent before believing it."""
     options = options or RunOptions()
     log = log or _silent
+    if spec.kind == "api":
+        # Deterministic: a retry would only repeat the same answer.
+        return run_spec(browser, spec, model, out_dir=out_dir, options=options, log=log)
     attempts = [run_spec(browser, spec, model, out_dir=out_dir, options=options, log=log)]
     for n in range(1, options.retries + 1):
         if attempts[-1].verdict == "pass":
@@ -141,6 +145,10 @@ def run_spec(
     """One attempt at a spec in a fresh browser context. Writes screenshots, trace.zip, result.json and report.html."""
     options = options or RunOptions()
     log = log or _silent
+    if spec.kind == "api":
+        from .api import run_api_spec
+
+        return run_api_spec(spec, out_dir=out_dir, log=log)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     context_options = {"viewport": VIEWPORT, **options.context}
@@ -225,6 +233,7 @@ class _Run:
         self.result, self.out_dir, self.log = result, out_dir, log
         self.seen_pages: set[str] = set()
         self.new_tabs = new_tabs if new_tabs is not None else []
+        self.started = time.time()
 
     def go(self, recording: Recording | None) -> tuple[str, str]:
         self.page.goto(self.spec.url, wait_until="domcontentloaded")
@@ -257,7 +266,7 @@ class _Run:
                     return self._broke(index, f'"{saved.target_label}" is not on the page any more')
             started = time.perf_counter()
             try:
-                execute(self.page, saved.action, self.spec.data, target)
+                execute(self.page, saved.action, self._data_for(saved.action), target)
                 settle(self.page)
                 self._follow_new_tab()
             except ActionFailed as exc:
@@ -339,7 +348,7 @@ class _Run:
                 step.locators = describe_target(self.page, action.id, label)
             started = time.perf_counter()
             try:
-                execute(self.page, action, self.spec.data)
+                execute(self.page, action, self._data_for(action))
                 settle(self.page)
                 self._follow_new_tab()
             except ActionFailed as exc:
@@ -351,6 +360,25 @@ class _Run:
             steps[-1].outcome = "done"
             self.log(_step_line(steps[-1]))
         return "error", f"ran out of steps ({self.spec.max_steps}) before the test finished"
+
+    def _data_for(self, action) -> dict[str, str]:
+        """The spec's data, plus {{email_code}} / {{email_link}} from the test inbox when the action uses them."""
+        text = f"{action.text or ''} {action.value or ''}"
+        wanted = [name for name in DYNAMIC if "{{" + name + "}}" in text.replace(" ", "")]
+        if not wanted:
+            return self.spec.data
+        inbox = inbox_for(self.spec.inbox)
+        if inbox is None:
+            raise ActionFailed("no test inbox is set up: add inbox: to the spec, or set INBOX_URL or INBOX_IMAP_HOST")
+        try:
+            # Only mail sent since this test started: an old code from an earlier run is wrong by design.
+            mail = wait_for_email(inbox, to=recipient(self.spec.data), since=self.started - 5)
+            found = {"email_code": extract_code, "email_link": extract_link}
+            extra = {name: found[name](mail) for name in wanted}
+        except InboxError as exc:
+            raise ActionFailed(str(exc)) from None
+        self.log(f"    (read the email \"{mail.subject}\")")
+        return {**self.spec.data, **extra}
 
     def _follow_new_tab(self) -> None:
         if tab := adopt_new_tab(self.new_tabs, self.spec.url, self.result):

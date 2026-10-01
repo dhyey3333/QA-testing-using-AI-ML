@@ -189,6 +189,8 @@ def instruction(step: Step) -> str | None:
             return "Go back"
         case "goto":
             return f"Go to {action.value}"
+        case "request":
+            return f"Send `{action.value}`" + (f" with `{step.thought}`" if step.thought else "")
     return None
 
 

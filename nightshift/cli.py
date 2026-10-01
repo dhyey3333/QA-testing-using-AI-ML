@@ -31,6 +31,7 @@ from .actions import InvalidAction
 from .defects import Defect, analyse, file_github_issues, load_results, write_defects
 from .explore import DEFAULT_AVOID, explore
 from .export import write_export
+from .jira import JiraConfig, JiraError, file_jira_issues
 from .generate import design_tests, env_name, generate_specs, load_pages, parse_requirements, write_specs
 from .model import HttpModel, ModelConfig, ModelError
 from .notify import append_github_summary, github_run_url, post_slack, slack_payload
@@ -128,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
     tri = commands.add_parser("triage", help="defect analysis of a finished run")
     tri.add_argument("run", type=Path, help="the run folder, e.g. runs/20261001-120000")
     tri.add_argument("--file-github", metavar="OWNER/REPO", help="file each defect as a GitHub issue (uses the gh CLI)")
+    tri.add_argument("--file-jira", action="store_true", help="file each defect in Jira (see the JIRA_* settings)")
 
     srv = commands.add_parser("serve", help="the dashboard: a local web page for all of the above")
     srv.add_argument("--port", type=int, default=8765, help="(default: 8765)")
@@ -161,6 +163,8 @@ def _run_options(parser: argparse.ArgumentParser) -> None:
                         help="post a summary to Slack (default: $SLACK_WEBHOOK_URL)")
     parser.add_argument("--notify", choices=["failures", "always"], default="failures",
                         help="when to post to Slack (default: failures)")
+    parser.add_argument("--file-jira", action="store_true",
+                        help="file each defect in Jira (JIRA_URL, JIRA_PROJECT, JIRA_EMAIL + JIRA_API_TOKEN or JIRA_TOKEN)")
 
 
 def _common(parser: argparse.ArgumentParser) -> None:
@@ -257,6 +261,8 @@ def _execute(specs: list[Spec], args: argparse.Namespace, model: HttpModel) -> t
         for defect in defects:
             print(f"   {defect.id} [{defect.severity.split(':')[0]}] {defect.title}  (affects {len(defect.specs)})")
         print(f"defects: {run_dir / 'defects.html'}")
+        if args.file_jira:
+            _file_in_jira(defects, run_dir)
     print(f"report: {index}")
     return results, run_dir, defects
 
@@ -512,7 +518,22 @@ def _triage(args: argparse.Namespace) -> int:
     if args.file_github and defects:
         for url in file_github_issues(defects, args.run, args.file_github):
             print(f"filed {url}")
+    if args.file_jira and defects:
+        _file_in_jira(defects, args.run)
     return 0
+
+
+def _file_in_jira(defects: list[Defect], run_dir: Path) -> None:
+    config = JiraConfig.from_env()
+    if config is None:
+        print("jira: not set up. Set JIRA_URL, JIRA_PROJECT, and JIRA_EMAIL + JIRA_API_TOKEN (Cloud) "
+              "or JIRA_TOKEN (Data Center).", file=sys.stderr)
+        return
+    try:
+        for defect_id, action, key in file_jira_issues(defects, run_dir, config):
+            print(f"jira: {defect_id} {action} {key}  {config.url}/browse/{key}")
+    except (JiraError, httpx.HTTPError) as exc:
+        print(f"jira: could not file the defects ({exc})", file=sys.stderr)
 
 
 def _serve(args: argparse.Namespace) -> int:

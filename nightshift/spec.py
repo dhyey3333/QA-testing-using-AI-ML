@@ -51,13 +51,23 @@ class Spec:
     requirements: tuple[str, ...] = ()  # the requirement ids this test covers, for traceability
     technique: str = ""  # positive | negative | boundary | ...: how the case was designed
     priority: str = ""  # high | medium | low
+    # "ui": steps in a browser, run by the agent. "api": HTTP requests and checks (api.py), no model.
+    kind: str = "ui"
+    requests: tuple = ()
+    # Where emails to the test address can be read (inbox.py), e.g. a Mailpit URL. Overrides INBOX_URL.
+    inbox: str = ""
 
     def with_base_url(self, base_url: str) -> Spec:
-        """Point the spec at another deployment (staging, a CI preview), keeping its path."""
+        """Point the spec at another deployment (staging, a CI preview), keeping its path.
+        An inbox on the same host as the app moves with it."""
         base = urlsplit(base_url)
         own = urlsplit(self.url)
         url = urlunsplit((base.scheme, base.netloc, own.path or "/", own.query, own.fragment))
-        return replace(self, url=url)
+        inbox = self.inbox
+        if inbox and urlsplit(inbox).netloc == own.netloc:
+            parts = urlsplit(inbox)
+            inbox = urlunsplit((base.scheme, base.netloc, parts.path, parts.query, parts.fragment))
+        return replace(self, url=url, inbox=inbox)
 
 
 def load_spec(path: Path, expand_env: bool = True) -> Spec:
@@ -100,11 +110,32 @@ def load_spec(path: Path, expand_env: bool = True) -> Spec:
     if not isinstance(requirements, list):
         raise SpecError(f"{path}: requirements must be an id or a list of ids, like [R1, R4]")
 
+    kind = str(raw.get("kind") or ("api" if "requests" in raw else "ui")).lower()
+    requests: tuple = ()
+    if kind == "api":
+        from .api import ApiSpecError, parse_requests  # imported here to avoid an import cycle (api -> prompts -> spec)
+
+        try:
+            requests = parse_requests(raw.get("requests"))
+        except ApiSpecError as exc:
+            raise SpecError(f"{path}: {exc}") from None
+        # Steps and expected results are derived, so reports, the test-case document and
+        # the traceability matrix read an API test like any other.
+        steps = tuple(r.describe() for r in requests)
+        expect = tuple(line for r in requests for line in r.expectations()) or ("every request succeeds",)
+    elif kind == "ui":
+        steps, expect = _strings(raw.get("steps"), "steps", path), _strings(raw.get("expect"), "expect", path)
+    else:
+        raise SpecError(f"{path}: kind must be ui or api")
+    inbox = str(raw.get("inbox") or "")
+    if inbox and not inbox.startswith(("http://", "https://")):
+        raise SpecError(f"{path}: inbox must be the http(s) URL of a Mailpit-style mail API")
+
     return Spec(
         name=str(raw.get("name") or path.stem),
         url=url,
-        steps=_strings(raw.get("steps"), "steps", path),
-        expect=_strings(raw.get("expect"), "expect", path),
+        steps=steps,
+        expect=expect,
         data=data,
         max_steps=max_steps,
         path=path,
@@ -113,6 +144,9 @@ def load_spec(path: Path, expand_env: bool = True) -> Spec:
         requirements=tuple(str(r).strip() for r in requirements if str(r).strip()),
         technique=str(raw.get("technique") or ""),
         priority=str(raw.get("priority") or ""),
+        kind=kind,
+        requests=requests,
+        inbox=inbox,
     )
 
 

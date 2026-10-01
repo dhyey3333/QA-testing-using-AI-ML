@@ -66,6 +66,11 @@ class Defect:
     def specs(self) -> list[str]:
         return list(dict.fromkeys(f.result.spec for f in self.failures))
 
+    @property
+    def signature(self) -> str:
+        """Stable across runs for the same root cause: how a tracker recognises a defect it already has."""
+        return self.failures[0].signature
+
 
 def classify(result: RunResult) -> tuple[str, str, str]:
     """(category, signature, where) for one failing result."""

@@ -502,6 +502,11 @@ async function runs() {
     viewer = `
       <div class="panel-head"><h2 style="margin:0">${esc(chosen.time)}</h2><span class="spacer"></span>
         ${chosen.kind === "run" ? `<button id="triage">Analyse defects again</button>` : ""}
+        ${chosen.kind === "run" && chosen.defects && chosen.defects.length
+          ? state.jira.configured
+            ? `<button id="jira" title="${esc(state.jira.url)}, project ${esc(state.jira.project)}">File ${chosen.defects.length} defect(s) in Jira</button>`
+            : `<button disabled title="Set JIRA_URL, JIRA_PROJECT and a token, then restart the dashboard">File in Jira (not set up)</button>`
+          : ""}
         <a class="button" href="${fileUrl(`${chosen.id}/${chosen.files[0]}`)}" target="_blank" rel="noopener">Open in a new tab</a></div>
       <div class="tabs">${tabs}</div>
       <iframe class="report" id="frame" src="${fileUrl(`${chosen.id}/${chosen.files[0]}`)}" title="Report"></iframe>`;
@@ -514,6 +519,8 @@ async function runs() {
   }));
   const triage = document.getElementById("triage");
   if (triage) triage.onclick = () => startJob("triage", { run: chosen.id });
+  const jira = document.getElementById("jira");
+  if (jira) jira.onclick = () => startJob("triage", { run: chosen.id, jira: true });
 }
 
 // --- start ------------------------------------------------------------------------

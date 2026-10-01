@@ -6,6 +6,7 @@ One file, so "what exactly does the model see?" has one answer.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 
 from .observe import Element, Observation
@@ -205,6 +206,9 @@ def agent_messages(context: Context) -> tuple[str, str, bytes | None]:
     spec, data = context.spec, context.spec.data
     history = "\n".join(mask(step.history_line(), data) for step in context.history[-HISTORY_LIMIT:])
     keys = ", ".join("{{" + key + "}}" for key in data) or "(none)"
+    if spec.inbox or os.getenv("INBOX_URL") or os.getenv("INBOX_IMAP_HOST"):
+        keys += (". Also {{email_code}}: the code from the newest email to the test address, typed for you; "
+                 "and {{email_link}}: the link in that email, to open with goto")
     closing = (
         "A screenshot is attached; the red numbers on it are the element ids."
         if context.screenshot is not None

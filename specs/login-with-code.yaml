@@ -1,0 +1,13 @@
+name: login-with-code
+url: http://localhost:5180/
+# The shop's outbox speaks Mailpit's API at /mail, so it works as the test inbox.
+inbox: http://localhost:5180/mail
+steps:
+  - open the login page and choose to sign in with an email code
+  - type the test account's email and ask for a code
+  - type the code from the email, {{email_code}}, and sign in
+expect:
+  - the header greets the logged-in user by name
+data:
+  email: shopper@kulhad.test
+max_steps: 15
