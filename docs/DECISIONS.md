@@ -271,3 +271,12 @@ A click, type or select that fails because the element is covered, not visible y
 or was re-rendered is tried again after one second before the model hears it failed. Playwright
 already waits up to five seconds per action; this covers loading overlays and slow renders that
 take longer.
+
+## D25. A prompt that doesn't fit is sent again, smaller
+A local Ollama defaults to a 4,096-token context, and the screenshot alone takes about 1,300 of
+them. On a public demo shop's product grid the agent's prompt came to 4,119 tokens and the model
+server refused it. Worse, that 400 was read as "this server doesn't support JSON mode", which
+switched JSON mode off for every later call in the run. Now a context-size error is recognised as
+such: JSON mode stays on, and the prompt is sent once more in compact form (1,200 characters of page
+text, only the elements on screen, the last 6 steps; 4,000 characters for the judge). Setting
+`OLLAMA_CONTEXT_LENGTH=8192` avoids the compact path entirely.

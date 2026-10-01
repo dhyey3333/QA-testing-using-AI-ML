@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .observe import Element, Observation
 from .result import Step
@@ -19,6 +19,13 @@ from .spec import Spec
 PROMPT_TEXT_LIMIT = 2_500
 JUDGE_TEXT_LIMIT = 12_000  # long pages (catalogues, articles): an expected result low on the page must still be provable
 HISTORY_LIMIT = 15
+# When a prompt doesn't fit the model's context (a local Ollama defaults to 4,096 tokens, and the
+# screenshot alone takes about 1,300), it is sent once more in compact form: these limits, and only
+# the elements on screen.
+COMPACT_TEXT_LIMIT = 1_200
+COMPACT_JUDGE_TEXT_LIMIT = 4_000
+COMPACT_HISTORY_LIMIT = 6
+COMPACT_LABEL_LIMIT = 60
 
 TEST_PROMPT = """\
 You are a QA tester. You drive a web browser through one test of a web app, one \
@@ -192,6 +199,7 @@ class Context:
     screenshot: bytes | None  # JPEG with ids drawn on; None in --no-vision mode
     mode: str = "test"  # "test" or "explore"
     notes: str = ""  # explore mode: pages visited, avoid list, findings so far
+    compact: bool = False  # a shorter prompt, after the full one didn't fit the model's context
 
 
 @dataclass(frozen=True)
@@ -200,12 +208,14 @@ class JudgeContext:
     observation: Observation
     screenshot: bytes | None
     feedback: str = ""  # why the previous answer was rejected, on a second try
+    compact: bool = False
 
 
 def agent_messages(context: Context) -> tuple[str, str, bytes | None]:
     """(system prompt, user text, image) for choosing the next action."""
     spec, data = context.spec, context.spec.data
-    history = "\n".join(mask(step.history_line(), data) for step in context.history[-HISTORY_LIMIT:])
+    history_limit = COMPACT_HISTORY_LIMIT if context.compact else HISTORY_LIMIT
+    history = "\n".join(mask(step.history_line(), data) for step in context.history[-history_limit:])
     keys = ", ".join("{{" + key + "}}" for key in data) or "(none)"
     if spec.inbox or os.getenv("INBOX_URL") or os.getenv("INBOX_IMAP_HOST"):
         keys += (". Also {{email_code}}: the code from the newest email to the test address, typed for you; "
@@ -228,7 +238,8 @@ def agent_messages(context: Context) -> tuple[str, str, bytes | None]:
         f"TEST DATA (type the placeholder): {keys}",
         f"WHAT YOU HAVE DONE:\n{history or '(nothing yet)'}",
         _repeat_note(context.history),
-        *_page_sections(context.observation, data, PROMPT_TEXT_LIMIT),
+        *_page_sections(context.observation, data, COMPACT_TEXT_LIMIT if context.compact else PROMPT_TEXT_LIMIT,
+                        compact=context.compact),
         closing + " Reply with one JSON object.",
     ]
     system = EXPLORE_PROMPT if context.mode == "explore" else TEST_PROMPT
@@ -259,8 +270,9 @@ def judge_messages(context: JudgeContext) -> tuple[str, str, bytes | None]:
     expect = "\n".join(f"{i}. {item}" for i, item in enumerate(spec.expect, 1))
     obs = context.observation
     text = mask(obs.text, spec.data)
-    if len(text) > JUDGE_TEXT_LIMIT:
-        text = text[:JUDGE_TEXT_LIMIT] + "\n...(truncated)"
+    limit = COMPACT_JUDGE_TEXT_LIMIT if context.compact else JUDGE_TEXT_LIMIT
+    if len(text) > limit:
+        text = text[:limit] + "\n...(truncated)"
     parts = [
         f"TEST: {spec.name}",
         f"EXPECTED RESULTS:\n{expect}",
@@ -273,11 +285,14 @@ def judge_messages(context: JudgeContext) -> tuple[str, str, bytes | None]:
     return JUDGE_PROMPT, "\n\n".join(parts), context.screenshot
 
 
-def _page_sections(observation: Observation, data: dict[str, str], limit: int) -> list[str]:
+def _page_sections(observation: Observation, data: dict[str, str], limit: int, compact: bool = False) -> list[str]:
     text = mask(observation.text, data)
     if len(text) > limit:
         text = text[:limit] + "\n...(truncated)"
-    elements = "\n".join(format_element(e, data) for e in observation.elements)
+    shown = observation.elements
+    if compact:
+        shown = tuple(replace(e, label=e.label[:COMPACT_LABEL_LIMIT]) for e in shown if e.in_view)
+    elements = "\n".join(format_element(e, data) for e in shown)
     page = f"CURRENT PAGE: {observation.url}" + (f' "{observation.title}"' if observation.title else "")
     return [page, f"VISIBLE TEXT:\n{text or '(empty)'}", f"ELEMENTS:\n{elements or '(none)'}"]
 

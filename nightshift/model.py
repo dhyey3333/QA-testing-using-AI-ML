@@ -27,6 +27,13 @@ class ModelError(RuntimeError):
     """The model could not be reached or answered with something that isn't a chat reply."""
 
 
+class ContextTooLong(ModelError):
+    """The prompt (text + screenshot) is longer than the server's context window."""
+
+
+_CONTEXT_RE = re.compile(r"context (size|length|window)|exceed_context|maximum context|too many tokens", re.IGNORECASE)
+
+
 @dataclass(frozen=True)
 class ModelConfig:
     base_url: str
@@ -84,12 +91,18 @@ class HttpModel:
         self._client.close()
 
     def decide(self, context: Context) -> dict:
-        system, text, image = agent_messages(context)
-        return self._ask(self.config, system, text, image, max_tokens=300)
+        try:
+            return self._ask(self.config, *agent_messages(context), max_tokens=300)
+        except ContextTooLong:
+            # Found on a public demo shop: a product grid made the prompt 4,119 tokens, over a local
+            # Ollama's default 4,096. One retry with a compact prompt instead of a dead run.
+            return self._ask(self.config, *agent_messages(replace(context, compact=True)), max_tokens=300)
 
     def judge(self, context: JudgeContext) -> dict:
-        system, text, image = judge_messages(context)
-        return self._ask(self.judge_config, system, text, image, max_tokens=900)
+        try:
+            return self._ask(self.judge_config, *judge_messages(context), max_tokens=900)
+        except ContextTooLong:
+            return self._ask(self.judge_config, *judge_messages(replace(context, compact=True)), max_tokens=900)
 
     def ask(self, system: str, user: str, max_tokens: int = 1500) -> dict:
         return self._ask(self.judge_config, system, user, None, max_tokens=max_tokens)
@@ -110,6 +123,9 @@ class HttpModel:
             body["response_format"] = {"type": "json_object"}
 
         response = self._post(config, body)
+        if response.status_code == 400 and _CONTEXT_RE.search(response.text):
+            # Not a JSON-mode problem: the prompt didn't fit. Leave JSON mode on for this endpoint.
+            raise ContextTooLong(f"HTTP 400 from {config.base_url}: the prompt is longer than the model's context")
         if response.status_code == 400 and json_mode:
             # Some servers reject response_format outright. parse_json_object copes
             # without it, so drop it for this endpoint instead of failing.

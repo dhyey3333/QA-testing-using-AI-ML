@@ -321,6 +321,10 @@ Every result that isn't a pass is labelled with its cause:
 
 ### Models
 
+With a local Ollama, start it with `OLLAMA_CONTEXT_LENGTH=8192`. Its default 4,096-token context is
+tight once a screenshot is attached; a prompt that doesn't fit is sent again in a compact form, which
+works but shows the model less of the page.
+
 | Variable | Default |
 |---|---|
 | `MODEL_BASE_URL` | `http://localhost:11434/v1` (Ollama) |
