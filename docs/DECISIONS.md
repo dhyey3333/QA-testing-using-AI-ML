@@ -246,3 +246,28 @@ removed still fails). Every passing run is also written as a Playwright test.
 expected results are given, "the page shows this was done: <goal>" as its check. The judge must
 still quote proof, and capitalised names in the goal must appear in it. The spec file is kept so the
 next run of the same goal replays its saved path.
+
+## D22. Four kinds of not-passing, and an outage is not a failure
+Every result that isn't a pass gets one label: BUG, FLAKY, TEST_OUTDATED or ENV_ISSUE
+(`outcome.py`). On public demo sites a Cloudflare 522 and a bot-check page were both reported as
+app failures. Now a gateway or CDN error (502, 503, 504, 52x), a bot check, an unreachable host or
+an unreachable model makes the run an `error` labelled ENV_ISSUE: nothing was tested, so nothing
+failed. A 500 stays a BUG, because it is the app's own error. TEST_OUTDATED means the test couldn't
+be carried out as written: a saved path that broke and couldn't be healed, or steps the tester
+couldn't follow.
+
+## D23. A tester checks before deciding
+Most false alarms on the demo shop and public sites were the 4B model deciding too early: it typed
+only the pincode of a delivery form, clicked "Log in" before typing the password, or left a
+privacy box unticked, then blamed the app. Before a verdict is accepted, the runner asks once
+each: is there test data never typed, and was a field typed into after the last click with nothing
+submitting it? After that, a failure gets one second look: if the judge can't find what the agent
+claimed, or the agent says the app is broken, it is told what is missing and may fix a skipped
+step or a wrong turn. Each check costs at most one extra turn. A real bug stays a bug: the agent
+says fail again, or the judge still finds nothing (tested against planted bugs).
+
+## D24. One more try for a slow page
+A click, type or select that fails because the element is covered, not visible yet, still moving
+or was re-rendered is tried again after one second before the model hears it failed. Playwright
+already waits up to five seconds per action; this covers loading overlays and slow renders that
+take longer.
