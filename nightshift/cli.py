@@ -178,11 +178,12 @@ def _common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--quiet", action="store_true", help="print results only, not every step")
 
 
-def _model() -> HttpModel:
+def _model(announce: bool = True) -> HttpModel:
     agent = ModelConfig.from_env()
     judge = ModelConfig.judge_from_env(agent)
     model = HttpModel(agent, judge)
-    print(f"model: {model.name} at {agent.base_url}")
+    if announce:
+        print(f"model: {model.name} at {agent.base_url}")
     return model
 
 
@@ -199,7 +200,8 @@ def _log(args: argparse.Namespace):
 
 def _run(args: argparse.Namespace) -> int:
     specs = load_specs(args.specs)
-    results, run_dir, defects = _execute(specs, args, _model())
+    # API tests use no model, so naming one would only mislead.
+    results, run_dir, defects = _execute(specs, args, _model(announce=any(s.kind != "api" for s in specs)))
     return _exit_code(results)
 
 
@@ -275,9 +277,10 @@ def _print_verdict(result: RunResult) -> None:
         print(f"   warning: {warning}")
     if len(result.warnings) > 3:
         print(f"   ...and {len(result.warnings) - 3} more warnings in the report")
-    if result.verdict != "pass":
-        print(f"   bug report: {Path(result.out_dir) / 'bug.md'}" if result.verdict in ("fail", "flaky")
-              else f"   replay it: uv run playwright show-trace {Path(result.out_dir) / 'trace.zip'}")
+    if result.verdict in ("fail", "flaky"):
+        print(f"   bug report: {Path(result.out_dir) / 'bug.md'}")
+    elif result.verdict == "error" and result.browser != "none":  # API tests have no browser trace
+        print(f"   replay it: uv run playwright show-trace {Path(result.out_dir) / 'trace.zip'}")
 
 
 # --- explore --------------------------------------------------------------------
