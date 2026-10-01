@@ -7,10 +7,11 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import httpx
 import pytest
 
 from nightshift.defects import analyse
-from nightshift.jira import JiraConfig, file_jira_issues, signature_label, to_jira_markup
+from nightshift.jira import JiraConfig, JiraError, file_jira_issues, signature_label, site_url, to_jira_markup
 from test_e2e import CHECKOUT, CHECKOUT_EVIDENCE
 
 
@@ -133,6 +134,27 @@ def test_jira_is_off_until_it_is_configured(monkeypatch):
     monkeypatch.setenv("JIRA_API_TOKEN", "x")
     config = JiraConfig.from_env()
     assert config.url == "https://team.atlassian.net" and config.issue_type == "Bug"
+
+
+def test_a_pasted_page_address_still_finds_the_api():
+    # From the first live run: the board's address, pasted with stray Ctrl+V characters.
+    assert site_url("\x16 https://team.atlassian.net/jira/software/projects/SCRUM/boards/1?filter=") \
+        == "https://team.atlassian.net"
+    assert site_url("https://jira.company.test/jira/browse/SHOP-12") == "https://jira.company.test/jira"
+    assert site_url("https://jira.company.test/jira") == "https://jira.company.test/jira"
+    assert site_url("https://jira.company.test/secure/Dashboard.jspa") == "https://jira.company.test"
+
+
+@pytest.mark.parametrize("status, body, message", [
+    (200, b"\n<!DOCTYPE html><html>Jira board</html>", "with a web page, not data"),
+    (401, b'{"errorMessages": ["Client must be authenticated"]}', "refused the login"),
+])
+def test_a_wrong_address_or_login_says_what_to_fix(server_error_defects, status, body, message):
+    defects, run_dir = server_error_defects
+    config = JiraConfig(url="https://team.atlassian.net", project="SCRUM", email="qa@example.test", token="t")
+    client = httpx.Client(base_url=config.url, transport=httpx.MockTransport(lambda _: httpx.Response(status, content=body)))
+    with pytest.raises(JiraError, match=message):
+        file_jira_issues(defects, run_dir, config, client=client)
 
 
 def test_markdown_becomes_jira_markup():
