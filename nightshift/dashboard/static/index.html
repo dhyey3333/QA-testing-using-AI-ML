@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="ns-token" content="__TOKEN__">
+  <title>Nightshift</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="#/"><span class="logo" aria-hidden="true"></span>Nightshift</a>
+    <div class="chips" id="chips"></div>
+  </header>
+  <div class="layout">
+    <nav class="side" id="nav" aria-label="Pages">
+      <a href="#/" data-page="overview">Overview</a>
+      <a href="#/tests" data-page="tests">Test cases</a>
+      <a href="#/run" data-page="run">Run tests</a>
+      <a href="#/validate" data-page="validate">Validate requirements</a>
+      <a href="#/explore" data-page="explore">Explore</a>
+      <a href="#/runs" data-page="runs">Runs &amp; reports</a>
+    </nav>
+    <main>
+      <div id="page"></div>
+      <section id="job" class="job" hidden aria-live="polite"></section>
+    </main>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -60,7 +60,9 @@ class Spec:
         return replace(self, url=url)
 
 
-def load_spec(path: Path) -> Spec:
+def load_spec(path: Path, expand_env: bool = True) -> Spec:
+    """Read and check a spec. With expand_env=False, ${VAR} data is kept as written:
+    for showing or checking a spec without needing its secrets set."""
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     except OSError as exc:
@@ -83,7 +85,7 @@ def load_spec(path: Path) -> Spec:
     if not isinstance(data_raw, dict):
         raise SpecError(f"{path}: data must be a mapping of name: value")
     raw_data = {str(key): str(value) for key, value in data_raw.items()}
-    data = {key: _expand_env(value, path) for key, value in raw_data.items()}
+    data = {key: _expand_env(value, path) if expand_env else value for key, value in raw_data.items()}
     for key in data:
         if not _KEY_RE.fullmatch(key):
             raise SpecError(f"{path}: data key {key!r} may only use letters, digits and _")

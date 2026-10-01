@@ -124,6 +124,9 @@ def write_defects(defects: list[Defect], run_dir: Path) -> Path:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "defects.md").write_text(defects_markdown(defects, run_dir), encoding="utf-8")
     (run_dir / "defects.html").write_text(defects_html(defects, run_dir), encoding="utf-8")
+    summary = [{"id": d.id, "title": d.title, "category": d.category, "area": d.area,
+                "severity": d.severity.split(":")[0], "specs": d.specs} for d in defects]
+    (run_dir / "defects.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     return run_dir / "defects.md"
 
 

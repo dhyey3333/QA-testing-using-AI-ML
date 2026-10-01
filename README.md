@@ -202,6 +202,29 @@ In your own project:
 uv run nightshift init --url http://localhost:3000/
 ```
 
+## The dashboard
+
+```bash
+uv run nightshift serve
+```
+
+A web page on your own machine (http://127.0.0.1:8765) for everything the commands do:
+
+- **Overview**: the last run, pass rate across recent runs, open defects, and a switch to start
+  the demo shop with any of its 20 bugs planted
+- **Test cases**: every spec with its requirements, technique, priority and last result; read,
+  edit (checked before saving), create, run one or a folder; export the test-case document
+- **Run tests**: watch it live, with the log and the screenshot the agent is looking at; stop it
+- **Validate requirements**: write requirements, have test cases designed, review them, run
+  them, get the traceability matrix
+- **Explore**: point it at an app and let it look for bugs
+- **Runs & reports**: every run's results, defects (grouped, diffed against the last pass) and
+  traceability matrix, side by side
+
+It only answers to this computer: it binds to 127.0.0.1, refuses requests that don't name
+localhost (DNS rebinding), and anything that changes something needs a token that only the
+dashboard page has, so another website open in your browser can't start a run.
+
 ## Commands
 
 | Command | What it does |
@@ -212,6 +235,7 @@ uv run nightshift init --url http://localhost:3000/
 | `nightshift export specs/` | Turn saved paths into `@playwright/test` files with role-based locators and assertions from the judge's evidence. |
 | `nightshift report` | Rebuild `runs/index.html`: every spec's verdict across the last 30 runs, so flaky specs stand out. |
 | `nightshift init` | Starter spec, GitHub workflow, `.gitignore` entry. |
+| `nightshift serve` | The dashboard (see above). `--specs` adds folders of test cases to show. |
 | `nightshift validate reqs.md --url URL` | Application validation: design test cases for each requirement (positive, negative, boundary), run them, and write the **traceability matrix** (requirement, tests, result, defects). `--design-only` stops after design so a person can review the cases first. |
 | `nightshift cases specs/` | The **test-case document**: one row per case (title, requirements, technique, priority, steps, expected, last result), as CSV for Excel or a test-management import, plus Markdown. |
 | `nightshift triage runs/<run>` | **Defect analysis**: groups failures with one root cause into one defect, classifies it (server error, frontend crash, dead control, wrong result), points at the step that broke, and diffs the page against the last time the test passed. `--file-github owner/repo` files each defect as an issue. Runs automatically after any run with failures. |

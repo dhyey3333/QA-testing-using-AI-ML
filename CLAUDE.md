@@ -24,6 +24,7 @@ Design reasoning: `docs/DECISIONS.md`.
 - `uv run nightshift validate reqs.md --url URL [--data k=v] [--design-only] [--redesign R5,R6] [--from discovered.json | --explore-steps N]`: requirements -> designed test cases (specs/requirements/) -> run -> traceability.html, defects.html, test-cases.csv
 - `uv run nightshift cases specs/ [--run runs/<run>]` (test-case document), `uv run nightshift triage runs/<run> [--file-github owner/repo]` (defect analysis)
 - `uv run python -m realworld.bakerydemo.validate_demo`: requirement validation on the real app, clean then with 3 bugs (about 20 min)
+- `uv run nightshift serve [--port 8765] [--specs DIR]`: the local dashboard (`nightshift/dashboard/`: server.py + static/ plain JS). Keep its guards: 127.0.0.1 only, Host check, token on every change, paths confined to the workspace.
 - `uv run python -m benchmark [--app clinic] [--only bug1,bug2] [--no-judge] [--no-vision] [--clean-only]` writes `runs/bench-*/bench.md`
 - `uv run python -m realworld.bakerydemo.eval [--only bug,...] [--clean-only] [--skip-clean]` (real app; about 12 min)
 - A new planted bug must be checked to actually show on the site before scoring anything against it.

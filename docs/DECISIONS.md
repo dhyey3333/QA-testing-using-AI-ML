@@ -168,7 +168,27 @@ One process lesson: a background run reported as failed was still running. It ap
 bugs to the app while other work used it, and died without its cleanup. The harness now refuses
 to start if anything is already serving on its port.
 
-## D14. Any OpenAI-compatible model, local by default
+## D14. A local dashboard, not a hosted one
+`nightshift serve` puts every command behind a web page, but on the user's own machine. A hosted
+"paste any URL" service would pay for a browser and a model on every run, invite pointing it at
+sites the user doesn't own, and hold customers' test credentials, all before the tool is
+reliable enough for strangers. Locally, none of that applies.
+
+A local server that can start browsers still needs guarding, because any website open in the
+same browser can send requests to 127.0.0.1:
+- it binds to 127.0.0.1 only;
+- it rejects requests whose Host header isn't localhost, which defeats DNS rebinding;
+- every request that changes something needs a token that exists only inside the dashboard page.
+  Another origin can't read the page to get it, and can't set the header without a CORS
+  preflight that the server never approves;
+- it reads and writes only inside the workspace, specs only in the spec folders, reports only
+  under runs/.
+
+Jobs run one at a time (one GPU, one model) as a `nightshift` subprocess in its own process
+group, so Stop also stops the browser it started. The page is plain HTML, CSS and JS with no build step,
+and no new dependencies.
+
+## D15. Any OpenAI-compatible model, local by default
 A plain HTTP POST to `/chat/completions`: Ollama, vLLM, llama.cpp, OpenRouter, Groq. The default
 is a 4B vision model on a 6 GB laptop GPU, so the whole thing runs offline for free. The judge can
 be a different, bigger model (`JUDGE_NAME`), since it runs once per test instead of once per step.

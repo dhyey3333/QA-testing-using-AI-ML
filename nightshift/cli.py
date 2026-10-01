@@ -8,6 +8,7 @@
     nightshift validate reqs.md      design tests per requirement, run them, write the traceability matrix
     nightshift cases specs/          the test-case document (CSV for Excel or a test-management tool)
     nightshift triage runs/<run>     defect analysis of a finished run; can file GitHub issues
+    nightshift serve                 the dashboard: a local web page for all of the above
 
 `run` exit codes are for CI: 0 everything passed (flaky counts as passed, with a
 warning), 1 at least one spec found a bug, 2 the tester couldn't finish something.
@@ -128,9 +129,16 @@ def main(argv: list[str] | None = None) -> int:
     tri.add_argument("run", type=Path, help="the run folder, e.g. runs/20261001-120000")
     tri.add_argument("--file-github", metavar="OWNER/REPO", help="file each defect as a GitHub issue (uses the gh CLI)")
 
+    srv = commands.add_parser("serve", help="the dashboard: a local web page for all of the above")
+    srv.add_argument("--port", type=int, default=8765, help="(default: 8765)")
+    srv.add_argument("--specs", action="append", type=Path, help="a folder of test cases to show, repeatable (default: specs)")
+    srv.add_argument("--out", type=Path, default=Path("runs"), help="where runs are kept (default: runs/)")
+    srv.add_argument("--no-open", action="store_true", help="don't open the browser")
+
     args = parser.parse_args(argv)
     handler = {"run": _run, "explore": _explore, "generate": _generate, "export": _export, "report": _report,
-               "init": _init, "validate": _validate, "cases": _cases, "triage": _triage}
+               "init": _init, "validate": _validate, "cases": _cases, "triage": _triage,
+               "serve": _serve}
     try:
         return handler[args.command](args)
     except (SpecError, ValueError) as exc:
@@ -504,6 +512,27 @@ def _triage(args: argparse.Namespace) -> int:
     if args.file_github and defects:
         for url in file_github_issues(defects, args.run, args.file_github):
             print(f"filed {url}")
+    return 0
+
+
+def _serve(args: argparse.Namespace) -> int:
+    import webbrowser
+
+    from .dashboard.server import Dashboard, serve
+
+    dashboard = Dashboard(Path.cwd(), args.specs or [Path("specs")], args.out)
+    server = serve(dashboard, args.port)
+    url = f"http://127.0.0.1:{server.server_port}/"
+    print(f"Nightshift dashboard: {url}   (only this computer can open it; Ctrl+C to stop)")
+    if not args.no_open:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        dashboard.close()
+        server.server_close()
     return 0
 
 
