@@ -55,3 +55,60 @@ The baseline is B2 in `my-tool-vs-market.md`: 21 of 25 runs on reachable sites c
 - Iframes, shadow DOM and payment widgets are still not read.
 - Two of four public misses are 4B model quirks (an invented element number, an invented URL).
 - Signup flows can't be rerun from a saved path, because the same account can't register twice.
+
+## Step 2: reliability
+
+**What changed:**
+- **Every result that isn't a pass is labelled** BUG, FLAKY, TEST_OUTDATED or ENV_ISSUE. Gateway errors (502/503/504/52x), bot checks, unreachable sites and an unreachable model are `error` + ENV_ISSUE, never a failure of the app.
+- **Checks before a verdict:** test data never typed, a field typed into but never submitted, and one second look before a failure stands.
+- **One automatic retry** for an action that failed for timing reasons.
+- **The token-limit and JSON-mode bug from step 1 is fixed** (D25).
+
+**Step 2b** came out of step 2's own benchmark, where the model still left forms half filled:
+- The prompt marks each test value "(typed)" or "(not typed yet)".
+- A submit button that "does nothing" is first checked for empty fields or unticked boxes in its form.
+- The checks no longer use up the step budget.
+
+**Public demo sites**, checked by hand:
+
+| | Before | Step 1 | Step 2 | Step 2b |
+|---|---|---|---|---|
+| Runs on reachable sites | 25 | 26 | 26 | 24 (the-internet was down) |
+| Correct verdicts | 21 (84%) | 23 (88%) | **24 (92%)** | **22 (92%)** |
+| False alarms | 2 (8%) | 1 (3.8%) | 1 (3.8%) | 1 (4.2%) |
+| Tester gave up | 2 | 2 | 1 | 1 |
+| False passes | 0 | 0 | **0** | **0** |
+| Outages and bot walls labelled ENV_ISSUE | 0/2 | 0/1 | **1/1** | **3/3** |
+| Median time, fresh run | 27 s | 27 s | 34 s | 28 s |
+| Model cost per run (median, 8B / 235B hosted) | ₹0.17 / ₹0.33 | ₹0.16 / ₹0.32 | ₹0.17 / ₹0.34 | ₹0.16 / ₹0.31 |
+
+**Demo shop:**
+
+| | Before | Step 1 | Step 2 | Step 2b |
+|---|---|---|---|---|
+| Planted bugs caught | 21/21 | 21/21 | 20/21 | **21/21** |
+| False alarms on the clean shop | 2/10 | 1/10 | **0/10** | 1/10 |
+
+- **Step 2's miss:** pincode-accepts-5 ran out of steps. It had been "caught" only by the same half-filled-form mistake that caused the clean-shop false alarm.
+- **Step 2b catches it for the right reason:** the order goes through with a 5-digit pincode, and the error message is missing.
+
+**Holdout clinic:** 8/8 bugs and 0/5 false alarms after step 2; 8/8 and 1/5 after step 2b. Reported as is; nothing is tuned on the holdout.
+
+**What the remaining public and shop misses were** (all tester errors, none from the judge):
+
+| Where | What the tester did |
+|---|---|
+| Shop checkout-validation (2b) | Replaced the spec's 5-digit `{{bad_pincode}}` with a made-up `411000`, then reported the order going through as a bug |
+| LambdaTest signup (2b) | Copied the masked `********` from the password field into "Password Confirm", then waited three times, which counted as a dead control |
+| GlobalSQA withdraw | Kept naming a button that doesn't exist (4B model quirk) |
+
+**Fixed after 2b, measured with step 3:**
+- A masked value copied off the page, or a made-up value typed into a field that already got test data, is refused.
+- Waiting or scrolling never counts as a dead control.
+
+**Reading these numbers:** the clean-app samples are small (10 shop, 5 clinic, about 25 public runs). One run moves a rate by 4–20 points, so the step-to-step differences are within noise except where a cause was fixed and its run then passed. The stable results across all four runs are:
+- 0 false passes
+- every planted bug caught for a stated reason
+- environment problems labelled as such from step 2 on
+
+The under-2% false-failure target has not been reached. Every remaining case is the 4B model making a mistake. A larger model is a configuration change, not code, and is the obvious next lever. It needs a hosted endpoint.

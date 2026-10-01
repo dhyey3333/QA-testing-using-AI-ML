@@ -114,3 +114,24 @@ def test_the_prompt_says_which_test_data_is_typed():
     history = (Step(1, Action("type", id=3, text="{{email}}"), 'type [3] "Email" <- "{{email}}"', outcome="changed"),)
     _, text, _ = agent_messages(Context(spec, Observation("https://x.test/", "", "", ()), history, None))
     assert "{{email}} (typed), {{city}} (not typed yet)" in text
+
+
+def test_made_up_and_masked_values_are_refused(run):
+    # Step 2 benchmarks: "********" copied from a password field into "Password Confirm", and the
+    # spec's {{bad_pincode}} replaced with an invented "411000".
+    script = [("click", "a:Log in"), ("type", "Email", "{{email}}"), ("type", "Email", "someone@example.test"),
+              ("type", "Password", "********"), ("type", "Password", "{{password}}"), ("click", "button:Log in")]
+    result = run("login", script, evidence=["Hi, Test Shopper"])
+    assert result.verdict == "pass", result.reason
+    refusals = [step.outcome for step in result.steps if step.outcome.startswith("invalid")]
+    assert any("already got {{email}} from the test data" in r for r in refusals)
+    assert any('"********" is how the page hides a value' in r for r in refusals)
+
+
+def test_waiting_with_no_change_is_not_a_dead_control(browser, base_url, tmp_path):
+    # LambdaTest's playground: three waits with nothing changing were reported as a dead control.
+    spec = Spec(name="grid", url=f"{base_url}/lab/product-grid.html", steps=("look at the products",),
+                expect=("the page lists Blue Top",), max_steps=6)
+    script = [("raw", {"action": "wait"})] * 3
+    result = run_spec(browser, spec, ScriptedModel(script, evidence=["Blue Top"]), out_dir=tmp_path / "w")
+    assert result.verdict == "pass", result.reason

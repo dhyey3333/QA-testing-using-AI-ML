@@ -16,6 +16,7 @@ from __future__ import annotations
 import difflib
 import itertools
 import json
+import re
 import shutil
 import time
 from collections.abc import Callable, Iterator
@@ -347,6 +348,7 @@ class _Run:
             try:
                 raw = self.model.decide(context)
                 action = validate_action(raw, observation, self.spec.data, TEST_KINDS)
+                self._check_typed_value(action, observation)
             except ModelError as exc:
                 return "error", f"model call failed: {exc}"
             except InvalidAction as exc:
@@ -421,6 +423,26 @@ class _Run:
             return (f'you typed into "{acted[-1].target_label}" after your last click, and nothing submitted it since. '
                     "Finish the step (press its button or Enter), then decide")
         return None
+
+    def _check_typed_value(self, action, observation: Observation) -> None:
+        """Refuse values the model made up where the spec gives test data.
+
+        Found on the step 2 benchmarks: the model copied a password field's masked "********"
+        into "Password Confirm", and replaced the spec's 5-digit {{bad_pincode}} with an
+        invented "411000", then reported the results as bugs.
+        """
+        if action.kind != "type" or not self.spec.data or "{{" in (action.text or ""):
+            return
+        element = observation.element(action.id)
+        label = element.label if element else ""
+        if re.fullmatch(r"[*•●]+", (action.text or "").strip()):
+            keys = ", ".join("{{" + key + "}}" for key in self.spec.data)
+            raise InvalidAction(f'"{action.text}" is how the page hides a value, not the value. Type a placeholder: {keys}')
+        earlier = next((s for s in reversed(self.result.steps) if s.action is not None and s.action.kind == "type"
+                        and s.target_label == label and "{{" in (s.action.text or "")), None)
+        if label and earlier is not None:
+            raise InvalidAction(f'[{action.id}] "{label}" already got {earlier.action.text} from the test data; '
+                                "type test data as its placeholder, never a made-up value")
 
     def _unfinished_form(self, step: Step) -> str:
         """The empty fields and unticked boxes in the form of the control the agent keeps pressing.
@@ -604,6 +626,8 @@ def _stuck(steps: list[Step]) -> str | None:
     recent = steps[-STUCK_REPEATS:]
     if len(recent) < STUCK_REPEATS or any(step.action is None for step in recent):
         return None
+    if recent[-1].action.kind in ("wait", "scroll"):
+        return None  # waiting, or scrolling at the end of a page, changes nothing by design: not a dead control
     if len({step.action.signature for step in recent}) != 1:
         return None
     if all(step.outcome == "no change" or step.outcome.startswith("failed") for step in recent):
