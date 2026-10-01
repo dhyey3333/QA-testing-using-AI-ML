@@ -114,7 +114,13 @@ def validate_action(
             raise InvalidAction(f'"{kind}" needs a numeric "id" from the ELEMENTS list') from None
         element = observation.element(element_id)
         if element is None:
-            raise InvalidAction(f"there is no element [{element_id}] on this page")
+            # Found on a public demo site: told only "there is no element [9]", a small model
+            # asked for [9] three times and the run ended. Listing the real controls fixes that.
+            controls = [e for e in observation.elements if e.tag in ("button", "a", "input", "select", "textarea")
+                        or e.role in ("button", "link")][:12]
+            listed = ", ".join(f'[{e.id}] "{e.label[:40]}"' for e in controls)
+            raise InvalidAction(f"there is no element [{element_id}] on this page; ids go from 1 to "
+                                f"{len(observation.elements)}" + (f". Controls: {listed}" if listed else ""))
         banned = next((word for word in avoid if word and word.lower() in element.label.lower()), None)
         if banned:
             raise InvalidAction(f'[{element_id}] "{element.label}" is on the AVOID list ({banned}); pick something else')

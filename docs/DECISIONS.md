@@ -223,3 +223,26 @@ is no Bug). The stand-in now refuses unknown issue types the way Jira does.
 A plain HTTP POST to `/chat/completions`: Ollama, vLLM, llama.cpp, OpenRouter, Groq. The default
 is a 4B vision model on a 6 GB laptop GPU, so the whole thing runs offline for free. The judge can
 be a different, bigger model (`JUDGE_NAME`), since it runs once per test instead of once per step.
+
+## D19. A control with a shared label is named by its item
+Public demo shops show a dozen buttons all called "Add to cart". The 4B model clicked the wrong
+product's button, or the search button eleven times. Now a control whose label repeats on the page
+gets the name of its own item: the closest ancestor holding no other control with that label (a
+product card, a table row), named by its heading or first text line, skipping prices. "Add to cart
+— Blue Top". This is generic: no site's class names are used, only headings, `name`/`title`
+classes and text.
+
+## D20. A replay re-checks the recorded evidence instead of asking the judge
+A passing run records, per expected result, the quotes that proved it. A replay that walks the same
+path and finds every one of those quotes on the page again (and none of the text proven absent)
+passes with no model call: the same thing an exported Playwright test asserts. The quote check is
+the same code the judge's answers go through; what is skipped is only the model choosing the
+quotes. Anything missing, such as a changed total or a dynamic order number, falls back to the
+judge, so a regression is never passed on old evidence (tested: a replay with the order number
+removed still fails). Every passing run is also written as a Playwright test.
+
+## D21. A URL and a goal are enough
+`nightshift run --url URL --goal "..."` writes a spec with the goal as its one step and, unless
+expected results are given, "the page shows this was done: <goal>" as its check. The judge must
+still quote proof, and capitalised names in the goal must appear in it. The spec file is kept so the
+next run of the same goal replays its saved path.

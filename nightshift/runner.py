@@ -29,14 +29,15 @@ from playwright.sync_api import Error as PlaywrightError
 from .actions import TEST_KINDS, ActionFailed, InvalidAction, execute, settle, track_network, validate_action
 from .checks import check_page, listen
 from .inbox import DYNAMIC, InboxError, extract_code, extract_link, inbox_for, recipient, wait_for_email
-from .judge import judge_page
+from .export import write_export
+from .judge import is_on_page, judge_page
 from .locators import describe_target, resolve
 from .model import Model, ModelError, usage_snapshot
 from .observe import JPEG_QUALITY, Observation, observe, screenshot, watch_form_validation
 from .prompts import Context, mask
 from .recording import Recording, RecordingStore
 from .report import write_spec_report
-from .result import PENDING, RunResult, Step
+from .result import PENDING, Check, RunResult, Step
 from .spec import Spec
 
 VIEWPORT = {"width": 1280, "height": 800}
@@ -205,6 +206,10 @@ def run_spec(
     if result.verdict == "pass" and options.recordings and options.record and result.mode != "replay":
         saved = options.recordings.save(spec, result)
         log(f"saved the path for replay: {saved}" if saved else "not saved for replay: a step could not be re-found reliably")
+        if saved and (recording := options.recordings.load(spec)) is not None:
+            # The same path as a plain Playwright test, for teams that want it in their own suite.
+            exported = write_export(spec, recording, options.recordings.root.parent / "playwright")
+            log(f"saved as a Playwright test: {exported}")
 
     _write_artifacts(result, spec)
     return result
@@ -243,7 +248,8 @@ class _Run:
             if verdict is not None:
                 return verdict
             if self.result.mode == "replay":
-                return self.finish(reason_if_unjudged="replayed the saved path with no errors (not judged)")
+                return self.recheck(recording) or self.finish(
+                    reason_if_unjudged="replayed the saved path with no errors (not judged)")
         return self.agent()
 
     # --- replay -----------------------------------------------------------------
@@ -386,6 +392,38 @@ class _Run:
             self.log("    (the link opened a new tab; carrying on there)")
 
     # --- the verdict ------------------------------------------------------------
+
+    def recheck(self, recording: Recording) -> tuple[str, str] | None:
+        """A replayed run passes with no model call when every quote that proved the recorded
+        pass is on the page again, and nothing proven absent has appeared.
+
+        That is a deterministic test, like the exported Playwright file: same path, same
+        assertions. The code-level quote check is the same one the judge's answers go
+        through. Anything missing (a changed total, a dynamic order number) falls back to
+        the judge, so a regression is never waved through on old evidence.
+        """
+        if not self.options.judge or self.result.app_errors or not recording.checks:
+            return None
+        if [saved.get("expected") for saved in recording.checks] != list(self.spec.expect):
+            return None
+        observation = observe(self.page)
+        page = mask(f"{observation.url}\n{observation.text}", self.spec.data)
+        checks = []
+        for saved in recording.checks:
+            evidence, absent = list(saved.get("evidence") or []), list(saved.get("absent") or [])
+            if not evidence and not absent:
+                return None
+            if not all(is_on_page(mask(quote, self.spec.data), page) for quote in evidence):
+                return None
+            if any(is_on_page(mask(quote, self.spec.data), page) for quote in absent):
+                return None
+            checks.append(Check(saved["expected"], evidence, "the recorded evidence is on the page again", True, absent))
+        self.result.checks = checks
+        self.log("checked against the recorded evidence (no model call):")
+        for check in checks:
+            proof = f' <- "{check.evidence[0]}"' if check.evidence else ""
+            self.log(f"   [ok] {check.expected}{proof}")
+        return "pass", "every expected result is shown on the page (recorded evidence re-checked, no model call)"
 
     def overrule(self, reason: str, observation: Observation, shot: bytes) -> tuple[str, str]:
         """The agent says fail, or keeps repeating an action with no effect. The spec is the

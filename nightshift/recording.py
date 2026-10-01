@@ -41,6 +41,9 @@ class Recording:
     steps: list[RecordedStep]
     evidence: list[str]  # the judge's quotes from the passing run; export turns them into assertions
     absent: list[str] = field(default_factory=list)  # text the judge proved was NOT on the page
+    # Per expected result: {"expected", "evidence", "absent"}. A replay re-checks these on the
+    # page with no model call; older recordings without them fall back to the judge.
+    checks: list[dict] = field(default_factory=list)
 
 
 def fingerprint(spec: Spec) -> str:
@@ -71,6 +74,7 @@ class RecordingStore:
                        for s in raw["steps"]],
                 evidence=list(raw.get("evidence", [])),
                 absent=list(raw.get("absent", [])),
+                checks=list(raw.get("checks", [])),
             )
         except (OSError, ValueError, KeyError, TypeError):
             return None  # an unreadable recording is just a missing one; the agent re-records it
@@ -98,6 +102,8 @@ class RecordingStore:
             steps=steps,
             evidence=[quote for check in result.checks for quote in check.evidence],
             absent=[quote for check in result.checks for quote in check.absent],
+            checks=[{"expected": c.expected, "evidence": list(c.evidence), "absent": list(c.absent)}
+                    for c in result.checks],
         )
         self.root.mkdir(parents=True, exist_ok=True)
         path = self.path(spec)

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Lab: identical buttons</title></head>
+<body>
+  <!-- Test fixture: like the public demo shops, every product's button says just "Add to cart",
+       and every table row has its own "Edit". Only the surrounding item tells them apart. -->
+  <h1>All products</h1>
+  <div class="grid">
+    <div class="card"><h2>Rs. 500</h2><p>Blue Top</p><a href="#" onclick="add('Blue Top')">Add to cart</a></div>
+    <div class="card"><h2>Rs. 400</h2><p>Men Tshirt</p><a href="#" onclick="add('Men Tshirt')">Add to cart</a></div>
+    <div class="card"><h4 class="product-name">Cucumber - 1 Kg</h4><span>48</span><button onclick="add('Cucumber')">ADD TO CART</button></div>
+  </div>
+  <table>
+    <tr><td>Asha Rao</td><td><button>Edit</button></td></tr>
+    <tr><td>Vikram Shah</td><td><button>Edit</button></td></tr>
+  </table>
+  <button>Checkout</button>
+  <p id="cart">Cart: empty</p>
+  <script>
+    function add(name) { document.getElementById("cart").textContent = "Cart: " + name; return false; }
+  </script>
+</body>
+</html>

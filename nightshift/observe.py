@@ -75,11 +75,44 @@ _OBSERVE_JS = r"""
   // so the cap drops what is far down a long page rather than what the user sees.
   found.sort((a, b) => b.inView - a.inView);
 
+  // Twelve buttons all called "Add to cart" can't be told apart by label. Found on public demo
+  // shops: the model clicked the wrong product's button, or none. So a control whose label is
+  // shared gets the name of its own item: the closest ancestor that holds no other control
+  // with that label (a product card, a table row), named by its heading or first text line.
+  const PRICE = /^(rs\.?|inr|₹|\$|€|£)?\s*[\d.,]+\s*(rs\.?|inr|₹|\$|€|£)?$/i;
+  const itemName = (el, label) => {
+    const same = (node) => [...node.querySelectorAll(SELECTOR)]
+      .some((other) => other !== el && isVisible(other) && labelOf(other).toLowerCase() === label);
+    let item = null;
+    for (let node = el.parentElement, depth = 0; node && node !== document.body && depth < 8;
+         node = node.parentElement, depth++) {
+      if (same(node)) break;
+      item = node;
+    }
+    if (!item) return '';
+    const headings = [...item.querySelectorAll('h1,h2,h3,h4,h5,h6,[role=heading],[class*="name" i],[class*="title" i]')]
+      .map((h) => clean(h.innerText));
+    const lines = (item.innerText || '').split(/[\n\t]/).map(clean);  // table cells are tab-separated
+    const name = [...headings, ...lines].find((text) => text && text.length <= 60 && /[a-z]{2}/i.test(text)
+      && text.toLowerCase() !== label && !PRICE.test(text));
+    return name || '';
+  };
+  const labels = found.map(({ el }) => labelOf(el));
+  const counts = {};
+  labels.forEach((l) => { counts[l.toLowerCase()] = (counts[l.toLowerCase()] || 0) + 1; });
+
   const elements = found.slice(0, maxElements).map(({ el, inView }, i) => {
     const id = i + 1;
     el.setAttribute('data-ns-id', String(id));
     const tag = el.tagName.toLowerCase();
-    const item = { id, tag, label: labelOf(el).slice(0, 80), inView };
+    let label = labels[i];
+    const field = ['select', 'textarea'].includes(tag)
+      || (tag === 'input' && !['submit', 'button', 'reset', 'image'].includes(el.type));
+    if (label && counts[label.toLowerCase()] > 1 && !field) {
+      const name = itemName(el, label.toLowerCase());
+      if (name) label = `${label} — ${name}`;
+    }
+    const item = { id, tag, label: label.slice(0, 120), inView };
     const role = el.getAttribute('role');
     if (role) item.role = role;
     if (tag === 'input') item.type = el.type;

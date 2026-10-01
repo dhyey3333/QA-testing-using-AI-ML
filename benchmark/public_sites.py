@@ -24,6 +24,7 @@ from pathlib import Path
 
 from nightshift.cli import configure_stdout
 from nightshift.model import HttpModel, ModelConfig
+from nightshift.recording import RecordingStore
 from nightshift.result import RunResult
 from nightshift.runner import RunOptions, open_browser, run_with_retries
 from nightshift.spec import load_spec
@@ -76,6 +77,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--retries", type=int, default=1, help="retries per failure (default 1, as `nightshift run`)")
     parser.add_argument("--out", type=Path, default=Path("runs"))
     parser.add_argument("--resume", type=Path, help="a stopped run's folder: keep its finished specs, run the rest")
+    parser.add_argument("--rerun", action="store_true",
+                        help="after each pass, run the spec again from its saved path, to measure reruns")
     args = parser.parse_args(argv)
 
     # Signup specs use ${NS_RUN} so every run registers a fresh account.
@@ -91,8 +94,10 @@ def main(argv: list[str] | None = None) -> int:
     rows = load_rows(out) if args.resume else []
     done = {row["spec"] for row in rows}
     model = HttpModel(ModelConfig.from_env(), ModelConfig.judge_from_env(ModelConfig.from_env()))
-    # No recordings: this measures a first run by the agent, not a replay of a saved path.
-    options = RunOptions(retries=args.retries)
+    # The first run is always the agent's (the store starts empty). With --rerun, a passing run's
+    # saved path is replayed straight away, the way CI reruns a suite.
+    store = RecordingStore(out / "recordings") if args.rerun else None
+    options = RunOptions(retries=args.retries, recordings=store)
     try:
         with open_browser() as browser:
             for spec in specs:
@@ -100,7 +105,18 @@ def main(argv: list[str] | None = None) -> int:
                     continue
                 print(f"> {spec.name}", flush=True)
                 result = run_with_retries(browser, spec, model, out_dir=out / spec.name, options=options)
-                rows.append(row_for(result))
+                row = row_for(result)
+                # Signups are not rerun: the same fake email can't register twice (CI would set a new NS_RUN).
+                rerunnable = flow_of(spec.name)[1] != "signup"
+                if store is not None and rerunnable and result.verdict in ("pass", "flaky") and store.load(spec):
+                    again = run_with_retries(browser, spec, model, out_dir=out / spec.name / "rerun", options=options)
+                    row["rerun"] = {"verdict": again.verdict, "mode": again.mode, "duration_s": again.duration_s,
+                                    "model_calls": again.model_calls,
+                                    "cost_inr_qwen3-vl-8b": round(cost_inr(again.prompt_tokens, again.completion_tokens,
+                                                                           "qwen3-vl-8b"), 3)}
+                    print(f"  rerun: {again.verdict.upper()} ({again.mode}) in {again.duration_s:.0f}s, "
+                          f"{again.model_calls} calls", flush=True)
+                rows.append(row)
                 # Written after every spec: a long benchmark that is stopped keeps what it measured.
                 save(rows, out, model.name)
                 print(f"  {result.verdict.upper()} in {result.duration_s:.0f}s, {result.model_calls} calls: "
@@ -144,6 +160,18 @@ def render(rows: list[dict], model_name: str) -> str:
                   "Model cost per run (median): local ₹0 API cost; "
                   + "; ".join(f"{m} hosted ₹{statistics.median(row[f'cost_inr_{m}'] for row in rows):.2f}"
                               for m in PRICES)]
+    reruns = [(row, row["rerun"]) for row in rows if row.get("rerun")]
+    if reruns:
+        lines += ["", "## Reruns from the saved path", "",
+                  "| Site | Flow | First run | Rerun | Mode | First (s) | Rerun (s) | Rerun model calls | Rerun ₹ at 8B |",
+                  "|---|---|---|---|---|---|---|---|---|"]
+        for row, again in reruns:
+            lines.append(f"| {row['site']} | {row['flow']} | {row['verdict']} | {again['verdict']} | {again['mode']} | "
+                         f"{row['duration_s']:.0f} | {again['duration_s']:.0f} | {again['model_calls']} | "
+                         f"{again['cost_inr_qwen3-vl-8b']:.2f} |")
+        lines += ["", f"Reruns: {sum(a['verdict'] == 'pass' for _, a in reruns)}/{len(reruns)} pass, "
+                      f"median {statistics.median(a['duration_s'] for _, a in reruns):.0f}s, "
+                      f"{sum(a['model_calls'] == 0 for _, a in reruns)} with no model call"]
     return "\n".join(lines) + "\n"
 
 

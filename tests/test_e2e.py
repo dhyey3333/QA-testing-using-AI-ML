@@ -123,7 +123,20 @@ def test_a_passing_run_is_saved_then_replayed_with_no_agent_calls(run, spec_for,
     assert second.verdict == "pass", second.reason
     assert second.mode == "replay"
     assert all(step.outcome == "replayed" for step in second.steps)
-    assert replayer.judgements == 1  # the judge still checks the result
+    # Every quote that proved the first pass is on the page again: a deterministic rerun, no model call.
+    assert replayer.judgements == 0
+    assert "re-checked" in second.reason and [c.holds for c in second.checks] == [True, True, True]
+    assert (tmp_path / "playwright" / "checkout.spec.ts").exists()  # also saved as a Playwright test
+
+
+def test_a_replay_whose_evidence_is_gone_goes_to_the_judge(run, tmp_path):
+    # A regression after the recording: the order number is gone. Old evidence must not pass it.
+    store = RecordingStore(tmp_path / "recordings")
+    assert run("checkout", CHECKOUT, evidence=CHECKOUT_EVIDENCE, recordings=store).verdict == "pass"
+    replayer = ScriptedModel(evidence=CHECKOUT_EVIDENCE, forbid_agent=True)
+    result = run("checkout", model=replayer, recordings=store, bugs={"no-order-number"})
+    assert result.verdict == "fail" and result.reason.startswith("not shown")
+    assert replayer.judgements >= 1
 
 
 def test_replay_heals_itself_after_a_redesign(run, spec_for, tmp_path):

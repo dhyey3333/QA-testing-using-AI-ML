@@ -39,7 +39,7 @@ from .recording import RecordingStore
 from .report import write_history, write_junit, write_run_index
 from .result import RunResult
 from .runner import RunOptions, device_options, open_browser, run_with_retries
-from .spec import Spec, SpecError, load_specs
+from .spec import Spec, SpecError, goal_spec_yaml, load_spec, load_specs
 from .traceability import build_matrix, write_test_cases, write_traceability
 
 DEFAULT_RECORDINGS = Path(".nightshift/recordings")
@@ -68,7 +68,11 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
 
     run = commands.add_parser("run", help="run specs against a web app")
-    run.add_argument("specs", nargs="+", type=Path, help="spec files, or folders of them")
+    run.add_argument("specs", nargs="*", type=Path, help="spec files, or folders of them")
+    run.add_argument("--url", help="with --goal: the page to start on")
+    run.add_argument("--goal", help='a plain-English goal instead of a spec, e.g. "add the backpack to the cart"')
+    run.add_argument("--goals-dir", type=Path, default=Path("specs/goals"),
+                     help="where --goal saves its spec, so the next run replays it (default: specs/goals)")
     _run_options(run)
     _common(run)
 
@@ -199,10 +203,29 @@ def _log(args: argparse.Namespace):
 # --- run ------------------------------------------------------------------------
 
 def _run(args: argparse.Namespace) -> int:
-    specs = load_specs(args.specs)
+    specs = load_specs(args.specs) if args.specs else []
+    if args.goal or args.url:
+        if not (args.goal and args.url):
+            print("error: --goal and --url go together", file=sys.stderr)
+            return 2
+        specs.append(load_spec(_goal_spec(args.url, args.goal, args.goals_dir)))
+    if not specs:
+        print("error: give spec files or folders, or --url and --goal", file=sys.stderr)
+        return 2
     # API tests use no model, so naming one would only mislead.
     results, run_dir, defects = _execute(specs, args, _model(announce=any(s.kind != "api" for s in specs)))
     return _exit_code(results)
+
+
+def _goal_spec(url: str, goal: str, folder: Path) -> Path:
+    """Write the goal as a spec file. The same goal and URL reuse it, and so replay its saved path."""
+    name, text = goal_spec_yaml(url, goal)
+    path = folder / f"{name}.yaml"
+    if not path.exists() or path.read_text(encoding="utf-8") != text:
+        folder.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        print(f"spec: {path}")
+    return path
 
 
 def _exit_code(results: list[RunResult]) -> int:

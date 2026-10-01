@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 
 from .observe import Element, Observation
@@ -16,7 +17,7 @@ from .spec import Spec
 # Keeps the prompt inside a small model's context window (Ollama defaults to a few
 # thousand tokens, and the screenshot alone costs about a thousand).
 PROMPT_TEXT_LIMIT = 2_500
-JUDGE_TEXT_LIMIT = 6_000
+JUDGE_TEXT_LIMIT = 12_000  # long pages (catalogues, articles): an expected result low on the page must still be provable
 HISTORY_LIMIT = 15
 
 TEST_PROMPT = """\
@@ -226,11 +227,31 @@ def agent_messages(context: Context) -> tuple[str, str, bytes | None]:
         *header,
         f"TEST DATA (type the placeholder): {keys}",
         f"WHAT YOU HAVE DONE:\n{history or '(nothing yet)'}",
+        _repeat_note(context.history),
         *_page_sections(context.observation, data, PROMPT_TEXT_LIMIT),
         closing + " Reply with one JSON object.",
     ]
     system = EXPLORE_PROMPT if context.mode == "explore" else TEST_PROMPT
     return system, "\n\n".join(part for part in parts if part), context.screenshot
+
+
+REPEAT_NOTE_AFTER = 3
+
+
+def _repeat_note(history: tuple[Step, ...]) -> str:
+    """A nudge when the last few actions were identical.
+
+    The runner's "no change" signal misses this on pages with live content: found on a
+    public demo shop, ads re-rendered after every click, so each of eleven clicks on the
+    same search button read as "changed" and the agent never scrolled to the product.
+    """
+    recent = history[-REPEAT_NOTE_AFTER:]
+    if len(recent) < REPEAT_NOTE_AFTER or any(step.action is None for step in recent):
+        return ""
+    if len({step.action.signature for step in recent}) != 1 or recent[-1].action.kind in ("scroll", "wait", "press"):
+        return ""
+    return (f"NOTE: your last {REPEAT_NOTE_AFTER} actions were the same ({recent[-1].description}). If the step is "
+            "not done yet, that action is not doing it: pick a different element, or scroll to find what the step needs.")
 
 
 def judge_messages(context: JudgeContext) -> tuple[str, str, bytes | None]:
@@ -290,5 +311,8 @@ def mask(text: str, data: dict[str, str]) -> str:
     """
     for key, value in sorted(data.items(), key=lambda item: -len(item[1])):
         if len(value) >= 4:  # masking "12" would mangle every number on the page
-            text = text.replace(value, "{{" + key + "}}")
+            # Whole words only. Found on a public demo site: the first name "Test" turned the
+            # site's "Web Automation Testing" into "Web Automation {{first_name}}ing".
+            text = re.sub(rf"(?<![A-Za-z0-9]){re.escape(value)}(?![A-Za-z0-9])",
+                          lambda _m, key=key: "{{" + key + "}}", text)
     return text

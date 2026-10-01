@@ -123,6 +123,12 @@ def load_spec(path: Path, expand_env: bool = True) -> Spec:
         # the traceability matrix read an API test like any other.
         steps = tuple(r.describe() for r in requests)
         expect = tuple(line for r in requests for line in r.expectations()) or ("every request succeeds",)
+    elif kind == "ui" and raw.get("goal") and not raw.get("steps"):
+        # A URL and a plain-English goal: the agent works out the steps. With no expected
+        # results given, the goal itself must be shown done, proven like any other check.
+        goal = str(raw["goal"]).strip()
+        steps = (goal,)
+        expect = _strings(raw["expect"], "expect", path) if raw.get("expect") else (goal_expectation(goal),)
     elif kind == "ui":
         steps, expect = _strings(raw.get("steps"), "steps", path), _strings(raw.get("expect"), "expect", path)
     else:
@@ -172,6 +178,16 @@ def load_specs(paths: Iterable[Path]) -> list[Spec]:
             raise SpecError(f"two specs are named {spec.name!r}: {seen[spec.name]} and {spec.path}")
         seen[spec.name] = spec.path
     return specs
+
+
+def goal_expectation(goal: str) -> str:
+    return f"the page shows this was done: {goal}"
+
+
+def goal_spec_yaml(url: str, goal: str, name: str = "") -> tuple[str, str]:
+    """(name, YAML text) for a goal-only spec, as `nightshift run --url --goal` writes it."""
+    name = name or re.sub(r"[^a-z0-9]+", "-", goal.lower()).strip("-")[:50] or "goal"
+    return name, yaml.safe_dump({"name": name, "url": url, "goal": goal}, sort_keys=False, allow_unicode=True)
 
 
 def _strings(value: object, key: str, path: Path) -> tuple[str, ...]:

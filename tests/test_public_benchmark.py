@@ -40,6 +40,16 @@ def test_a_stopped_benchmark_keeps_what_it_measured(tmp_path):
     assert render(rows, "m") == report.replace("qwen3-vl:4b", "m")
 
 
+def test_reruns_get_their_own_table():
+    row = {"spec": "saucedemo-login", "site": "saucedemo", "flow": "login", "verdict": "pass", "reason": "ok",
+           "duration_s": 19.0, "model_calls": 5, "prompt_tokens": 9000, "completion_tokens": 300,
+           "cost_inr_qwen3-vl-8b": 0.12, "cost_inr_qwen3-vl-235b": 0.25, "out_dir": "x",
+           "rerun": {"verdict": "pass", "mode": "replay", "duration_s": 6.0, "model_calls": 0, "cost_inr_qwen3-vl-8b": 0.0}}
+    report = render([row], "m")
+    assert "| saucedemo | login | pass | pass | replay | 19 | 6 | 0 | 0.00 |" in report
+    assert "Reruns: 1/1 pass, median 6s, 1 with no model call" in report
+
+
 def test_cost_in_rupees():
     # 1M input tokens at $0.117 plus 1M output at $0.455 = $0.572
     assert abs(cost_inr(1_000_000, 1_000_000, "qwen3-vl-8b") - 0.572 * USD_INR) < 1e-9
