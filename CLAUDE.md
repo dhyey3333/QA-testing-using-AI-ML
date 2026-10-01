@@ -29,6 +29,8 @@ Design reasoning: `docs/DECISIONS.md`.
 - Jira: `--file-jira` on run/validate/triage, configured by `JIRA_URL`, `JIRA_PROJECT`, `JIRA_EMAIL` + `JIRA_API_TOKEN` (Cloud) or `JIRA_TOKEN` (Data Center) (`nightshift/jira.py`).
 - `uv run nightshift serve [--port 8765] [--specs DIR]`: the local dashboard (`nightshift/dashboard/`: server.py + static/ plain JS). Keep its guards: 127.0.0.1 only, Host check, token on every change, paths confined to the workspace.
 - `uv run python -m benchmark [--app clinic] [--only bug1,bug2] [--no-judge] [--no-vision] [--clean-only]` writes `runs/bench-*/bench.md`
+- `uv run python -m benchmark.public_sites [--only a,b] [--rerun] [--resume runs/public-X]`: 27 specs on public practice sites (`benchmark/public/`), verdict, time, model calls and model cost in INR per run; every verdict must still be checked by hand. Signups use `${NS_RUN}`.
+- `uv run nightshift run --url URL --goal "..."`: a goal-only spec, saved to `specs/goals/`.
 - `uv run python -m realworld.bakerydemo.eval [--only bug,...] [--clean-only] [--skip-clean]` (real app; about 12 min)
 - A new planted bug must be checked to actually show on the site before scoring anything against it.
 - Model: any OpenAI-compatible endpoint via `MODEL_BASE_URL`, `MODEL_NAME`, `MODEL_API_KEY`; judge override `JUDGE_NAME` etc. Default: local Ollama `qwen3-vl:4b-instruct`.

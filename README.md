@@ -292,6 +292,7 @@ dashboard page has, so another website open in your browser can't start a run.
 | Command | What it does |
 |---|---|
 | `nightshift run specs/` | Run specs. Replays saved paths, judges every pass, re-runs failures once (`--retries`), writes reports. |
+| `nightshift run --url URL --goal "..."` | No spec to write: a start page and a plain-English goal. The spec is saved to `specs/goals/`, so the next run of the same goal replays its path. |
 | `nightshift explore URL` | No spec: roam the app for `--steps` actions, try bad input, report bugs. Writes `findings.md` and a map of the app. |
 | `nightshift generate --story "..."` | Draft specs from a requirement. Add `--from discovered.json` (from explore) so it uses the app's real labels. |
 | `nightshift export specs/` | Turn saved paths into `@playwright/test` files with role-based locators and assertions from the judge's evidence. |
@@ -308,6 +309,15 @@ small models), `--slack-webhook` (or `SLACK_WEBHOOK_URL`).
 
 Exit codes: `0` passed (flaky counts as passed, with a warning), `1` found a bug, `2` the tester
 couldn't finish.
+
+Every result that isn't a pass is labelled with its cause:
+
+| Label | Meaning |
+|---|---|
+| `BUG` | The app is wrong: a proven wrong or missing result, a dead control, a crash, an HTTP 500. |
+| `FLAKY` | Failed, then passed for a fresh agent. The label says when the failing try showed no app error. |
+| `TEST_OUTDATED` | The test couldn't be carried out as written: its saved path broke and couldn't be healed, or the tester couldn't follow its steps. |
+| `ENV_ISSUE` | Nothing was tested: the site or a gateway in front of it was down (502/503/504/52x), a bot check was in the way, or the model couldn't be reached. Reported as an error, never as a failure of the app. |
 
 ### Models
 
@@ -409,10 +419,11 @@ benchmark/      scores the tester against either app
 
 ## Known limits
 
-- One tab. Popups and new windows aren't followed. Iframes and shadow DOM aren't read yet.
+- Iframes and shadow DOM aren't read yet, so embedded payment widgets (Razorpay, Stripe Elements)
+  can't be driven. A link that opens a new tab is followed.
 - Clickable `<div>`s with no role, no tabindex and no inline handler are invisible to the element list.
 - On the 4B model every agent step takes about 2 s, so a 14-step checkout takes about 40 s. Replay
   makes repeat runs cheap. A bigger hosted model is more accurate and not much slower.
 - Firefox, WebKit and the Docker image are wired up but only Chromium was tested here.
-- It checks what the page shows. It doesn't read the database, the email inbox or the payment
-  provider. A flow that ends in "we emailed you" needs a spec that checks the page's own confirmation.
+- It checks what the page shows. It reads a test inbox for email codes and links, but not the
+  database or the payment provider. SMS and authenticator-app codes aren't supported yet.
