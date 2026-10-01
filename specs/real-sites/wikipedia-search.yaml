@@ -1,0 +1,10 @@
+# Read-only: search a real, busy site and check a fact on the result.
+name: wikipedia-search
+url: https://en.wikipedia.org/
+steps:
+  - search for Ada Lovelace
+  - open her article if the search lands on a results list
+expect:
+  - the article's title is Ada Lovelace
+  - the article says she was born in 1815
+max_steps: 10

@@ -1,0 +1,11 @@
+# Playwright's demo to-do app: typing, Enter to add, a checkbox, and a live counter.
+name: todomvc
+url: https://demo.playwright.dev/todomvc/
+steps:
+  - add a to-do "buy milk" (type it and press Enter)
+  - add a to-do "walk the dog"
+  - mark "buy milk" as completed
+expect:
+  - both to-dos are listed
+  - the counter says 1 item left
+max_steps: 12

@@ -1,0 +1,8 @@
+# A page of classic tricky widgets kept for automation practice.
+name: the-internet-dropdown
+url: https://the-internet.herokuapp.com/dropdown
+steps:
+  - choose Option 2 in the dropdown
+expect:
+  - Option 2 is the selected option
+max_steps: 6

@@ -1,0 +1,14 @@
+# Sauce Labs' shop built for test-automation practice. Its login page publishes these test accounts.
+name: saucedemo-cart
+url: https://www.saucedemo.com/
+steps:
+  - log in with the test account
+  - add the Sauce Labs Backpack to the cart
+  - open the cart
+expect:
+  - the cart lists Sauce Labs Backpack
+  - the backpack costs $29.99
+data:
+  username: standard_user
+  password: secret_sauce
+max_steps: 12
