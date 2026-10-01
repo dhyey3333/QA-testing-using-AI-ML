@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Lab: unfinished form</title></head>
+<body>
+  <!-- Test fixture: like LambdaTest's playground, Register does nothing visible until every
+       field is filled and the privacy box is ticked. A working form, not a dead button. -->
+  <form id="f">
+    <label>Name <input name="name"></label>
+    <label>Password Confirm <input name="confirm" type="password"></label>
+    <label><input type="checkbox" name="agree"> I agree to the Privacy Policy</label>
+    <button type="submit">Register</button>
+  </form>
+  <p id="ok" hidden>Your Account Has Been Created!</p>
+  <script>
+    document.getElementById("f").onsubmit = (e) => {
+      e.preventDefault();
+      const f = e.target;
+      if (f.name.value && f.confirm.value && f.agree.checked) document.getElementById("ok").hidden = false;
+    };
+  </script>
+</body>
+</html>

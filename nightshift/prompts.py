@@ -216,7 +216,10 @@ def agent_messages(context: Context) -> tuple[str, str, bytes | None]:
     spec, data = context.spec, context.spec.data
     history_limit = COMPACT_HISTORY_LIMIT if context.compact else HISTORY_LIMIT
     history = "\n".join(mask(step.history_line(), data) for step in context.history[-history_limit:])
-    keys = ", ".join("{{" + key + "}}" for key in data) or "(none)"
+    # Which values are typed already. Found on the demo shop: the 4B model filled one field of a
+    # four-field form and kept pressing submit; seeing "(not typed yet)" next to the rest helps.
+    typed = typed_placeholders(context.history)
+    keys = ", ".join("{{" + key + "}}" + (" (typed)" if key in typed else " (not typed yet)") for key in data) or "(none)"
     if spec.inbox or os.getenv("INBOX_URL") or os.getenv("INBOX_IMAP_HOST"):
         keys += (". Also {{email_code}}: the code from the newest email to the test address, typed for you; "
                  "and {{email_link}}: the link in that email, to open with goto")
@@ -246,6 +249,19 @@ def agent_messages(context: Context) -> tuple[str, str, bytes | None]:
     return system, "\n\n".join(part for part in parts if part), context.screenshot
 
 
+def typed_placeholders(history) -> set[str]:
+    """The test-data names the agent has typed or selected so far (and the browser accepted)."""
+    used = set()
+    for step in history:
+        if step.action is None or step.action.kind not in ("type", "select"):
+            continue
+        if step.outcome.startswith(("invalid", "failed")):
+            continue
+        used.update(_PLACEHOLDER_RE.findall(f"{step.action.text or ''} {step.action.value or ''}"))
+    return used
+
+
+_PLACEHOLDER_RE = re.compile(r"\{\{\s*([A-Za-z0-9_]+)\s*\}\}")
 REPEAT_NOTE_AFTER = 3
 
 

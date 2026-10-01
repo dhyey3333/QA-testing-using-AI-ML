@@ -86,3 +86,31 @@ def test_a_button_covered_longer_than_one_timeout_is_clicked_on_the_retry(browse
     result = run_spec(browser, spec, ScriptedModel([("click", "Continue")], evidence=["All set."]), out_dir=tmp_path / "s")
     assert result.verdict == "pass", result.reason
     assert result.steps[0].outcome == "changed"
+
+
+def test_a_submit_that_does_nothing_in_an_unfinished_form_is_not_a_dead_button(browser, base_url, tmp_path):
+    # LambdaTest's playground: "Register" pressed four times with "Password Confirm" empty and the
+    # privacy box unticked, then reported as a dead control.
+    spec = Spec(name="register", url=f"{base_url}/lab/register.html", steps=("register an account",),
+                expect=("a page says the account has been created",), data={"name": "Asha Rao"}, max_steps=12)
+    script = [("type", "Name", "{{name}}"), ("click", "Register"), ("click", "Register"), ("click", "Register"),
+              ("type", "Password Confirm", "secret-1"), ("click", "I agree"), ("click", "Register")]
+    result = run_spec(browser, spec, ScriptedModel(script, evidence=["Your Account Has Been Created!"]),
+                      out_dir=tmp_path / "r")
+    assert result.verdict == "pass", result.reason
+    hint = next(step.outcome for step in result.steps if "its form still has" in step.outcome)
+    assert '"Password Confirm (empty)"' in hint and '"I agree to the Privacy Policy (unticked)"' in hint
+    assert "Name" not in hint.split("its form still has")[1]  # filled fields aren't listed
+
+
+def test_the_prompt_says_which_test_data_is_typed():
+    from nightshift.actions import Action
+    from nightshift.observe import Observation
+    from nightshift.prompts import Context, agent_messages
+    from nightshift.result import Step
+
+    spec = Spec(name="s", url="https://x.test/", steps=("fill the form",), expect=("done",),
+                data={"email": "a@b.test", "city": "Pune"})
+    history = (Step(1, Action("type", id=3, text="{{email}}"), 'type [3] "Email" <- "{{email}}"', outcome="changed"),)
+    _, text, _ = agent_messages(Context(spec, Observation("https://x.test/", "", "", ()), history, None))
+    assert "{{email}} (typed), {{city}} (not typed yet)" in text

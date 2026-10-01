@@ -14,6 +14,7 @@ With retries on, a failure is re-run by a fresh agent before it is reported.
 from __future__ import annotations
 
 import difflib
+import itertools
 import json
 import shutil
 import time
@@ -35,7 +36,7 @@ from .locators import describe_target, resolve
 from .model import Model, ModelError, usage_snapshot
 from .observe import JPEG_QUALITY, Observation, observe, screenshot, watch_form_validation
 from .outcome import categorize, environment_problem
-from .prompts import Context, mask
+from .prompts import Context, mask, typed_placeholders
 from .recording import Recording, RecordingStore
 from .report import write_spec_report
 from .result import PENDING, Check, RunResult, Step
@@ -310,7 +311,10 @@ class _Run:
         last_fingerprint = ""
         invalid_streak = 0
 
-        for index in range(first, first + self.spec.max_steps):
+        for index in itertools.count(first):
+            # The checks before a verdict (each used at most once) don't eat into the spec's step budget.
+            if index >= first + self.spec.max_steps + len(self.asked):
+                break
             observation = observe(self.page)
             check_page(self.page, self.result, self.seen_pages)
             fingerprint = observation.fingerprint()
@@ -322,9 +326,17 @@ class _Run:
             if self.result.app_errors:
                 return "fail", self.result.app_errors[0]
             if stuck := _stuck(steps):
-                # Same contract as an agent's "fail": a blocked form in a negative test is
-                # the expected result, and a model will keep pressing Submit at it.
-                return self.overrule(stuck, observation, screenshot(self.page))
+                if (gaps := self._unfinished_form(steps[-1])) and "form" not in self.asked:
+                    # Not a dead button yet: its form has empty fields or unticked boxes. Found on a
+                    # public demo site: "Register" pressed four times with "Password Confirm" empty and
+                    # the privacy box unticked, then reported as a dead control.
+                    self.asked.add("form")
+                    steps[-1].outcome += f"; its form still has {gaps}: fill them in first"
+                    self.log(f"    (the form isn't finished: {gaps})")
+                else:
+                    # Same contract as an agent's "fail": a blocked form in a negative test is
+                    # the expected result, and a model will keep pressing Submit at it.
+                    return self.overrule(stuck, observation, screenshot(self.page))
 
             shot_name = f"step-{index:02d}.jpg"
             shot = screenshot(self.page)
@@ -398,8 +410,8 @@ class _Run:
         """
         acted = [s for s in self.result.steps if s.action is not None and s.action.kind in ("click", "type", "select", "press")
                  and not s.outcome.startswith(("invalid", "failed"))]
-        typed = "".join(f"{s.action.text or ''}{s.action.value or ''}" for s in acted).replace(" ", "")
-        unused = [key for key in self.spec.data if "{{" + key + "}}" not in typed]
+        typed = typed_placeholders(self.result.steps)
+        unused = [key for key in self.spec.data if key not in typed]
         if unused and "data" not in self.asked:
             self.asked.add("data")
             names = ", ".join("{{" + key + "}}" for key in unused)
@@ -409,6 +421,20 @@ class _Run:
             return (f'you typed into "{acted[-1].target_label}" after your last click, and nothing submitted it since. '
                     "Finish the step (press its button or Enter), then decide")
         return None
+
+    def _unfinished_form(self, step: Step) -> str:
+        """The empty fields and unticked boxes in the form of the control the agent keeps pressing.
+
+        Only that control's own <form>: a real dead button (an "Add to cart" outside any
+        form, or a form that is complete) still counts as dead.
+        """
+        if step.action is None or step.action.kind != "click" or not step.target_label:
+            return ""
+        try:
+            gaps = self.page.evaluate(_UNFINISHED_FORM_JS, step.target_label)
+        except PlaywrightError:
+            return ""
+        return ", ".join(f'"{gap}"' for gap in gaps[:6])
 
     def _second_look(self, action) -> str | None:
         """One more chance before a failure stands, the way a tester re-checks before filing.
@@ -546,6 +572,31 @@ def adopt_new_tab(new_tabs: list[Page], url: str, sink) -> Page | None:
     track_network(tab)
     settle(tab)
     return tab
+
+
+# Finds the control by the label observe() gave it (data-ns-id is renumbered every turn), then lists
+# its form's empty text fields and unticked checkboxes, by their visible labels.
+_UNFINISHED_FORM_JS = r"""
+(label) => {
+  const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const base = label.split(' — ')[0].toLowerCase();
+  const control = [...document.querySelectorAll('[data-ns-id]')]
+    .find((el) => clean(el.innerText || el.value || el.getAttribute('aria-label')).toLowerCase() === base);
+  const form = control && control.closest('form');
+  if (!form) return [];
+  const nameOf = (el) => clean([...(el.labels || [])].map((l) => l.innerText).join(' '))
+    || clean(el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.name);
+  const shown = (el) => el.getBoundingClientRect().width > 0 && getComputedStyle(el).visibility !== 'hidden';
+  const gaps = [];
+  for (const el of form.querySelectorAll('input, textarea')) {
+    if (!shown(el) && !(el.type === 'checkbox' && el.labels && el.labels.length)) continue;
+    if (el.type === 'checkbox' && !el.checked) gaps.push(`${nameOf(el) || 'a checkbox'} (unticked)`);
+    else if (!['checkbox', 'radio', 'submit', 'button', 'reset', 'hidden', 'file', 'image'].includes(el.type) && !el.value)
+      gaps.push(`${nameOf(el) || 'a field'} (empty)`);
+  }
+  return gaps;
+}
+"""
 
 
 def _stuck(steps: list[Step]) -> str | None:
