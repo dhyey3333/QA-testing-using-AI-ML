@@ -1,0 +1,10 @@
+name: practicetest-login-validation
+url: https://practicetestautomation.com/practice-test-login/
+steps:
+  - log in with the wrong username and the password from the test data
+expect:
+  - an error says the username is invalid
+data:
+  wrong_username: incorrectUser
+  password: Password123
+max_steps: 8

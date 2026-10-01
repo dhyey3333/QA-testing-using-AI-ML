@@ -1,0 +1,9 @@
+# GlobalSQA's demo bank (AngularJS). Customers are picked from a list; no password.
+name: globalsqa-login
+url: https://www.globalsqa.com/angularJs-protractor/BankingProject/#/login
+steps:
+  - choose Customer Login
+  - pick Harry Potter as the customer and log in
+expect:
+  - the page welcomes Harry Potter
+max_steps: 10

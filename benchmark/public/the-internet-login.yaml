@@ -1,0 +1,11 @@
+# the-internet.herokuapp.com publishes these credentials on the login page.
+name: the-internet-login
+url: https://the-internet.herokuapp.com/login
+steps:
+  - log in with the username and password from the test data
+expect:
+  - a message says you logged into a secure area
+data:
+  username: tomsmith
+  password: SuperSecretPassword!
+max_steps: 8

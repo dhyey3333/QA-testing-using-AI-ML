@@ -1,0 +1,14 @@
+name: lambdatest-signup
+url: https://ecommerce-playground.lambdatest.io/index.php?route=account/register
+steps:
+  - fill in first name, last name, email, telephone, password and password confirm from the test data
+  - agree to the privacy policy and continue
+expect:
+  - a page says the account has been created
+data:
+  first_name: Test
+  last_name: Shopper
+  email: ns${NS_RUN}@example.com
+  telephone: "9000000000"
+  password: Test-pass-1234
+max_steps: 16

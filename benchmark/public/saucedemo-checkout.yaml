@@ -1,0 +1,16 @@
+name: saucedemo-checkout
+url: https://www.saucedemo.com/
+steps:
+  - log in with the test account
+  - add the Sauce Labs Backpack to the cart and open the cart
+  - check out, filling in first name, last name and postal code from the test data
+  - continue, then finish the order
+expect:
+  - a page thanks the user for the order
+data:
+  username: standard_user
+  password: secret_sauce
+  first_name: Test
+  last_name: Shopper
+  postal_code: "411001"
+max_steps: 20

@@ -1,0 +1,7 @@
+name: parabank-login-validation
+url: https://parabank.parasoft.com/parabank/index.htm
+steps:
+  - press Log In without filling in anything
+expect:
+  - an error asks for a username and password
+max_steps: 6

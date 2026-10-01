@@ -1,0 +1,11 @@
+# practice.expandtesting.com publishes these credentials on the login page.
+name: expandtesting-login
+url: https://practice.expandtesting.com/login
+steps:
+  - log in with the username and password from the test data
+expect:
+  - a message says you logged into a secure area
+data:
+  username: practice
+  password: SuperSecretPassword!
+max_steps: 8

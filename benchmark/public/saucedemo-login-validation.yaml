@@ -1,0 +1,7 @@
+name: saucedemo-login-validation
+url: https://www.saucedemo.com/
+steps:
+  - press the Login button without filling in anything
+expect:
+  - an error says the username is required
+max_steps: 6

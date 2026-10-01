@@ -1,0 +1,11 @@
+# practicetestautomation.com publishes these credentials on the page.
+name: practicetest-login
+url: https://practicetestautomation.com/practice-test-login/
+steps:
+  - log in with the username and password from the test data
+expect:
+  - the page says the user logged in successfully
+data:
+  username: student
+  password: Password123
+max_steps: 8

@@ -1,0 +1,12 @@
+name: expandtesting-signup-validation
+url: https://practice.expandtesting.com/register
+steps:
+  - fill in the username and password, but type the different confirm_password in the confirm field
+  - press Register
+expect:
+  - an error says the passwords do not match
+data:
+  username: ns${NS_RUN}x
+  password: Test-pass-1234
+  confirm_password: Other-pass-9876
+max_steps: 10

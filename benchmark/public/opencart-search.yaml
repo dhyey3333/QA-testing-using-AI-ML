@@ -1,0 +1,8 @@
+# demo.opencart.com answered 403 to a plain request (bot protection). Kept to record what happens.
+name: opencart-search
+url: https://demo.opencart.com/
+steps:
+  - search the store for "MacBook"
+expect:
+  - the search results list MacBook
+max_steps: 8

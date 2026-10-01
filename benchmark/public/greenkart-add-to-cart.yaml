@@ -1,0 +1,8 @@
+name: greenkart-add-to-cart
+url: https://rahulshettyacademy.com/seleniumPractise/#/
+steps:
+  - add Cucumber to the cart
+  - open the cart
+expect:
+  - the cart lists Cucumber
+max_steps: 10

@@ -1,0 +1,10 @@
+name: greenkart-checkout
+url: https://rahulshettyacademy.com/seleniumPractise/#/
+steps:
+  - add Cucumber to the cart
+  - open the cart and proceed to checkout
+  - place the order
+  - choose India as the country, agree to the terms and conditions, and proceed
+expect:
+  - a message says the order has been placed successfully
+max_steps: 20

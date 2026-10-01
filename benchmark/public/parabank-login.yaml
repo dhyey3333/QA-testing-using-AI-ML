@@ -1,0 +1,11 @@
+# parabank.parasoft.com: a demo bank. john / demo is its published demo account.
+name: parabank-login
+url: https://parabank.parasoft.com/parabank/index.htm
+steps:
+  - log in with the username and password from the test data
+expect:
+  - the Accounts Overview is shown
+data:
+  username: john
+  password: demo
+max_steps: 8

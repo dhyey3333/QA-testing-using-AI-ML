@@ -1,0 +1,7 @@
+name: automationexercise-search
+url: https://automationexercise.com/products
+steps:
+  - search the products for "top"
+expect:
+  - the searched products include Blue Top
+max_steps: 8

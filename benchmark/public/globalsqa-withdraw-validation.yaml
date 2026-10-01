@@ -1,0 +1,8 @@
+name: globalsqa-withdraw-validation
+url: https://www.globalsqa.com/angularJs-protractor/BankingProject/#/login
+steps:
+  - log in as the customer Harry Potter
+  - try to withdraw 1000000, more than the balance
+expect:
+  - a message says the transaction failed
+max_steps: 14

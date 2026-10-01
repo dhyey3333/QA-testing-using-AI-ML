@@ -1,0 +1,12 @@
+# demoblaze.com: a practice shop. Sign up a fresh fake user, then log in with it.
+name: demoblaze-signup
+url: https://www.demoblaze.com/
+steps:
+  - sign up with the username and password from the test data
+  - log in with the same username and password
+expect:
+  - the header welcomes the user by their username
+data:
+  username: ns${NS_RUN}
+  password: Test-pass-1234
+max_steps: 16

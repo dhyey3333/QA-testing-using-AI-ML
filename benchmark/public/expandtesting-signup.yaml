@@ -1,0 +1,10 @@
+name: expandtesting-signup
+url: https://practice.expandtesting.com/register
+steps:
+  - register a new account with the username and password from the test data, typing the password twice
+expect:
+  - a message confirms the registration succeeded
+data:
+  username: ns${NS_RUN}
+  password: Test-pass-1234
+max_steps: 10

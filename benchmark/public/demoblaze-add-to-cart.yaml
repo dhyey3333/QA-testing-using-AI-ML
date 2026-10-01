@@ -1,0 +1,10 @@
+name: demoblaze-add-to-cart
+url: https://www.demoblaze.com/
+steps:
+  - open the Samsung galaxy s6 product
+  - add it to the cart
+  - open the Cart page
+expect:
+  - the cart lists Samsung galaxy s6
+  - its price is 360
+max_steps: 12

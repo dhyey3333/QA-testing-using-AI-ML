@@ -1,0 +1,9 @@
+# GreenKart (rahulshettyacademy.com): a practice grocery shop.
+name: greenkart-search
+url: https://rahulshettyacademy.com/seleniumPractise/#/
+steps:
+  - search the products for "ber"
+expect:
+  - Cucumber is shown
+  - Brocolli is not shown
+max_steps: 6

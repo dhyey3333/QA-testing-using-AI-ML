@@ -1,0 +1,10 @@
+name: the-internet-login-validation
+url: https://the-internet.herokuapp.com/login
+steps:
+  - log in with the username and the wrong password from the test data
+expect:
+  - a message says the password is invalid
+data:
+  username: tomsmith
+  wrong_password: not-the-password
+max_steps: 8

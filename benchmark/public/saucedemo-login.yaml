@@ -1,0 +1,11 @@
+# Sauce Labs' practice shop. Its login page publishes these test accounts.
+name: saucedemo-login
+url: https://www.saucedemo.com/
+steps:
+  - log in with the test account
+expect:
+  - the Products list is shown
+data:
+  username: standard_user
+  password: secret_sauce
+max_steps: 8

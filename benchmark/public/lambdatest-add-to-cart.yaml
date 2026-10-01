@@ -1,0 +1,9 @@
+name: lambdatest-add-to-cart
+url: https://ecommerce-playground.lambdatest.io/
+steps:
+  - search the store for "iPhone"
+  - open the iPhone product and add it to the cart
+  - open the shopping cart
+expect:
+  - the shopping cart lists iPhone
+max_steps: 16

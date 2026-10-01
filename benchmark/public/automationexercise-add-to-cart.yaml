@@ -1,0 +1,8 @@
+name: automationexercise-add-to-cart
+url: https://automationexercise.com/products
+steps:
+  - add the Blue Top to the cart
+  - open the cart
+expect:
+  - the cart lists Blue Top
+max_steps: 12

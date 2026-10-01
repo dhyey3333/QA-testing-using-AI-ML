@@ -1,0 +1,21 @@
+# automationexercise.com: a shop built for automation practice. Fake data only.
+name: automationexercise-signup
+url: https://automationexercise.com/login
+steps:
+  - in New User Signup, enter the name and email from the test data and press Signup
+  - fill in the account information (password, first name, last name, address, country India, state, city, zipcode, mobile number) from the test data
+  - press Create Account
+expect:
+  - a page says the account was created
+data:
+  name: Test Shopper
+  email: ns${NS_RUN}@example.com
+  password: Test-pass-1234
+  first_name: Test
+  last_name: Shopper
+  address: 12 Example Lane
+  state: Maharashtra
+  city: Pune
+  zipcode: "411001"
+  mobile: "9000000000"
+max_steps: 40

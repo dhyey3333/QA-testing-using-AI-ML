@@ -1,0 +1,8 @@
+# LambdaTest's public e-commerce playground (a demo OpenCart store).
+name: lambdatest-search
+url: https://ecommerce-playground.lambdatest.io/
+steps:
+  - search the store for "iPhone"
+expect:
+  - the search results list a product named iPhone
+max_steps: 8
