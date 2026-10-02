@@ -32,7 +32,7 @@ _ENV_PAGE = re.compile(
     r"504 gateway time-?out|this site can.t be reached",
     re.IGNORECASE,
 )
-_ENV_REASON = re.compile(r"net::ERR_|page\.goto:|model call failed", re.IGNORECASE)
+_ENV_REASON = re.compile(r"net::ERR_|page\.goto:|model call failed|judge call failed", re.IGNORECASE)
 
 
 def environment_problem(result: RunResult) -> str:

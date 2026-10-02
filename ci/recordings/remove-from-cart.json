@@ -1,0 +1,158 @@
+{
+  "spec": "remove-from-cart",
+  "fingerprint": "89b2bc93fab9a208",
+  "model": "qwen3-vl:4b-instruct",
+  "recorded_at": "2026-10-02T15:48:53",
+  "steps": [
+    {
+      "action": {
+        "kind": "click",
+        "id": 5,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [5] \"Add Masala Chai (250 g) to cart\"",
+      "target_label": "Add Masala Chai (250 g) to cart",
+      "locators": [
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Add Masala Chai (250 g) to cart"
+        },
+        {
+          "by": "label",
+          "value": "Add Masala Chai (250 g) to cart"
+        },
+        {
+          "by": "css",
+          "value": "#view > ul > li:nth-of-type(1) > button"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 6,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [6] \"Add Filter Coffee (200 g) to cart\"",
+      "target_label": "Add Filter Coffee (200 g) to cart",
+      "locators": [
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Add Filter Coffee (200 g) to cart"
+        },
+        {
+          "by": "label",
+          "value": "Add Filter Coffee (200 g) to cart"
+        },
+        {
+          "by": "css",
+          "value": "#view > ul > li:nth-of-type(2) > button"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 2,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [2] \"Cart (2)\"",
+      "target_label": "Cart (2)",
+      "locators": [
+        {
+          "by": "role",
+          "role": "link",
+          "name": "Cart (2)"
+        },
+        {
+          "by": "text",
+          "value": "Cart (2)"
+        },
+        {
+          "by": "css",
+          "value": "#cart-link"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 4,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [4] \"Remove Masala Chai (250 g)\"",
+      "target_label": "Remove Masala Chai (250 g)",
+      "locators": [
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Remove Masala Chai (250 g)"
+        },
+        {
+          "by": "label",
+          "value": "Remove Masala Chai (250 g)"
+        },
+        {
+          "by": "css",
+          "value": "#view > div > table > tbody > tr:nth-of-type(1) > td:nth-of-type(5) > button"
+        }
+      ]
+    }
+  ],
+  "evidence": [
+    "Filter Coffee (200 g)",
+    "Total: ₹240"
+  ],
+  "absent": [
+    "Masala Chai"
+  ],
+  "checks": [
+    {
+      "expected": "the cart lists Filter Coffee",
+      "evidence": [
+        "Filter Coffee (200 g)"
+      ],
+      "absent": []
+    },
+    {
+      "expected": "Masala Chai is no longer in the cart",
+      "evidence": [],
+      "absent": [
+        "Masala Chai"
+      ]
+    },
+    {
+      "expected": "the total is ₹240",
+      "evidence": [
+        "Total: ₹240"
+      ],
+      "absent": []
+    }
+  ]
+}

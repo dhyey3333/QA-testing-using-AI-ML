@@ -1,0 +1,68 @@
+{
+  "spec": "search",
+  "fingerprint": "bbd3d20286861073",
+  "model": "qwen3-vl:4b-instruct",
+  "recorded_at": "2026-10-02T15:49:11",
+  "steps": [
+    {
+      "action": {
+        "kind": "type",
+        "id": 4,
+        "text": "coffee",
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "type [4] \"Search products\" <- \"coffee\"",
+      "target_label": "Search products",
+      "locators": [
+        {
+          "by": "role",
+          "role": "searchbox",
+          "name": "Search products"
+        },
+        {
+          "by": "label",
+          "value": "Search products"
+        },
+        {
+          "by": "placeholder",
+          "value": "Search products"
+        },
+        {
+          "by": "css",
+          "value": "#search"
+        }
+      ]
+    }
+  ],
+  "evidence": [
+    "Filter Coffee (200 g)",
+    "80:20 coffee and chicory, ground for a steel filter.",
+    "₹240"
+  ],
+  "absent": [
+    "Masala Chai"
+  ],
+  "checks": [
+    {
+      "expected": "Filter Coffee (200 g) is shown",
+      "evidence": [
+        "Filter Coffee (200 g)",
+        "80:20 coffee and chicory, ground for a steel filter.",
+        "₹240"
+      ],
+      "absent": []
+    },
+    {
+      "expected": "Masala Chai is not shown",
+      "evidence": [],
+      "absent": [
+        "Masala Chai"
+      ]
+    }
+  ]
+}

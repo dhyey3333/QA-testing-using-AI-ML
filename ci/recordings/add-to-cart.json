@@ -1,0 +1,143 @@
+{
+  "spec": "add-to-cart",
+  "fingerprint": "1cf79f62400abb23",
+  "model": "qwen3-vl:4b-instruct",
+  "recorded_at": "2026-10-02T15:47:56",
+  "steps": [
+    {
+      "action": {
+        "kind": "click",
+        "id": 5,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [5] \"Add Masala Chai (250 g) to cart\"",
+      "target_label": "Add Masala Chai (250 g) to cart",
+      "locators": [
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Add Masala Chai (250 g) to cart"
+        },
+        {
+          "by": "label",
+          "value": "Add Masala Chai (250 g) to cart"
+        },
+        {
+          "by": "css",
+          "value": "#view > ul > li:nth-of-type(1) > button"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 7,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [7] \"Add Clay Kulhad (set of 6) to cart\"",
+      "target_label": "Add Clay Kulhad (set of 6) to cart",
+      "locators": [
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Add Clay Kulhad (set of 6) to cart"
+        },
+        {
+          "by": "label",
+          "value": "Add Clay Kulhad (set of 6) to cart"
+        },
+        {
+          "by": "css",
+          "value": "#view > ul > li:nth-of-type(3) > button"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 2,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [2] \"Cart (2)\"",
+      "target_label": "Cart (2)",
+      "locators": [
+        {
+          "by": "role",
+          "role": "link",
+          "name": "Cart (2)"
+        },
+        {
+          "by": "text",
+          "value": "Cart (2)"
+        },
+        {
+          "by": "css",
+          "value": "#cart-link"
+        }
+      ]
+    }
+  ],
+  "evidence": [
+    "Masala Chai (250 g) 1 ₹180",
+    "Clay Kulhad (set of 6) 1 ₹420",
+    "Masala Chai (250 g) 1 ₹180",
+    "Clay Kulhad (set of 6) 1 ₹420",
+    "Total: ₹600",
+    "₹180",
+    "₹420",
+    "Cart (2)"
+  ],
+  "absent": [],
+  "checks": [
+    {
+      "expected": "the cart lists Masala Chai and Clay Kulhad, each with quantity 1",
+      "evidence": [
+        "Masala Chai (250 g) 1 ₹180",
+        "Clay Kulhad (set of 6) 1 ₹420"
+      ],
+      "absent": []
+    },
+    {
+      "expected": "the cart prices Masala Chai at ₹180 and Clay Kulhad at ₹420",
+      "evidence": [
+        "Masala Chai (250 g) 1 ₹180",
+        "Clay Kulhad (set of 6) 1 ₹420"
+      ],
+      "absent": []
+    },
+    {
+      "expected": "the total equals the sum of the line totals",
+      "evidence": [
+        "Total: ₹600",
+        "₹180",
+        "₹420"
+      ],
+      "absent": []
+    },
+    {
+      "expected": "the header's cart link shows 2 items",
+      "evidence": [
+        "Cart (2)"
+      ],
+      "absent": []
+    }
+  ]
+}
