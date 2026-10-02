@@ -1,0 +1,418 @@
+{
+  "spec": "checkout",
+  "fingerprint": "b9edd2db98e996d3",
+  "model": "qwen3-vl:4b-instruct",
+  "recorded_at": "2026-10-02T15:50:29",
+  "steps": [
+    {
+      "action": {
+        "kind": "click",
+        "id": 3,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [3] \"Log in\"",
+      "target_label": "Log in",
+      "locators": [
+        {
+          "by": "role",
+          "role": "link",
+          "name": "Log in"
+        },
+        {
+          "by": "text",
+          "value": "Log in"
+        },
+        {
+          "by": "css",
+          "value": "#account > a"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "type",
+        "id": 4,
+        "text": "{{email}}",
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "type [4] \"Email\" <- \"{{email}}\"",
+      "target_label": "Email",
+      "locators": [
+        {
+          "by": "role",
+          "role": "textbox",
+          "name": "Email"
+        },
+        {
+          "by": "label",
+          "value": "Email"
+        },
+        {
+          "by": "css",
+          "value": "#login-form > label:nth-of-type(1) > input"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "type",
+        "id": 5,
+        "text": "{{password}}",
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "type [5] \"Password\" <- \"{{password}}\"",
+      "target_label": "Password",
+      "locators": [
+        {
+          "by": "label",
+          "value": "Password"
+        },
+        {
+          "by": "css",
+          "value": "#login-form > label:nth-of-type(2) > input"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 6,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [6] \"Log in — Email\"",
+      "target_label": "Log in — Email",
+      "locators": [
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Log in"
+        },
+        {
+          "by": "css",
+          "value": "#login-form > button"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 6,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [6] \"Add Filter Coffee (200 g) to cart\"",
+      "target_label": "Add Filter Coffee (200 g) to cart",
+      "locators": [
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Add Filter Coffee (200 g) to cart"
+        },
+        {
+          "by": "label",
+          "value": "Add Filter Coffee (200 g) to cart"
+        },
+        {
+          "by": "css",
+          "value": "#view > ul > li:nth-of-type(2) > button"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 2,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [2] \"Cart (1)\"",
+      "target_label": "Cart (1)",
+      "locators": [
+        {
+          "by": "role",
+          "role": "link",
+          "name": "Cart (1)"
+        },
+        {
+          "by": "text",
+          "value": "Cart (1)"
+        },
+        {
+          "by": "css",
+          "value": "#cart-link"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 5,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [5] \"Proceed to checkout\"",
+      "target_label": "Proceed to checkout",
+      "locators": [
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Proceed to checkout"
+        },
+        {
+          "by": "text",
+          "value": "Proceed to checkout"
+        },
+        {
+          "by": "css",
+          "value": "#checkout"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "type",
+        "id": 4,
+        "text": "{{full_name}}",
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "type [4] \"Full name\" <- \"{{full_name}}\"",
+      "target_label": "Full name",
+      "locators": [
+        {
+          "by": "role",
+          "role": "textbox",
+          "name": "Full name"
+        },
+        {
+          "by": "label",
+          "value": "Full name"
+        },
+        {
+          "by": "css",
+          "value": "#checkout-form > label:nth-of-type(1) > input"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "type",
+        "id": 5,
+        "text": "{{address}}",
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "type [5] \"Address\" <- \"{{address}}\"",
+      "target_label": "Address",
+      "locators": [
+        {
+          "by": "role",
+          "role": "textbox",
+          "name": "Address"
+        },
+        {
+          "by": "label",
+          "value": "Address"
+        },
+        {
+          "by": "css",
+          "value": "#checkout-form > label:nth-of-type(2) > input"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "type",
+        "id": 6,
+        "text": "{{city}}",
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "type [6] \"City\" <- \"{{city}}\"",
+      "target_label": "City",
+      "locators": [
+        {
+          "by": "role",
+          "role": "textbox",
+          "name": "City"
+        },
+        {
+          "by": "label",
+          "value": "City"
+        },
+        {
+          "by": "css",
+          "value": "#checkout-form > label:nth-of-type(3) > input"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "type",
+        "id": 7,
+        "text": "{{pincode}}",
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "type [7] \"Pincode\" <- \"{{pincode}}\"",
+      "target_label": "Pincode",
+      "locators": [
+        {
+          "by": "role",
+          "role": "textbox",
+          "name": "Pincode"
+        },
+        {
+          "by": "label",
+          "value": "Pincode"
+        },
+        {
+          "by": "css",
+          "value": "#checkout-form > label:nth-of-type(4) > input"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 8,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [8] \"Cash on delivery\"",
+      "target_label": "Cash on delivery",
+      "locators": [
+        {
+          "by": "role",
+          "role": "radio",
+          "name": "Cash on delivery"
+        },
+        {
+          "by": "label",
+          "value": "Cash on delivery"
+        },
+        {
+          "by": "css",
+          "value": "#checkout-form > fieldset > label:nth-of-type(1) > input"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 11,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [11] \"Place order\"",
+      "target_label": "Place order",
+      "locators": [
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Place order"
+        },
+        {
+          "by": "text",
+          "value": "Place order"
+        },
+        {
+          "by": "css",
+          "value": "#checkout-form > div > button"
+        }
+      ]
+    }
+  ],
+  "evidence": [
+    "Order placed!",
+    "Order number: KC-10001",
+    "Pay ₹240 in cash when it arrives."
+  ],
+  "absent": [],
+  "checks": [
+    {
+      "expected": "a page says the order was placed",
+      "evidence": [
+        "Order placed!"
+      ],
+      "absent": []
+    },
+    {
+      "expected": "it shows an order number that looks like KC-12345",
+      "evidence": [
+        "Order number: KC-10001"
+      ],
+      "absent": []
+    },
+    {
+      "expected": "the amount to pay is ₹240",
+      "evidence": [
+        "Pay ₹240 in cash when it arrives."
+      ],
+      "absent": []
+    }
+  ]
+}

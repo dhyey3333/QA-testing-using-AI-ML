@@ -1,0 +1,201 @@
+{
+  "spec": "login-with-code",
+  "fingerprint": "94870aa5e5fdc5d6",
+  "model": "qwen3-vl:4b-instruct",
+  "recorded_at": "2026-10-02T15:47:25",
+  "steps": [
+    {
+      "action": {
+        "kind": "click",
+        "id": 3,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [3] \"Log in\"",
+      "target_label": "Log in",
+      "locators": [
+        {
+          "by": "role",
+          "role": "link",
+          "name": "Log in"
+        },
+        {
+          "by": "text",
+          "value": "Log in"
+        },
+        {
+          "by": "css",
+          "value": "#account > a"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 7,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [7] \"Sign in with an email code instead\"",
+      "target_label": "Sign in with an email code instead",
+      "locators": [
+        {
+          "by": "role",
+          "role": "link",
+          "name": "Sign in with an email code instead"
+        },
+        {
+          "by": "text",
+          "value": "Sign in with an email code instead"
+        },
+        {
+          "by": "css",
+          "value": "#view > p > a"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "type",
+        "id": 4,
+        "text": "{{email}}",
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "type [4] \"Email\" <- \"{{email}}\"",
+      "target_label": "Email",
+      "locators": [
+        {
+          "by": "role",
+          "role": "textbox",
+          "name": "Email"
+        },
+        {
+          "by": "label",
+          "value": "Email"
+        },
+        {
+          "by": "css",
+          "value": "#code-request > label > input"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 5,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [5] \"Email me a code\"",
+      "target_label": "Email me a code",
+      "locators": [
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Email me a code"
+        },
+        {
+          "by": "text",
+          "value": "Email me a code"
+        },
+        {
+          "by": "css",
+          "value": "#code-request > button"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "type",
+        "id": 4,
+        "text": "{{email_code}}",
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "type [4] \"Sign-in code\" <- \"{{email_code}}\"",
+      "target_label": "Sign-in code",
+      "locators": [
+        {
+          "by": "role",
+          "role": "textbox",
+          "name": "Sign-in code"
+        },
+        {
+          "by": "label",
+          "value": "Sign-in code"
+        },
+        {
+          "by": "css",
+          "value": "#code-verify > label > input"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 5,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [5] \"Sign in\"",
+      "target_label": "Sign in",
+      "locators": [
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Sign in"
+        },
+        {
+          "by": "text",
+          "value": "Sign in"
+        },
+        {
+          "by": "css",
+          "value": "#code-verify > button"
+        }
+      ]
+    }
+  ],
+  "evidence": [
+    "Hi, Test Shopper Log out"
+  ],
+  "absent": [],
+  "checks": [
+    {
+      "expected": "the header greets the logged-in user by name",
+      "evidence": [
+        "Hi, Test Shopper Log out"
+      ],
+      "absent": []
+    }
+  ]
+}

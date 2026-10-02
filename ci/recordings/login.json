@@ -1,0 +1,132 @@
+{
+  "spec": "login",
+  "fingerprint": "cd78cb15a610938e",
+  "model": "qwen3-vl:4b-instruct",
+  "recorded_at": "2026-10-02T15:45:59",
+  "steps": [
+    {
+      "action": {
+        "kind": "click",
+        "id": 3,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [3] \"Log in\"",
+      "target_label": "Log in",
+      "locators": [
+        {
+          "by": "role",
+          "role": "link",
+          "name": "Log in"
+        },
+        {
+          "by": "text",
+          "value": "Log in"
+        },
+        {
+          "by": "css",
+          "value": "#account > a"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "type",
+        "id": 4,
+        "text": "{{email}}",
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "type [4] \"Email\" <- \"{{email}}\"",
+      "target_label": "Email",
+      "locators": [
+        {
+          "by": "role",
+          "role": "textbox",
+          "name": "Email"
+        },
+        {
+          "by": "label",
+          "value": "Email"
+        },
+        {
+          "by": "css",
+          "value": "#login-form > label:nth-of-type(1) > input"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "type",
+        "id": 5,
+        "text": "{{password}}",
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "type [5] \"Password\" <- \"{{password}}\"",
+      "target_label": "Password",
+      "locators": [
+        {
+          "by": "label",
+          "value": "Password"
+        },
+        {
+          "by": "css",
+          "value": "#login-form > label:nth-of-type(2) > input"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 6,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [6] \"Log in — Email\"",
+      "target_label": "Log in — Email",
+      "locators": [
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Log in"
+        },
+        {
+          "by": "css",
+          "value": "#login-form > button"
+        }
+      ]
+    }
+  ],
+  "evidence": [
+    "Hi, Test Shopper Log out"
+  ],
+  "absent": [],
+  "checks": [
+    {
+      "expected": "the header greets the logged-in user by name",
+      "evidence": [
+        "Hi, Test Shopper Log out"
+      ],
+      "absent": []
+    }
+  ]
+}

@@ -1,0 +1,200 @@
+{
+  "spec": "guest-checkout",
+  "fingerprint": "a7089c328c14e769",
+  "model": "qwen3-vl:4b-instruct",
+  "recorded_at": "2026-10-02T15:51:37",
+  "steps": [
+    {
+      "action": {
+        "kind": "click",
+        "id": 6,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [6] \"Add Filter Coffee (200 g) to cart\"",
+      "target_label": "Add Filter Coffee (200 g) to cart",
+      "locators": [
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Add Filter Coffee (200 g) to cart"
+        },
+        {
+          "by": "label",
+          "value": "Add Filter Coffee (200 g) to cart"
+        },
+        {
+          "by": "css",
+          "value": "#view > ul > li:nth-of-type(2) > button"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 2,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [2] \"Cart (1)\"",
+      "target_label": "Cart (1)",
+      "locators": [
+        {
+          "by": "role",
+          "role": "link",
+          "name": "Cart (1)"
+        },
+        {
+          "by": "text",
+          "value": "Cart (1)"
+        },
+        {
+          "by": "css",
+          "value": "#cart-link"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 5,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [5] \"Proceed to checkout\"",
+      "target_label": "Proceed to checkout",
+      "locators": [
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Proceed to checkout"
+        },
+        {
+          "by": "text",
+          "value": "Proceed to checkout"
+        },
+        {
+          "by": "css",
+          "value": "#checkout"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "type",
+        "id": 4,
+        "text": "{{email}}",
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "type [4] \"Email\" <- \"{{email}}\"",
+      "target_label": "Email",
+      "locators": [
+        {
+          "by": "role",
+          "role": "textbox",
+          "name": "Email"
+        },
+        {
+          "by": "label",
+          "value": "Email"
+        },
+        {
+          "by": "css",
+          "value": "#login-form > label:nth-of-type(1) > input"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "type",
+        "id": 5,
+        "text": "{{password}}",
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "type [5] \"Password\" <- \"{{password}}\"",
+      "target_label": "Password",
+      "locators": [
+        {
+          "by": "label",
+          "value": "Password"
+        },
+        {
+          "by": "css",
+          "value": "#login-form > label:nth-of-type(2) > input"
+        }
+      ]
+    },
+    {
+      "action": {
+        "kind": "click",
+        "id": 6,
+        "text": null,
+        "value": null,
+        "key": null,
+        "direction": null,
+        "reason": null,
+        "title": null,
+        "details": null
+      },
+      "description": "click [6] \"Log in — Log in to check out. Your cart is saved.\"",
+      "target_label": "Log in — Log in to check out. Your cart is saved.",
+      "locators": [
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Log in"
+        },
+        {
+          "by": "css",
+          "value": "#login-form > button"
+        }
+      ]
+    }
+  ],
+  "evidence": [
+    "Checkout",
+    "Order total: ₹240"
+  ],
+  "absent": [],
+  "checks": [
+    {
+      "expected": "the checkout form is shown",
+      "evidence": [
+        "Checkout"
+      ],
+      "absent": []
+    },
+    {
+      "expected": "the order total is ₹240",
+      "evidence": [
+        "Order total: ₹240"
+      ],
+      "absent": []
+    }
+  ]
+}

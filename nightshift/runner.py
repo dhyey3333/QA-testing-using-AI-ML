@@ -32,7 +32,7 @@ from .actions import TEST_KINDS, ActionFailed, InvalidAction, execute, settle, t
 from .checks import check_page, listen
 from .inbox import DYNAMIC, InboxError, extract_code, extract_link, inbox_for, recipient, wait_for_email
 from .export import write_export
-from .judge import is_on_page, judge_page
+from .judge import is_on_page, judge_page, normalize
 from .locators import describe_target, resolve
 from .model import Model, ModelError, usage_snapshot
 from .observe import JPEG_QUALITY, Observation, observe, screenshot, watch_form_validation
@@ -546,7 +546,7 @@ class _Run:
             evidence, absent = list(saved.get("evidence") or []), list(saved.get("absent") or [])
             if not evidence and not absent:
                 return None
-            if not all(is_on_page(mask(quote, self.spec.data), page) for quote in evidence):
+            if not all(_still_shown(mask(quote, self.spec.data), page, saved["expected"]) for quote in evidence):
                 return None
             if any(is_on_page(mask(quote, self.spec.data), page) for quote in absent):
                 return None
@@ -640,6 +640,21 @@ _UNFINISHED_FORM_JS = r"""
   return gaps;
 }
 """
+
+
+def _still_shown(quote: str, page: str, expected: str) -> bool:
+    """A recorded quote is on the page again. Its numbers may differ only where the expected
+    result names no number: "Order number: KC-10001" proves "an order number that looks like
+    KC-12345" when the next order is KC-10002. "Pay ₹240" for "the amount is ₹240" must match
+    exactly, so a wrong total still goes to the judge and fails.
+    """
+    if is_on_page(quote, page):
+        return True
+    digits = re.findall(r"\d+", quote)
+    if not digits or any(d in expected for d in digits):
+        return False
+    pattern = r"\d+".join(re.escape(part) for part in re.split(r"\d+", normalize(quote)))
+    return re.search(pattern, normalize(page)) is not None
 
 
 def _page_key(observation: Observation) -> str:

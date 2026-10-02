@@ -237,3 +237,19 @@ def test_explore_turns_browser_errors_into_findings(shop, browser, base_url, tmp
     assert len(result.pages) >= 2
     for name in ("discovered.json", "findings.md", "report.html"):
         assert (tmp_path / "explore" / name).exists(), name
+
+
+def test_a_replay_tolerates_a_new_order_number_but_not_a_new_total(run, tmp_path):
+    from nightshift.runner import _still_shown
+
+    # The order number is a shape in the expected result, the amount is a value.
+    assert _still_shown("Order number: KC-10001", "Order placed!\nOrder number: KC-10002",
+                        "it shows an order number that looks like KC-12345")
+    assert not _still_shown("Pay ₹240 in cash", "Pay ₹290 in cash", "the amount to pay is ₹240")
+    # Through the real loop: record a checkout, place another order, replay with no model call.
+    store = RecordingStore(tmp_path / "recordings")
+    assert run("checkout", CHECKOUT, evidence=CHECKOUT_EVIDENCE + ["Order number: KC-1"], recordings=store).verdict == "pass"
+    run("checkout", CHECKOUT, evidence=CHECKOUT_EVIDENCE)  # the next order gets a new number
+    replayer = ScriptedModel(evidence=CHECKOUT_EVIDENCE, forbid_agent=True)
+    result = run("checkout", model=replayer, recordings=store)
+    assert result.verdict == "pass" and replayer.judgements == 0
