@@ -233,9 +233,11 @@ def make_handler(app: App):
         def _handle(self, method: str) -> None:
             path = unquote(urlsplit(self.path).path)
             try:
+                # The body is read before anything is refused: closing a connection with the body
+                # still unread resets it, and the client sees a dropped connection, not the 403.
+                body = self._body() if method in ("POST", "PUT") else {}
                 if method != "GET":
                     self._check_change()
-                body = self._body() if method in ("POST", "PUT") else {}
                 token = self._token()
                 user = app.store.user_for(token)
                 if path == "/api/login" and method == "POST":
