@@ -30,7 +30,9 @@ jobs:
           uv sync --no-dev
           flags=()
           if [ -n "$BUGS" ]; then flags=(--bugs "$BUGS"); fi
-          nohup uv run python -m demo_shop "${flags[@]}" > shop.log 2>&1 &
+          # The venv's python, not `uv run`: a uv process left running holds uv's cache lock,
+          # and setup-uv's end-of-job cache prune then waits 5 minutes for it and fails the job.
+          nohup .venv/bin/python -m demo_shop "${flags[@]}" > shop.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://localhost:5180/ > /dev/null && break; sleep 1; done
 
       - uses: ./
