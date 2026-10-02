@@ -135,3 +135,15 @@ def test_waiting_with_no_change_is_not_a_dead_control(browser, base_url, tmp_pat
     script = [("raw", {"action": "wait"})] * 3
     result = run_spec(browser, spec, ScriptedModel(script, evidence=["Blue Top"]), out_dir=tmp_path / "w")
     assert result.verdict == "pass", result.reason
+
+
+def test_a_failure_reproduced_after_the_second_look_stands(run):
+    # Demo shop, step 3 benchmark: the cart link was broken, the second look sent the agent back,
+    # and it bounced between "Back to the shop" and the broken link until it ran out of steps.
+    script = [("click", "Add Masala Chai"), ("click", "Add Clay Kulhad"), ("click", "Cart ("),
+              ("raw", {"action": "fail", "reason": "page not found after opening the cart"}),
+              ("click", "Back to the shop"), ("click", "Cart (")]
+    result = run("add-to-cart", script, bugs={"cart-link-404"}, evidence=["Total"])
+    assert result.verdict == "fail" and result.category == "BUG"
+    assert result.reason == "page not found after opening the cart (reproduced after going back)"
+    assert len(result.steps) == 6

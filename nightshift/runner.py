@@ -253,6 +253,7 @@ class _Run:
         self.new_tabs = new_tabs if new_tabs is not None else []
         self.started = time.time()
         self.asked: set[str] = set()  # the checks before a verdict that were already used (each once per run)
+        self.failed_at: tuple[str, str] | None = None  # (page, reason) where the agent first said fail
 
     def go(self, recording: Recording | None) -> tuple[str, str]:
         self.page.goto(self.spec.url, wait_until="domcontentloaded")
@@ -327,6 +328,13 @@ class _Run:
 
             if self.result.app_errors:
                 return "fail", self.result.app_errors[0]
+            if self.failed_at and _page_key(observation) == self.failed_at[0] and steps[-1].action is not None \
+                    and steps[-1].action.kind not in ("pass", "fail"):
+                # Back on the very page it failed on, after the second look: the failure reproduced.
+                # Found on the demo shop: a broken cart link, then "Back to the shop" and the cart link
+                # again eleven times until the steps ran out, so a caught bug became a tester error.
+                return self.overrule(f"{self.failed_at[1]} (reproduced after going back)", observation,
+                                     screenshot(self.page))
             if stuck := _stuck(steps):
                 if (gaps := self._unfinished_form(steps[-1])) and "form" not in self.asked:
                     # Not a dead button yet: its form has empty fields or unticked boxes. Found on a
@@ -383,6 +391,8 @@ class _Run:
                 if verdict[0] == "fail" and (again := self._second_look(action)) is not None:
                     step.outcome = f"not accepted yet: {again}"
                     self.log(f"    (second look: {again})")
+                    if action.kind == "fail":
+                        self.failed_at = (_page_key(observation), action.reason or "the agent reported a bug")
                     continue
                 return verdict
 
@@ -630,6 +640,12 @@ _UNFINISHED_FORM_JS = r"""
   return gaps;
 }
 """
+
+
+def _page_key(observation: Observation) -> str:
+    """Which page this is: its URL and its controls. Not its text, since a toast or a timer would
+    make the same broken page look new."""
+    return observation.url + "\n" + "\n".join(sorted(e.label for e in observation.elements))
 
 
 def _stuck(steps: list[Step]) -> str | None:
