@@ -315,3 +315,12 @@ when specs carry requirement ids, and every test's result. Screenshots are embed
 emailed or printed to PDF as one file. Light theme only, because it is printed. With `--brand` it
 names the agency that prepared it and never mentions Nightshift. Ticket links come from
 `issues.json`, written whenever Jira or GitHub filing succeeds.
+
+## D30. A pull-request check that needs no model
+Hosted CI runners have no GPU, and a model on every push costs money and adds flakiness. Since a
+replay re-checks its recorded evidence (D20), a suite of saved paths runs with no model at all: the
+Action takes `recordings:` and the model inputs are optional. A test whose path breaks needs the
+agent; with no model configured it is reported as ENV_ISSUE ("model call failed"), never as a
+pass. The results go to the pull request as one comment, found by a hidden marker and edited on
+every later push, so a PR doesn't fill up with bot comments. The comment leads with what needs
+attention, bugs first, and only counts the passes.

@@ -1,0 +1,45 @@
+# Nightshift testing its own demo shop on every pull request: the API tests, plus the UI tests
+# replayed from saved paths in ci/recordings. Replays re-check their recorded evidence, so this
+# job needs no model and no GPU. Run it by hand with bugs planted to see a failing report.
+name: Nightshift on pull requests
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      bugs:
+        description: Demo-shop bugs to plant, comma-separated (see python -m demo_shop --list-bugs)
+        default: ""
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Start the demo shop
+        env:
+          BUGS: ${{ inputs.bugs }}
+        run: |
+          uv sync --no-dev
+          flags=()
+          if [ -n "$BUGS" ]; then flags=(--bugs "$BUGS"); fi
+          nohup uv run python -m demo_shop "${flags[@]}" > shop.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:5180/ > /dev/null && break; sleep 1; done
+
+      - uses: ./
+        with:
+          # The API tests, and the shop's UI tests that have a saved path. pay-online and
+          # pay-online-failure act inside an iframe, which isn't saved for replay yet.
+          specs: >-
+            specs/api specs/login.yaml specs/logout.yaml specs/login-email-case.yaml specs/login-with-code.yaml
+            specs/add-to-cart.yaml specs/remove-from-cart.yaml specs/search.yaml specs/checkout.yaml
+            specs/guest-checkout.yaml specs/checkout-validation.yaml
+          recordings: ci/recordings
+          retries: "0"

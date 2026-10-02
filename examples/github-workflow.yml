@@ -13,15 +13,19 @@ jobs:
   qa:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write # the results comment
     steps:
       - uses: actions/checkout@v4
 
       # Start the app here (docker compose up -d, npm start &), or point base-url
       # at a preview deployment. The specs' own URLs are used if base-url is empty.
 
-      - uses: dhyey3333/nightshift@main
+      - uses: dhyey3333/QA-testing-using-AI-ML@main
         with:
           specs: specs/
+          recordings: .nightshift/recordings # commit it: saved paths replay with no model call
           base-url: ${{ vars.STAGING_URL }}
           # Hosted runners have no GPU: use a hosted open-weights vision model.
           model-base-url: https://openrouter.ai/api/v1

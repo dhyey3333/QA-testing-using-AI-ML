@@ -38,7 +38,7 @@ from .generate import design_tests, env_name, generate_specs, load_pages, parse_
 from .model import HttpModel, ModelConfig, ModelError
 from .notify import append_github_summary, github_run_url, post_slack, slack_payload
 from .recording import RecordingStore
-from .report import write_history, write_junit, write_run_index
+from .report import pr_comment, write_history, write_junit, write_run_index
 from .result import RunResult
 from .runner import RunOptions, device_options, open_browser, run_with_retries
 from .spec import Spec, SpecError, goal_spec_yaml, load_spec, load_specs
@@ -187,6 +187,7 @@ def _run_options(parser: argparse.ArgumentParser) -> None:
                         help="when to post to Slack (default: failures)")
     parser.add_argument("--file-jira", action="store_true",
                         help="file each defect in Jira (JIRA_URL, JIRA_PROJECT, JIRA_EMAIL + JIRA_API_TOKEN or JIRA_TOKEN)")
+    parser.add_argument("--pr-comment", type=Path, help="also write a pull-request comment (Markdown) here, for CI")
     parser.add_argument("--client", default="", help="also write client-report.html for this client")
     parser.add_argument("--brand", default="", help="the name the client report is prepared by (your company)")
     parser.add_argument("--logo", type=Path, help="a logo for the client report (PNG, JPEG or SVG)")
@@ -332,6 +333,8 @@ def _execute(specs: list[Spec], args: argparse.Namespace, model: HttpModel) -> t
         print(f"defects: {run_dir / 'defects.html'}")
         if args.file_jira:
             _file_in_jira(defects, run_dir)
+    if args.pr_comment:
+        args.pr_comment.write_text(pr_comment(results, defects, github_run_url()), encoding="utf-8")
     if args.client or args.brand:
         report = write_client_report(run_dir, client=args.client, brand=args.brand, logo=args.logo,
                                      specs={spec.name: spec for spec in specs})

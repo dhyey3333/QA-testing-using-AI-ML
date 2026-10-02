@@ -11,15 +11,22 @@ inputs:
   base-url:
     description: Run the specs against this deployment (a preview or staging URL), keeping each spec's path
     default: ""
+  recordings:
+    description: >-
+      Folder of saved paths (commit it). A spec with a saved path is replayed and its recorded evidence
+      re-checked with no model call, so a suite of saved paths needs no model at all.
+    default: .nightshift/recordings
   retries:
     description: Re-run a failure this many times with a fresh agent before reporting it
     default: "1"
   model-base-url:
-    description: OpenAI-compatible endpoint. Hosted runners have no GPU, so use a hosted open-weights model.
-    required: true
+    description: >-
+      OpenAI-compatible endpoint, needed only for specs without a saved path (or when one breaks).
+      Hosted runners have no GPU, so use a hosted open-weights model.
+    default: ""
   model-name:
     description: A vision model name at that endpoint
-    required: true
+    default: ""
   model-api-key:
     description: API key for the endpoint (pass a secret)
     default: ""
@@ -29,6 +36,12 @@ inputs:
   slack-webhook:
     description: Optional Slack incoming-webhook URL (pass a secret); posts when something fails
     default: ""
+  pr-comment:
+    description: On pull requests, comment the results (one comment, updated on every push)
+    default: "true"
+  github-token:
+    description: "Token for the pull-request comment; the default needs `pull-requests: write`"
+    default: ${{ github.token }}
   args:
     description: Extra arguments for `nightshift run`, e.g. "--device 'iPhone 13' --video"
     default: ""
@@ -51,6 +64,7 @@ runs:
       env:
         NS_SPECS: ${{ inputs.specs }}
         NS_BASE_URL: ${{ inputs.base-url }}
+        NS_RECORDINGS: ${{ inputs.recordings }}
         NS_RETRIES: ${{ inputs.retries }}
         NS_ARGS: ${{ inputs.args }}
         MODEL_BASE_URL: ${{ inputs.model-base-url }}
@@ -59,12 +73,31 @@ runs:
         JUDGE_NAME: ${{ inputs.judge-name }}
         SLACK_WEBHOOK_URL: ${{ inputs.slack-webhook }}
       run: |
-        args=(run $NS_SPECS --retries "$NS_RETRIES" --junit nightshift-junit.xml)
+        args=(run $NS_SPECS --retries "$NS_RETRIES" --junit nightshift-junit.xml --pr-comment nightshift-comment.md)
+        args+=(--recordings "$NS_RECORDINGS" --no-record)
         if [ -n "$NS_BASE_URL" ]; then args+=(--base-url "$NS_BASE_URL"); fi
         # xargs splits "--device 'iPhone 13'" respecting quotes, without running anything.
         extra=()
         if [ -n "$NS_ARGS" ]; then mapfile -t extra < <(xargs -n1 printf '%s\n' <<< "$NS_ARGS"); fi
         uv run --project "$GITHUB_ACTION_PATH" nightshift "${args[@]}" "${extra[@]}"
+
+    - name: Comment on the pull request
+      if: always() && github.event_name == 'pull_request' && inputs.pr-comment == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+      run: |
+        [ -f nightshift-comment.md ] || { echo "no results to comment"; exit 0; }
+        # One comment per pull request: find ours by its hidden marker and update it.
+        id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+               --jq '.[] | select(.body | contains("<!-- nightshift-report -->")) | .id' | tail -n 1)
+        if [ -n "$id" ]; then
+          gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@nightshift-comment.md > /dev/null
+        else
+          gh api "repos/$REPO/issues/$PR/comments" -F body=@nightshift-comment.md > /dev/null
+        fi
 
     - name: Upload reports, traces and bug reports
       if: always()
@@ -74,3 +107,4 @@ runs:
         path: |
           runs/
           nightshift-junit.xml
+          nightshift-comment.md

@@ -12,7 +12,7 @@ Design reasoning: `docs/DECISIONS.md`.
 - `benchmark/`: `python -m benchmark [--app shop|clinic]`.
 - `realworld/bakerydemo/`: Wagtail's real bakerydemo site: specs, 8 bug patches for its real source, and `eval.py`. Needs a checkout at `../realapps/bakerydemo` (or `BAKERYDEMO_DIR`) set up per its README (Python 3.12 venv in `.venv`, migrate, load_initial_data). The harness resets the checkout and database before every run and refuses to run over uncommitted edits.
 - `tests/`: unit tests plus end-to-end tests with a scripted model (`tests/scripted.py`), no LLM needed.
-- `action.yml`, `examples/github-workflow.yml`, `Dockerfile`: CI.
+- `action.yml`, `examples/github-workflow.yml`, `Dockerfile`: CI. `.github/workflows/nightshift.yml` runs this repo's own PR check: the demo shop, `specs/api` and the shop's UI specs replayed from `ci/recordings` with no model; it comments on the PR (`--pr-comment`, `report.pr_comment`). Regenerate `ci/recordings` with the local model when those specs change.
 
 ## Commands (keep current)
 - `uv sync`, `uv run pytest` (about 2 minutes)

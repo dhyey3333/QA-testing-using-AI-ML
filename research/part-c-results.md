@@ -112,3 +112,38 @@ The baseline is B2 in `my-tool-vs-market.md`: 21 of 25 runs on reachable sites c
 - environment problems labelled as such from step 2 on
 
 The under-2% false-failure target has not been reached. Every remaining case is the 4B model making a mistake. A larger model is a configuration change, not code, and is the obvious next lever. It needs a hosted endpoint.
+
+## Step 3: hard flows
+
+**What changed:**
+- **Visible iframes are read and driven**, including cross-origin ones.
+- **A stand-in test-mode payment gateway** in the demo shop, using Razorpay's published test UPI IDs, plus the planted bug `payment-failure-ignored`.
+- **`{{totp_code}}` for authenticator apps**, checked against the RFC 6238 test vectors.
+- **`nightshift edge-cases`:** empty, wrong-format and too-long variants of every typed value.
+
+**Results:**
+- **Demo shop:** 0 / 12 false alarms. The two new payment tests passed with the real 4B model, which paid inside the cross-origin iframe. 21 / 22 planted bugs caught, including `payment-failure-ignored`.
+- **The one miss, `cart-link-404`, was a step 2 side effect.** The second look sent the agent back and forth until it ran out of steps. Fixed: a failure that reproduces after the second look stands. Rerun: caught in 6 steps.
+- **Holdout clinic:** 8 / 8 bugs, 0 / 5 false alarms. One run ended ENV_ISSUE when the local model server crashed.
+- **Public sites:** 21 / 25 correct (84%), 3 false alarms, 0 false passes. No public site had an iframe read, so step 3's code didn't change behaviour there. The misses are the usual 4B-model slips: an ad covering a button, a wander to an unrelated page, a box left unticked.
+- **Timing isn't comparable.** Runs were slower because the local model server was slow and crashed once, and my own test runs overlapped part of the shop and clinic runs.
+- **Edge cases on saucedemo:**
+  - The first try hit an internet outage: 9 of 10 runs were correctly labelled ENV_ISSUE.
+  - The one that ran was a false alarm caused by my wording ("this does not happen: …"). The model misread it.
+  - Reworded to a single expectation ("an error message about the first name is shown"), the "first name empty" case passes, because saucedemo does refuse it.
+
+## Step 4: reports
+
+- **`client-report.html`**, written by `nightshift client-report` or `run --client --brand`:
+  - one self-contained file with screenshots embedded, for a QA agency to send its client
+  - a release recommendation, defects with severity, steps to reproduce, screenshot and ticket link
+  - requirements coverage, and every result
+  - white-label with `--brand`
+- **Jira and GitHub filing now record each ticket**, so the report links to it.
+
+## Step 5: CI
+
+- **The Action no longer requires a model.** Saved paths replay with no model call (D20), so a pull-request check of saved paths needs no GPU and costs nothing.
+- **One results comment per PR**, updated on every push, with bugs first.
+- **This repo's own workflow runs on its PRs:** the demo shop, its API tests, and its UI tests from `ci/recordings`.
+- **Still to do:** record `ci/recordings` with the local model, then open a PR to see the workflow and its comment run on GitHub.

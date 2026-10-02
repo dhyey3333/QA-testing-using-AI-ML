@@ -405,21 +405,35 @@ Every run writes `runs/<timestamp>/`:
 
 ## CI
 
-Use the GitHub Action (see [examples/github-workflow.yml](examples/github-workflow.yml)):
+On every pull request, the GitHub Action runs the specs and leaves **one comment** on the PR (updated
+on every push, not repeated): what passed, each failure with its cause (BUG, FLAKY, TEST_OUTDATED,
+ENV_ISSUE) and reason, the defects, and a link to the reports, traces and bug reports.
 
 ```yaml
-- uses: dhyey3333/nightshift@main
-  with:
-    specs: specs/
-    base-url: ${{ vars.STAGING_URL }}
-    model-base-url: https://openrouter.ai/api/v1
-    model-name: qwen/qwen3-vl-8b-instruct
-    model-api-key: ${{ secrets.MODEL_API_KEY }}
-    slack-webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+permissions:
+  contents: read
+  pull-requests: write
+steps:
+  - uses: actions/checkout@v4
+  # start your app here, or set base-url to a preview deployment
+  - uses: dhyey3333/QA-testing-using-AI-ML@main
+    with:
+      specs: specs/
+      recordings: .nightshift/recordings   # commit this folder
+      # Only needed for specs without a saved path, or when a saved path breaks:
+      model-base-url: https://openrouter.ai/api/v1
+      model-name: qwen/qwen3-vl-8b-instruct
+      model-api-key: ${{ secrets.MODEL_API_KEY }}
 ```
 
-Commit `.nightshift/recordings/`. CI then replays saved paths for free and only pays for the
-agent when the UI changes. For Jenkins or GitLab there's a `Dockerfile`.
+Commit `.nightshift/recordings/`. A spec with a saved path is replayed and its recorded evidence
+re-checked with **no model call**, so a PR check of saved paths needs no model, no GPU and costs
+nothing. The agent (and the model) is only needed when the UI changes and a path must be healed;
+with no model configured, those tests are reported as not tested (ENV_ISSUE) rather than passing.
+
+This repository runs exactly that on its own pull requests ([.github/workflows/nightshift.yml](.github/workflows/nightshift.yml)):
+the demo shop, its API tests, and its UI tests replayed from `ci/recordings/`. Run the workflow by
+hand with bugs planted to see a failing report. For Jenkins or GitLab there's a `Dockerfile`.
 
 ## Development
 

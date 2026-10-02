@@ -371,6 +371,47 @@ def markdown_summary(results: list[RunResult]) -> str:
     return "\n".join(lines) + "\n"
 
 
+PR_COMMENT_MARKER = "<!-- nightshift-report -->"  # how CI finds its own comment to update it, not add another
+
+
+def pr_comment(results: list[RunResult], defects: list = (), run_url: str = "") -> str:
+    """The comment CI leaves on a pull request: what to look at, not every passing test."""
+    from .outcome import BUG, ENV_ISSUE, FLAKY, TEST_OUTDATED, categorize
+
+    order = (BUG, FLAKY, TEST_OUTDATED, ENV_ISSUE)
+    cause = {r.spec: r.category or categorize(r) for r in results}
+    passed = sum(r.verdict == "pass" for r in results)
+    counts = {name: sum(c == name for c in cause.values()) for name in order}
+    untested = counts[TEST_OUTDATED] + counts[ENV_ISSUE]
+    head = [f"✅ {passed} passed"]
+    head += [f"❌ {counts[BUG]} failed (bug)"] if counts[BUG] else []
+    head += [f"⚠️ {counts[FLAKY]} flaky"] if counts[FLAKY] else []
+    head += [f"⚪ {untested} not tested"] if untested else []
+    lines = [PR_COMMENT_MARKER, f"## Nightshift: {' · '.join(head)}", ""]
+    attention = sorted((r for r in results if r.verdict != "pass"),
+                       key=lambda r: order.index(cause[r.spec]) if cause[r.spec] in order else len(order))
+    if attention:
+        icon = {BUG: "❌", FLAKY: "⚠️", TEST_OUTDATED: "⚪", ENV_ISSUE: "⚪"}
+        lines += ["| | Test | Cause | What happened |", "|---|---|---|---|"]
+        for r in attention:
+            reason = r.reason.replace("|", "\\|").replace("\n", " ")[:200]
+            lines.append(f"| {icon.get(cause[r.spec], '')} | `{r.spec}` | {cause[r.spec]} | {reason} |")
+        lines.append("")
+    else:
+        lines += ["Every expected result was found on the page and checked.", ""]
+    if defects:
+        lines += ["**Defects**", ""]
+        lines += [f"- **{d.id}** [{d.severity.split(':')[0]}] {d.title} ({', '.join(f'`{s}`' for s in d.specs)})"
+                  for d in defects]
+        lines.append("")
+    replayed = sum(r.mode == "replay" and r.model_calls == 0 for r in results)
+    calls = sum(r.model_calls for r in results)
+    links = f" · [reports, traces and bug reports]({run_url})" if run_url else ""
+    lines.append(f"<sub>{len(results)} tests · {replayed} replayed from saved paths with no model call · "
+                 f"{calls} model calls in all{links}</sub>")
+    return "\n".join(lines) + "\n"
+
+
 def _rel(target: str | Path, start: Path) -> str:
     try:
         return Path(os.path.relpath(Path(target).resolve(), start.resolve())).as_posix()
