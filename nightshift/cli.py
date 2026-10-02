@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 from collections import Counter
 from dataclasses import replace
 from datetime import datetime
@@ -160,10 +161,26 @@ def main(argv: list[str] | None = None) -> int:
     srv.add_argument("--out", type=Path, default=Path("runs"), help="where runs are kept (default: runs/)")
     srv.add_argument("--no-open", action="store_true", help="don't open the browser")
 
+    hosted = commands.add_parser("hosted", help="the hosted web app for a QA agency: logins, a project per client")
+    hosted_commands = hosted.add_subparsers(dest="hosted_command", required=True)
+    h_serve = hosted_commands.add_parser("serve", help="run the web app (behind Caddy for HTTPS: see deploy/oracle)")
+    h_add = hosted_commands.add_parser("add-user", help="add a user; asks for their first password")
+    for sub in (h_serve, h_add):
+        sub.add_argument("--data", type=Path, default=Path("hosted-data"),
+                         help="where the database, projects and runs live (default: hosted-data/)")
+    h_serve.add_argument("--host", default="127.0.0.1", help="(default: 127.0.0.1; Caddy forwards to it)")
+    h_serve.add_argument("--port", type=int, default=8080, help="(default: 8080)")
+    h_serve.add_argument("--public-url", default="", help="the address people open, e.g. https://qa.example.com")
+    h_serve.add_argument("--max-runs", type=int, default=2, help="runs at once, across projects (default: 2)")
+    h_serve.add_argument("--parallel", type=int, default=2, help="tests at a time within a run (default: 2)")
+    h_add.add_argument("--email", required=True)
+    h_add.add_argument("--name", default="")
+    h_add.add_argument("--admin", action="store_true", help="can manage users, projects and secrets")
+
     args = parser.parse_args(argv)
     handler = {"run": _run, "explore": _explore, "generate": _generate, "export": _export, "report": _report,
                "init": _init, "validate": _validate, "cases": _cases, "triage": _triage,
-               "serve": _serve, "edge-cases": _edge_cases, "client-report": _client_report}
+               "serve": _serve, "edge-cases": _edge_cases, "client-report": _client_report, "hosted": _hosted}
     try:
         return handler[args.command](args)
     except (SpecError, ValueError) as exc:
@@ -189,6 +206,8 @@ def _run_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--file-jira", action="store_true",
                         help="file each defect in Jira (JIRA_URL, JIRA_PROJECT, JIRA_EMAIL + JIRA_API_TOKEN or JIRA_TOKEN)")
     parser.add_argument("--pr-comment", type=Path, help="also write a pull-request comment (Markdown) here, for CI")
+    parser.add_argument("--parallel", type=int, default=1, metavar="N",
+                        help="run N specs at a time, each in its own browser (default 1)")
     parser.add_argument("--js-errors", choices=["fail", "warn"], default="fail",
                         help="uncaught JS errors fail a test (default), or are only warnings; a spec's js_errors wins")
     parser.add_argument("--client", default="", help="also write client-report.html for this client")
@@ -221,8 +240,8 @@ def _options(args: argparse.Namespace, **extra) -> RunOptions:
     return RunOptions(send_screenshot=not args.no_vision, video=args.video, context=context, **extra)
 
 
-def _log(args: argparse.Namespace):
-    return (lambda line: None) if args.quiet else (lambda line: print(f"   {line}", flush=True))
+def _log(args: argparse.Namespace, prefix: str = ""):
+    return (lambda line: None) if args.quiet else (lambda line: print(f"   {prefix}{line}", flush=True))
 
 
 # --- run ------------------------------------------------------------------------
@@ -292,16 +311,9 @@ def _execute(specs: list[Spec], args: argparse.Namespace, model: HttpModel) -> t
                        replay=not args.no_replay, record=not args.no_record,
                        js_errors=getattr(args, "js_errors", "fail"), sessions=sessions)
     run_dir = args.out / datetime.now().strftime("%Y%m%d-%H%M%S")
-    log = _log(args)
 
-    results: list[RunResult] = []
     try:
-        with open_browser(headed=args.headed, browser=args.browser) as browser:
-            for spec in specs:
-                print(f"\n> {spec.name}  {spec.url}", flush=True)
-                result = run_with_retries(browser, spec, model, out_dir=run_dir / spec.name, options=options, log=log)
-                results.append(result)
-                _print_verdict(result)
+        results = _run_specs(specs, args, model, options, run_dir)
     finally:
         model.close()
 
@@ -347,6 +359,66 @@ def _execute(specs: list[Spec], args: argparse.Namespace, model: HttpModel) -> t
         print(f"client report: {report}")
     print(f"report: {index}")
     return results, run_dir, defects
+
+
+def _run_specs(specs: list[Spec], args: argparse.Namespace, model: HttpModel, options: RunOptions,
+               run_dir: Path) -> list[RunResult]:
+    """Run the specs one after another, or with --parallel N, N at a time.
+
+    Each parallel worker has its own browser (Playwright's sync API wants one per thread) and its
+    own model client, so every result's token count is its own. The specs other specs start logged
+    in from run first, on their own, so their sessions exist before anything needs them. A model
+    that serves one request at a time (Ollama Cloud's free plan) makes the workers take turns at
+    it; replays, which need no model, run fully in parallel.
+    """
+    parallel = max(1, getattr(args, "parallel", 1) or 1)
+    results: dict[str, RunResult] = {}
+    lock = threading.Lock()
+
+    def one(browser, spec: Spec, spec_model: HttpModel) -> None:
+        if parallel == 1:
+            print(f"\n> {spec.name}  {spec.url}", flush=True)
+        log = _log(args, prefix=f"[{spec.name}] " if parallel > 1 else "")
+        result = run_with_retries(browser, spec, spec_model, out_dir=run_dir / spec.name, options=options, log=log)
+        with lock:
+            if parallel > 1:
+                print(f"\n> {spec.name}  {spec.url}", flush=True)
+            _print_verdict(result)
+            results[spec.name] = result
+
+    sessions = options.sessions
+    first = specs if parallel == 1 else [s for s in specs if sessions is not None and sessions.wants(s.name)]
+    rest = [] if parallel == 1 else [s for s in specs if s.name not in {f.name for f in first}]
+    if first:
+        with open_browser(headed=args.headed, browser=args.browser) as browser:
+            for spec in first:
+                one(browser, spec, model)
+
+    queue, failures = list(rest), []
+
+    def worker() -> None:
+        own = _model(announce=False)
+        try:
+            with open_browser(headed=args.headed, browser=args.browser) as browser:
+                while True:
+                    with lock:
+                        if not queue:
+                            return
+                        spec = queue.pop(0)
+                    one(browser, spec, own)
+        except BaseException as exc:  # surfaced below: a dead worker must not look like a finished run
+            failures.append(exc)
+        finally:
+            own.close()
+
+    threads = [threading.Thread(target=worker, name=f"nightshift-{n}") for n in range(min(parallel, len(rest)))]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    if failures:
+        raise failures[0]
+    return [results[spec.name] for spec in specs if spec.name in results]
 
 
 def _print_verdict(result: RunResult) -> None:
@@ -640,6 +712,43 @@ def _serve(args: argparse.Namespace) -> int:
     finally:
         dashboard.close()
         server.server_close()
+    return 0
+
+
+def _hosted(args: argparse.Namespace) -> int:
+    from .hosted.jobs import Runner
+    from .hosted.server import App, serve
+    from .hosted.store import Store, StoreError
+
+    store = Store(args.data / "nightshift.db")
+    if args.hosted_command == "add-user":
+        import getpass
+
+        # Typed at a prompt, never an argument: arguments end up in shell history and process lists.
+        password = getpass.getpass(f"first password for {args.email} (10+ characters): ")
+        try:
+            store.add_user(args.email, args.name, password, admin=args.admin)
+        except StoreError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        print(f"added {args.email}" + (" (admin)" if args.admin else ""))
+        return 0
+
+    runner = Runner(store, args.data, max_runs=args.max_runs, parallel=args.parallel)
+    server = serve(App(store, runner, args.public_url), args.host, args.port)
+    runner.start()
+    if not store.users():
+        print("no users yet: add one with  nightshift hosted add-user --email you@agency.example --admin")
+    print(f"Nightshift hosted on http://{args.host}:{server.server_port}/  ({args.public_url or 'no public URL set'})",
+          flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        runner.close()
+        server.server_close()
+        store.close()
     return 0
 
 

@@ -7,3 +7,6 @@ runs/
 
 # Saved test paths from local runs. In your own app's repo, commit them so CI can replay them.
 .nightshift/
+
+# the hosted app's local data: database, client tests, secrets, reports
+hosted-data/

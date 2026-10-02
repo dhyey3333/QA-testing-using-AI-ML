@@ -359,3 +359,24 @@ and the demo shop serves its text messages at /sms the way it serves mail at /ma
 match on their last ten digits, so +91 98765 43210 and 9876543210 are the same phone. A code typed
 into a row of one-digit boxes is spread one digit per box, because fill() would put six digits in
 the first one.
+
+## D36. The hosted app uses the standard library, like the rest of Nightshift
+A web framework would be a good fit, but every dependency is something to deploy, update and
+explain, and the app is small: JSON routes, a login, files. It is the same ThreadingHTTPServer as
+the local dashboard, SQLite for records, and hashlib.scrypt for passwords, behind Caddy, which
+does HTTPS, compression and HSTS. If it outgrows that (many agencies, many users), FastAPI is the
+step up, and the store, files and jobs modules don't change.
+
+## D37. One deployment per agency; runs are subprocesses
+An agency's clients must never see each other's data, and agencies are few at this stage, so a
+deployment serves one agency and each client is a project inside it, rather than building
+multi-tenant isolation now. Each run is a `nightshift run` subprocess, the same command a person
+runs, so the hosted app adds scheduling and storage but no second way of testing: what passes in
+the terminal passes on the server. A subprocess can also be killed, browsers and all.
+
+## D38. Parallel tests: a browser and a model client per worker
+Playwright's sync API wants one instance per thread, so each worker opens its own browser, and its
+own model client, so each result's token count stays its own. Specs that others take a session
+from run first. Ollama Cloud's free plan answers one request at a time and answers 429 when busy,
+so the model client waits (Retry-After, else a growing back-off) instead of failing the run.
+Replays need no model and get the full speed-up: 10 saved shop paths in 26 s instead of 55 s.

@@ -11,6 +11,7 @@ import base64
 import json
 import os
 import re
+import time
 from dataclasses import dataclass, replace
 from typing import Protocol
 
@@ -149,11 +150,28 @@ class HttpModel:
 
     def _post(self, config: ModelConfig, body: dict) -> httpx.Response:
         headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else {}
-        try:
-            return self._client.post(f"{config.base_url}/chat/completions", json=body, headers=headers,
-                                     timeout=config.timeout)
-        except httpx.HTTPError as exc:
-            raise ModelError(f"could not reach {config.base_url} ({type(exc).__name__})") from exc
+        for attempt in range(BUSY_RETRIES + 1):
+            try:
+                response = self._client.post(f"{config.base_url}/chat/completions", json=body, headers=headers,
+                                             timeout=config.timeout)
+            except httpx.HTTPError as exc:
+                raise ModelError(f"could not reach {config.base_url} ({type(exc).__name__})") from exc
+            if response.status_code not in (429, 503) or attempt == BUSY_RETRIES:
+                return response
+            # Busy, not broken: free plans allow one request at a time (Ollama Cloud) or a few a
+            # minute, and parallel runs share one model. Wait as the server asks, then try again.
+            time.sleep(_retry_after(response, attempt))
+        return response
+
+
+BUSY_RETRIES = 5
+
+
+def _retry_after(response: httpx.Response, attempt: int) -> float:
+    try:
+        return min(60.0, max(0.5, float(response.headers.get("retry-after", ""))))
+    except ValueError:
+        return min(30.0, 2.0 * 2**attempt)
 
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)

@@ -294,6 +294,30 @@ the page, and saved paths find them again (`benchmark/public/polymer-add-to-cart
 **Styled checkboxes.** A checkbox or radio whose real input is hidden behind a styled label ("I
 agree to the Privacy Policy") is listed by its label, with its checked state.
 
+## Hosted, for a QA agency
+
+`nightshift hosted serve` is the web app an agency's staff log in to. Each client is a project:
+its tests (edited in the browser), its saved paths, its test secrets, a nightly run time, and a
+history of runs, each with its **client report**, full report and log. Runs go in the background,
+two at a time and two tests at a time within a run (`--max-runs`, `--parallel`); a nightly suite
+of saved paths replays with no model calls.
+
+It runs on Oracle Cloud's free server behind Caddy for HTTPS: `deploy/oracle/README.md` is the
+whole setup, one script on a fresh Ubuntu server. Locally:
+
+```bash
+uv run nightshift hosted add-user --email you@agency.example --admin   # asks for a password
+uv run nightshift hosted serve --data hosted-data                     # http://127.0.0.1:8080
+```
+
+Admins manage users, projects and secrets; staff edit tests and start runs. Passwords are scrypt
+hashes, sessions are stored as hashes, every change needs a custom header and this site's origin,
+five wrong passwords lock an address out for 15 minutes, secrets can't be read back, and report
+files are served only from inside their own run's folder.
+
+`nightshift run --parallel N` runs N specs at a time, each in its own browser, outside the hosted
+app too: the 10 saved shop paths replay in 26 s instead of 55 s with `--parallel 3`.
+
 ## A report for your client
 
 ```bash
