@@ -187,3 +187,40 @@ The under-2% false-failure target has not been reached. Every remaining case is 
 - **the-internet:** one page-load timeout (ENV_ISSUE) and one timeout that passed on retry (FLAKY).
 
 **Limit:** Ollama doesn't publish how many free credits there are or how much a run uses, so I don't know how many full benchmarks a month the free plan covers. The usage page at ollama.com/settings shows it.
+
+## Phase 2: real sites
+
+**What changed (commit a5517c0, 171 tests pass):**
+- **Shadow DOM:** controls and text inside open shadow roots are read and driven, and saved paths find them again.
+- **Styled checkboxes and radios:** listed by their label when the real input is hidden.
+- **Popups:** close controls that are plain elements ("×", `<p>Close</p>`) are listed. A covered click names what covers it. The agent is told a popup is not a bug.
+- **Phone and OTP logins:** six-box OTP inputs get one digit per box. Fields that format as you type are typed key by key. `{{sms_code}}` reads an SMS inbox. The demo shop gained a mobile-number login and the planted bug `phone-spaces-rejected`.
+- **Staying logged in:** `session_from: <spec>` starts a test logged in. The session (cookies, localStorage and sessionStorage) is kept in memory only.
+- **JS errors:** `js_errors: warn` per spec, or `--js-errors warn` per run, makes background JS errors warnings.
+- **Agent replies** may be 600 tokens long, up from 300.
+
+Same model as phase 1 (Gemma 4 31B, Ollama Cloud free plan), same benchmarks, plus four new practice specs:
+
+| | Phase 1 | Phase 2 |
+|---|---|---|
+| Public sites (the original 27): correct on reachable sites | 24 / 25 (96%) | **24 / 24 (100%)** |
+| `lambdatest-signup` (hidden privacy checkbox) | failed, as on every model before | **passes** |
+| New practice specs: Polymer shop (shadow DOM), popup, JS-error page, logged-in cart | n/a | **4 / 4 pass** |
+| Shop: planted bugs caught | 22 / 22 | **23 / 23** (with `phone-spaces-rejected`) |
+| Shop: false alarms | 0 / 12 | 0 / 13 (with `login-with-phone`) |
+| Clinic (holdout): bugs / false alarms | 8 / 8, 1 / 5 | 8 / 8, 1 / 5 |
+| **False alarms, all clean runs** | 2 / 42 (4.8%) | **1 / 46 (2.2%)** |
+| False passes | 0 | **0** (every pass's quote checked) |
+| Median run time: public / shop / clinic | 22 s / 16 s / 16 s | 21 s / 14 s / 17 s |
+
+**Notes:**
+- **Unreachable sites:** opencart (a bot check) and the-internet's login pages (timed out; curl timed out too) were labelled ENV_ISSUE and are not counted.
+- **The popup spec** timed out the same way in the main run. Rerun once the page answered, it passed in 10 s: the agent clicked the plain `<p>Close</p>`, and the judge checked "THIS IS A MODAL WINDOW" was gone.
+- **The one false alarm left is the holdout clinic's `cancel-appointment`,** the same check in both Gemma runs. The judge says the list is empty, but its "no longer listed" claim can't be confirmed in code. The rule says report the holdout, never tune on it, so it stays. A fix has to come from a non-holdout case of the same pattern.
+- **Target, under 2% false alarms:** 2.2%, so just short. That's one false alarm in 46 runs, and it's the holdout one.
+
+**Phase 2 on practice sites:**
+- **Shadow DOM:** before phase 2, Polymer's shop showed 0 elements and 0 text. Now its add-to-cart passes, quoting "Size: M" and "Total: $50.20".
+- **Staying logged in:** `saucedemo-logged-in` ran with no login steps.
+- **JS-error page:** passed, with the onload error kept as a warning.
+- **Phone and OTP:** no public practice site sends real SMS, so this was tested on the demo shop only. A clean pass, plus the planted bug caught.
