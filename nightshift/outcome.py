@@ -29,7 +29,12 @@ _GATEWAY_STATUS = re.compile(r"^HTTP (502|503|504|52\d) ")
 _ENV_PAGE = re.compile(
     r"error code:? ?52\d|performing security verification|checking your browser|verify you are human|"
     r"attention required!? ?\| ?cloudflare|just a moment\.\.\.|502 bad gateway|503 service (temporarily )?unavailable|"
-    r"504 gateway time-?out|this site can.t be reached",
+    r"504 gateway time-?out|this site can.t be reached|"
+    # Bot firewalls' block pages. Found on a real platform's public demo (Spree, on Vercel): "This
+    # request was blocked | 403 FORBIDDEN" was reported as a bug in the app. Only the firewalls' own
+    # wording, so an app's "Access denied" in a permissions test still counts as the app's.
+    r"this request was blocked|sorry, you have been blocked|access to this page has been denied|"
+    r"pardon our interruption|request unsuccessful\. incapsula",
     re.IGNORECASE,
 )
 _ENV_REASON = re.compile(r"net::ERR_|page\.goto:|model call failed|judge call failed", re.IGNORECASE)

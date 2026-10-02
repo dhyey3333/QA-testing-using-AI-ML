@@ -31,6 +31,10 @@ def test_a_site_that_is_down_or_behind_a_bot_check_is_an_environment_issue():
     assert categorize(_result("error", "model call failed: could not reach http://localhost:11434/v1")) == ENV_ISSUE
     assert "gateway" in environment_problem(_result("fail", app_errors=["HTTP 503 on GET /"]))
     assert environment_problem(_result("fail", app_errors=["HTTP 500 on GET /"])) == ""  # the app's own error
+    # Spree's public demo, behind Vercel's firewall: the block page was reported as a bug.
+    assert categorize(_result("fail", final_text="This request was blocked\n403 FORBIDDEN\nbom1::abc")) == ENV_ISSUE
+    # An app's own refusal, in a permissions test, is still the app's.
+    assert categorize(_result("fail", final_text="Access denied: you need the admin role")) == BUG
 
 
 def test_an_unreachable_site_ends_as_an_environment_error_not_a_failure(browser, tmp_path):
