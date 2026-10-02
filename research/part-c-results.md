@@ -146,4 +146,9 @@ The under-2% false-failure target has not been reached. Every remaining case is 
 - **The Action no longer requires a model.** Saved paths replay with no model call (D20), so a pull-request check of saved paths needs no GPU and costs nothing.
 - **One results comment per PR**, updated on every push, with bugs first.
 - **This repo's own workflow runs on its PRs:** the demo shop, its API tests, and its UI tests from `ci/recordings`.
-- **Still to do:** record `ci/recordings` with the local model, then open a PR to see the workflow and its comment run on GitHub.
+- **Verified on GitHub:** PR #1 passed 13 of 13 (3 API tests and 10 UI tests replayed from `ci/recordings`), with 0 model calls and a job time of about 1 minute.
+  - The bot comment read: "✅ 13 passed · 10 replayed from saved paths with no model call · 0 model calls in all".
+- **Two fixes came out of that run:**
+  - A replay now tolerates a value that changes on every run, like a new order number, but still fails on a changed total.
+  - The demo shop starts without `uv run`. A running `uv` process held the cache lock, so setup-uv's end-of-job cleanup waited 5 minutes and then failed the job.
+- **Not yet replayed in CI:** the two payment specs, because a saved path can't act inside an iframe yet.
