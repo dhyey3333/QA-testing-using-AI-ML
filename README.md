@@ -193,7 +193,7 @@ uv run python -m demo_shop
 uv run nightshift run specs/ --headed
 ```
 
-Plant a bug and watch it get caught (`--list-bugs` shows all 21):
+Plant a bug and watch it get caught (`--list-bugs` shows all 22):
 
 ```bash
 uv run python -m demo_shop --bugs checkout-500
@@ -244,6 +244,27 @@ The demo shop has "Sign in with an email code" with an outbox at `/mail` that sp
 API, so `specs/login-with-code.yaml` runs out of the box. With the real 4B model it signed in
 using a code it never saw, and caught the planted `otp-wrong-code` bug. SMS codes are not supported.
 
+## Payments, two-factor codes and edge cases
+
+**Payments in test mode.** Payment widgets live in iframes on the gateway's own origin; Nightshift
+reads and acts inside visible iframes like the page itself. The demo shop's "Pay online now" opens
+**Kulhad Pay**, a stand-in gateway in a cross-origin iframe that takes Razorpay's published test UPI
+IDs: `success@razorpay` pays, `failure@razorpay` is declined. `specs/pay-online.yaml` and
+`specs/pay-online-failure.yaml` test both, and the planted bug `payment-failure-ignored` (the order
+goes through after a declined payment) is caught. Use the same IDs against your own app's Razorpay
+test mode; that has not been tried here, since it needs your test account.
+
+**Authenticator-app codes.** Put the base32 secret behind the test account's QR code in the spec's
+data as `totp_secret` (as `${ENV_VAR}`), and the agent types `{{totp_code}}`: the current six-digit
+code, computed right before typing. The model never sees the secret.
+
+**Edge cases from one test.** `nightshift edge-cases specs/signup.yaml` writes, for each value the
+test types, an empty version and a wrong-format one (an email that isn't one, letters in a phone
+number, a two-digit PIN code, a one-character password) or a 300-character one, each expecting an
+error message and no success. `nightshift run ... --edge-cases` generates and runs them in one go;
+with `--url`, `--goal` and `--data` that is a whole negative suite from one sentence. They are
+drafts: read a failing one before filing it.
+
 ## Filing defects in Jira
 
 ```bash
@@ -273,7 +294,7 @@ uv run nightshift serve
 A web page on your own machine (http://127.0.0.1:8765) for everything the commands do:
 
 - **Overview**: the last run, pass rate across recent runs, open defects, and a switch to start
-  the demo shop with any of its 21 bugs planted
+  the demo shop with any of its 22 bugs planted
 - **Test cases**: every spec with its requirements, technique, priority and last result; read,
   edit (checked before saving), create, run one or a folder; export the test-case document
 - **Run tests**: watch it live, with the log and the screenshot the agent is looking at; stop it
@@ -416,18 +437,18 @@ nightshift/
   export.py     Playwright test export
   report.py     HTML reports, bug reports, history, JUnit
   prompts.py    every prompt, in one place
-demo_shop/      Kulhad & Co.: the development app, 21 planted bugs
+demo_shop/      Kulhad & Co.: the development app, 22 planted bugs
 holdout/        Sehat Clinic: the holdout app, 8 planted bugs, never tuned on
 benchmark/      scores the tester against either app
 ```
 
 ## Known limits
 
-- Iframes and shadow DOM aren't read yet, so embedded payment widgets (Razorpay, Stripe Elements)
-  can't be driven. A link that opens a new tab is followed.
+- Visible iframes are read and driven (payment widgets, embedded forms); shadow DOM isn't read yet.
+  A step inside an iframe isn't saved for replay, so those flows use the agent every run.
 - Clickable `<div>`s with no role, no tabindex and no inline handler are invisible to the element list.
 - On the 4B model every agent step takes about 2 s, so a 14-step checkout takes about 40 s. Replay
   makes repeat runs cheap. A bigger hosted model is more accurate and not much slower.
 - Firefox, WebKit and the Docker image are wired up but only Chromium was tested here.
 - It checks what the page shows. It reads a test inbox for email codes and links, but not the
-  database or the payment provider. SMS and authenticator-app codes aren't supported yet.
+  database or the payment provider. Authenticator-app codes are supported; SMS codes aren't.

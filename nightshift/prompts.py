@@ -12,6 +12,7 @@ from dataclasses import dataclass, replace
 
 from .observe import Element, Observation
 from .result import Step
+from .totp import SECRET_KEY as TOTP_SECRET
 from .spec import Spec
 
 # Keeps the prompt inside a small model's context window (Ollama defaults to a few
@@ -219,7 +220,10 @@ def agent_messages(context: Context) -> tuple[str, str, bytes | None]:
     # Which values are typed already. Found on the demo shop: the 4B model filled one field of a
     # four-field form and kept pressing submit; seeing "(not typed yet)" next to the rest helps.
     typed = typed_placeholders(context.history)
-    keys = ", ".join("{{" + key + "}}" + (" (typed)" if key in typed else " (not typed yet)") for key in data) or "(none)"
+    keys = ", ".join("{{" + key + "}}" + (" (typed)" if key in typed else " (not typed yet)")
+                     for key in data if key != TOTP_SECRET) or "(none)"
+    if TOTP_SECRET in data:
+        keys += ". Also {{totp_code}}: the current code from the test account's authenticator app, filled in for you"
     if spec.inbox or os.getenv("INBOX_URL") or os.getenv("INBOX_IMAP_HOST"):
         keys += (". Also {{email_code}}: the code from the newest email to the test address, typed for you; "
                  "and {{email_link}}: the link in that email, to open with goto")

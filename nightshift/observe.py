@@ -9,16 +9,19 @@ text list and the picture agree.
 from __future__ import annotations
 
 import hashlib
+from contextlib import suppress
 from dataclasses import dataclass
+from urllib.parse import urlsplit
+from weakref import WeakKeyDictionary
 
 from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import Page
+from playwright.sync_api import Frame, Page
 
 MAX_ELEMENTS = 80
 JPEG_QUALITY = 60
 
 _OBSERVE_JS = r"""
-(maxElements) => {
+({ maxElements, firstId }) => {
   const SELECTOR = [
     'a[href]', 'button', 'input', 'select', 'textarea', 'summary',
     '[role="button"]', '[role="link"]', '[role="checkbox"]', '[role="radio"]',
@@ -102,7 +105,7 @@ _OBSERVE_JS = r"""
   labels.forEach((l) => { counts[l.toLowerCase()] = (counts[l.toLowerCase()] || 0) + 1; });
 
   const elements = found.slice(0, maxElements).map(({ el, inView }, i) => {
-    const id = i + 1;
+    const id = firstId + i;  // an iframe's elements are numbered after the page's
     el.setAttribute('data-ns-id', String(id));
     const tag = el.tagName.toLowerCase();
     let label = labels[i];
@@ -231,14 +234,73 @@ class Observation:
 
 
 def observe(page: Page, max_elements: int = MAX_ELEMENTS) -> Observation:
-    raw = _evaluate_settled(page, _OBSERVE_JS, max_elements)
+    raw = _evaluate_settled(page, _OBSERVE_JS, {"maxElements": max_elements, "firstId": 1})
+    elements = [Element.from_js(e) for e in raw["elements"]]
+    text = raw["text"]
+    owners: dict[int, Frame] = {}
+    observed: list[Frame] = [page.main_frame]
+    # Payment widgets (Razorpay, Stripe Elements), embedded forms and many sign-in boxes live in
+    # iframes, often on another origin. Each visible one is read like the page, its elements
+    # numbered after the page's, and its text added under a heading so the judge can quote it.
+    for frame in content_frames(page):
+        try:
+            sub = frame.evaluate(_OBSERVE_JS, {"maxElements": max(0, max_elements - len(elements)),
+                                               "firstId": len(elements) + 1})
+        except PlaywrightError:
+            continue  # the frame navigated or went away while being read
+        observed.append(frame)
+        for item in sub["elements"]:
+            elements.append(Element.from_js(item))
+            owners[int(item["id"])] = frame
+        if sub["text"]:
+            text += f"\n[inside a frame: {_frame_name(frame)}]\n{sub['text']}"
+    _FRAMES[page] = (owners, observed)
     return Observation(
         url=raw["url"],
         title=raw["title"],
-        text=raw["text"],
-        elements=tuple(Element.from_js(e) for e in raw["elements"]),
+        text=text,
+        elements=tuple(elements),
         scroll_y=raw["scrollY"],
     )
+
+
+# Frames that are ads or trackers, never part of the app under test.
+_AD_HOSTS = ("doubleclick.net", "googlesyndication.com", "googleadservices.com", "adservice.google",
+             "amazon-adsystem.com", "adnxs.com", "taboola.com", "outbrain.com", "criteo.", "pubmatic.com",
+             "rubiconproject.com", "openx.net", "media.net", "googletagmanager.com", "facebook.com/tr")
+MIN_FRAME_PX = 40  # smaller frames are trackers, pixels and hidden helpers
+
+# For each page: which frame owns each element id from the last observe(), and the frames read then.
+_FRAMES: WeakKeyDictionary = WeakKeyDictionary()
+
+
+def content_frames(page: Page) -> list[Frame]:
+    """The page's visible iframes that could hold part of the app, outermost first."""
+    frames = []
+    for frame in page.frames:
+        if frame is page.main_frame or frame.is_detached():
+            continue
+        url = frame.url or ""
+        if not url or url == "about:blank" or any(host in url for host in _AD_HOSTS):
+            continue
+        try:
+            box = frame.frame_element().bounding_box()
+        except PlaywrightError:
+            continue
+        if box and box["width"] >= MIN_FRAME_PX and box["height"] >= MIN_FRAME_PX:
+            frames.append(frame)
+    return frames
+
+
+def frame_of(page: Page, element_id: int) -> Frame:
+    """The frame the last observe() found element `element_id` in (the page itself, usually)."""
+    owners, _ = _FRAMES.get(page, ({}, []))
+    return owners.get(element_id, page.main_frame)
+
+
+def _frame_name(frame: Frame) -> str:
+    parts = urlsplit(frame.url)
+    return frame.name or f"{parts.netloc}{parts.path}"[:80]
 
 
 def _evaluate_settled(page: Page, script: str, arg=None):
@@ -264,10 +326,13 @@ def _evaluate_settled(page: Page, script: str, arg=None):
 def screenshot(page: Page) -> bytes:
     """A JPEG of the viewport with element ids drawn on. Call right after observe()."""
     _evaluate_settled(page, _MARKS_JS, True)
+    frames = _FRAMES.get(page, ({}, [page.main_frame]))[1][1:]
+    for frame in frames:  # badges inside iframes are drawn by the iframe's own document
+        with suppress(PlaywrightError):
+            frame.evaluate(_MARKS_JS, True)
     try:
         return page.screenshot(type="jpeg", quality=JPEG_QUALITY)
     finally:
-        try:
-            page.evaluate(_MARKS_JS, False)
-        except PlaywrightError:
-            pass  # the page navigated away mid-screenshot; the badges went with it
+        for frame in [page.main_frame, *frames]:
+            with suppress(PlaywrightError):
+                frame.evaluate(_MARKS_JS, False)  # gone already if the page navigated mid-screenshot

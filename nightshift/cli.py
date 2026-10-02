@@ -28,6 +28,7 @@ from pathlib import Path
 import httpx
 
 from .actions import InvalidAction
+from .edgecases import write_variants
 from .defects import Defect, analyse, file_github_issues, load_results, write_defects
 from .explore import DEFAULT_AVOID, explore
 from .export import write_export
@@ -73,8 +74,16 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--goal", help='a plain-English goal instead of a spec, e.g. "add the backpack to the cart"')
     run.add_argument("--goals-dir", type=Path, default=Path("specs/goals"),
                      help="where --goal saves its spec, so the next run replays it (default: specs/goals)")
+    run.add_argument("--data", action="append", default=[], metavar="KEY=VALUE",
+                     help="with --goal: test data it may type, repeatable")
+    run.add_argument("--edge-cases", action="store_true",
+                     help="also generate and run edge cases (empty, too long, wrong format) for every value the specs type")
     _run_options(run)
     _common(run)
+
+    edge = commands.add_parser("edge-cases", help="write edge-case specs (empty, too long, wrong format) for each typed value")
+    edge.add_argument("specs", nargs="+", type=Path)
+    edge.add_argument("--to", type=Path, default=Path("specs/edge-cases"), help="output folder (default: specs/edge-cases)")
 
     val = commands.add_parser("validate", help="validate an app against a requirements document")
     val.add_argument("requirements", type=Path, help="a text or Markdown file: one requirement per bullet or numbered line")
@@ -144,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     handler = {"run": _run, "explore": _explore, "generate": _generate, "export": _export, "report": _report,
                "init": _init, "validate": _validate, "cases": _cases, "triage": _triage,
-               "serve": _serve}
+               "serve": _serve, "edge-cases": _edge_cases}
     try:
         return handler[args.command](args)
     except (SpecError, ValueError) as exc:
@@ -208,18 +217,31 @@ def _run(args: argparse.Namespace) -> int:
         if not (args.goal and args.url):
             print("error: --goal and --url go together", file=sys.stderr)
             return 2
-        specs.append(load_spec(_goal_spec(args.url, args.goal, args.goals_dir)))
+        specs.append(load_spec(_goal_spec(args.url, args.goal, args.goals_dir, _pairs(args.data))))
     if not specs:
         print("error: give spec files or folders, or --url and --goal", file=sys.stderr)
         return 2
+    if args.edge_cases:
+        folder = Path("specs/edge-cases")
+        generated = [path for spec in specs if spec.kind == "ui" for path in write_variants(spec, folder)]
+        print(f"edge cases: {len(generated)} written to {folder}")
+        specs += [load_spec(path) for path in generated]
     # API tests use no model, so naming one would only mislead.
     results, run_dir, defects = _execute(specs, args, _model(announce=any(s.kind != "api" for s in specs)))
     return _exit_code(results)
 
 
-def _goal_spec(url: str, goal: str, folder: Path) -> Path:
+def _edge_cases(args: argparse.Namespace) -> int:
+    written = [path for spec in load_specs(args.specs) if spec.kind == "ui" for path in write_variants(spec, args.to)]
+    for path in written:
+        print(f"wrote {path}")
+    print(f"{len(written)} edge case(s). They are drafts: read them before trusting a failure.")
+    return 0
+
+
+def _goal_spec(url: str, goal: str, folder: Path, data: dict[str, str] | None = None) -> Path:
     """Write the goal as a spec file. The same goal and URL reuse it, and so replay its saved path."""
-    name, text = goal_spec_yaml(url, goal)
+    name, text = goal_spec_yaml(url, goal, data=data)
     path = folder / f"{name}.yaml"
     if not path.exists() or path.read_text(encoding="utf-8") != text:
         folder.mkdir(parents=True, exist_ok=True)

@@ -258,6 +258,7 @@ function viewCheckout() {
         <legend>Payment</legend>
         <label class="inline"><input type="radio" name="payment" value="cod"> Cash on delivery</label>
         <label class="inline"><input type="radio" name="payment" value="upi"> UPI on delivery</label>
+        <label class="inline"><input type="radio" name="payment" value="online"> Pay online now (UPI)</label>
       </fieldset>
       <p class="total">Order total: <strong>${rupees(cartTotal())}</strong></p>
       <p class="error" id="checkout-error" role="alert"></p>
@@ -284,16 +285,49 @@ function viewCheckout() {
       return;
     }
     error.textContent = "";
-    const { ok, data } = await api("/api/order", { ...fields, items: state.cart });
-    if (!ok) {
-      error.textContent = "Something went wrong. Please try again.";
+    if (fields.payment === "online") {
+      payOnline(fields, error);
       return;
     }
-    state.lastOrder = data;
-    state.cart = [];
-    saveState();
-    location.hash = "#/order";
+    await placeOrder(fields, error);
   };
+}
+
+async function placeOrder(fields, error) {
+  const { ok, data } = await api("/api/order", { ...fields, items: state.cart });
+  if (!ok) {
+    error.textContent = "Something went wrong. Please try again.";
+    return;
+  }
+  state.lastOrder = data;
+  state.cart = [];
+  saveState();
+  location.hash = "#/order";
+}
+
+// "Pay online" opens the gateway's checkout in an iframe on another origin (localhost vs
+// 127.0.0.1), the way Razorpay and other gateways embed theirs, and waits for its message.
+function payOnline(fields, error) {
+  const other = location.hostname === "localhost" ? "127.0.0.1" : "localhost";
+  const ref = "KP" + Date.now();
+  const src = `${location.protocol}//${other}:${location.port}/gateway.html?amount=${cartTotal()}&ref=${ref}`;
+  const box = document.createElement("div");
+  box.className = "gateway";
+  box.innerHTML = `<p>Complete the payment below.</p>
+    <iframe title="Kulhad Pay" src="${src}" width="440" height="340" style="border:1px solid #ccc"></iframe>`;
+  document.getElementById("checkout-form").after(box);
+  const onMessage = async (event) => {
+    if (!event.data || event.data.type !== "kulhad-pay" || event.data.ref !== ref) return;
+    window.removeEventListener("message", onMessage);
+    box.remove();
+    // BUG payment-failure-ignored: the order goes through whether or not the payment did.
+    if (event.data.status !== "paid" && !BUGS.has("payment-failure-ignored")) {
+      error.textContent = "Payment failed. Your order was not placed.";
+      return;
+    }
+    await placeOrder(fields, error);
+  };
+  window.addEventListener("message", onMessage);
 }
 
 function viewOrder() {
@@ -306,7 +340,8 @@ function viewOrder() {
   view.innerHTML = `
     <h1>Order placed!</h1>
     <p>Order number: <strong>${esc(order.orderId)}</strong></p>
-    <p>Pay ${rupees(order.total)} ${order.payment === "upi" ? "by UPI" : "in cash"} when it arrives.</p>
+    <p>${order.payment === "online" ? `Paid ${rupees(order.total)} online.`
+      : `Pay ${rupees(order.total)} ${order.payment === "upi" ? "by UPI" : "in cash"} when it arrives.`}</p>
     <p><a href="#/">Continue shopping</a></p>`;
 }
 

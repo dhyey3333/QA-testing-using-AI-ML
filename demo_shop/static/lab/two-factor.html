@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Lab: two-factor sign-in</title></head>
+<body>
+  <!-- Test fixture: the second step of a sign-in, asking for the code from an authenticator app. -->
+  <h1>Two-step verification</h1>
+  <form id="f">
+    <label>Authenticator code <input name="code" inputmode="numeric" autocomplete="one-time-code"></label>
+    <button type="submit">Verify</button>
+  </form>
+  <p id="result" role="status"></p>
+  <script>
+    document.getElementById("f").onsubmit = async (e) => {
+      e.preventDefault();
+      const res = await fetch("/api/two-factor", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                     body: JSON.stringify({ code: e.target.code.value }) });
+      document.getElementById("result").textContent = res.ok ? "Two-factor check passed." : "That code is not right.";
+    };
+  </script>
+</body>
+</html>

@@ -184,10 +184,11 @@ def goal_expectation(goal: str) -> str:
     return f"the page shows this was done: {goal}"
 
 
-def goal_spec_yaml(url: str, goal: str, name: str = "") -> tuple[str, str]:
+def goal_spec_yaml(url: str, goal: str, name: str = "", data: dict[str, str] | None = None) -> tuple[str, str]:
     """(name, YAML text) for a goal-only spec, as `nightshift run --url --goal` writes it."""
     name = name or re.sub(r"[^a-z0-9]+", "-", goal.lower()).strip("-")[:50] or "goal"
-    return name, yaml.safe_dump({"name": name, "url": url, "goal": goal}, sort_keys=False, allow_unicode=True)
+    spec = {"name": name, "url": url, "goal": goal, **({"data": data} if data else {})}
+    return name, yaml.safe_dump(spec, sort_keys=False, allow_unicode=True)
 
 
 def _strings(value: object, key: str, path: Path) -> tuple[str, ...]:

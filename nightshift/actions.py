@@ -14,7 +14,8 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Locator, Page
 
 from .inbox import DYNAMIC
-from .observe import Observation
+from .totp import SECRET_KEY as TOTP_SECRET
+from .observe import Observation, frame_of
 
 ACTION_TIMEOUT_MS = 5_000
 SCROLL_PX = 600
@@ -131,6 +132,8 @@ def validate_action(
         text = raw.get("text")
         if not isinstance(text, str):
             raise InvalidAction('"type" needs a "text" string')
+        if TOTP_SECRET in _PLACEHOLDER_RE.findall(text):
+            raise InvalidAction("the authenticator secret is never typed; type {{totp_code}}, the current code")
         unknown = [key for key in _PLACEHOLDER_RE.findall(text) if key not in data and key not in DYNAMIC]
         if unknown:
             available = ", ".join("{{" + key + "}}" for key in data) or "none"
@@ -205,8 +208,8 @@ def fill_placeholders(text: str, data: dict[str, str]) -> str:
 
 
 def element_locator(page: Page, element_id: int) -> Locator:
-    """The element observe() numbered. Only valid until the next observe()."""
-    return page.locator(f'[data-ns-id="{element_id}"]')
+    """The element observe() numbered, in whichever frame it lives. Only valid until the next observe()."""
+    return frame_of(page, element_id).locator(f'[data-ns-id="{element_id}"]')
 
 
 def execute(page: Page, action: Action, data: dict[str, str], target: Locator | None = None) -> None:

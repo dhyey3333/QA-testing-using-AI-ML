@@ -29,7 +29,7 @@ import httpx
 
 CODE_RE = re.compile(r"(?<![\w-])(\d{4,8})(?![\w-])")
 LINK_RE = re.compile(r"https?://[^\s<>\"')\]]+")
-DYNAMIC = ("email_code", "email_link")  # placeholders filled from the inbox, not from spec data
+DYNAMIC = ("email_code", "email_link", "totp_code")  # filled at typing time (inbox, authenticator), not from spec data
 
 
 class InboxError(RuntimeError):

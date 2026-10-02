@@ -307,7 +307,7 @@ def test_every_planted_bug_names_real_specs():
     from demo_shop.server import BUGS
 
     names = {spec.name for spec in load_specs([SPECS])}
-    assert len(BUGS) == 21
+    assert len(BUGS) == 22
     for bug in BUGS.values():
         assert set(bug.specs) <= names
 

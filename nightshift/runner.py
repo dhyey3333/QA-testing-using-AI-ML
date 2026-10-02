@@ -42,6 +42,7 @@ from .recording import Recording, RecordingStore
 from .report import write_spec_report
 from .result import PENDING, Check, RunResult, Step
 from .spec import Spec
+from .totp import SECRET_KEY, totp
 
 VIEWPORT = {"width": 1280, "height": 800}
 STUCK_REPEATS = 3  # the same action with no effect this many times in a row is a bug
@@ -413,7 +414,7 @@ class _Run:
         acted = [s for s in self.result.steps if s.action is not None and s.action.kind in ("click", "type", "select", "press")
                  and not s.outcome.startswith(("invalid", "failed"))]
         typed = typed_placeholders(self.result.steps)
-        unused = [key for key in self.spec.data if key not in typed]
+        unused = [key for key in self.spec.data if key not in typed and key != SECRET_KEY]
         if unused and "data" not in self.asked:
             self.asked.add("data")
             names = ", ".join("{{" + key + "}}" for key in unused)
@@ -480,11 +481,21 @@ class _Run:
                 "wrong turn, go back and redo the step. If the app really is broken, say fail again")
 
     def _data_for(self, action) -> dict[str, str]:
-        """The spec's data, plus {{email_code}} / {{email_link}} from the test inbox when the action uses them."""
+        """The spec's data, plus what is only known at typing time: {{totp_code}} from the test
+        account's authenticator secret, and {{email_code}} / {{email_link}} from the test inbox."""
         text = f"{action.text or ''} {action.value or ''}"
         wanted = [name for name in DYNAMIC if "{{" + name + "}}" in text.replace(" ", "")]
         if not wanted:
             return self.spec.data
+        extra: dict[str, str] = {}
+        if "totp_code" in wanted:
+            secret = self.spec.data.get(SECRET_KEY)
+            if not secret:
+                raise ActionFailed(f"no authenticator secret: add {SECRET_KEY} to the spec's data")
+            extra["totp_code"] = totp(secret)
+            wanted.remove("totp_code")
+            if not wanted:
+                return {**self.spec.data, **extra}
         inbox = inbox_for(self.spec.inbox)
         if inbox is None:
             raise ActionFailed("no test inbox is set up: add inbox: to the spec, or set INBOX_URL or INBOX_IMAP_HOST")
@@ -492,7 +503,7 @@ class _Run:
             # Only mail sent since this test started: an old code from an earlier run is wrong by design.
             mail = wait_for_email(inbox, to=recipient(self.spec.data), since=self.started - 5)
             found = {"email_code": extract_code, "email_link": extract_link}
-            extra = {name: found[name](mail) for name in wanted}
+            extra.update({name: found[name](mail) for name in wanted})
         except InboxError as exc:
             raise ActionFailed(str(exc)) from None
         self.log(f"    (read the email \"{mail.subject}\")")

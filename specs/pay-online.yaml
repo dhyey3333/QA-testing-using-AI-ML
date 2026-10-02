@@ -1,0 +1,19 @@
+name: pay-online
+url: http://localhost:5180/
+steps:
+  - log in with the test account
+  - add Filter Coffee to the cart, open the cart and proceed to checkout
+  - fill in the delivery details from the test data and choose to pay online now
+  - place the order, then in the payment window enter the UPI ID from the test data and pay
+expect:
+  - a page says the order was placed
+  - it says ₹240 was paid online
+data:
+  email: shopper@kulhad.test
+  password: chai-time-42
+  full_name: Test Shopper
+  address: 12 Example Lane
+  city: Pune
+  pincode: "411001"
+  upi_id: success@razorpay
+max_steps: 30

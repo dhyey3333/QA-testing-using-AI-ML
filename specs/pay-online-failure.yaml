@@ -1,0 +1,19 @@
+name: pay-online-failure
+url: http://localhost:5180/
+steps:
+  - log in with the test account
+  - add Filter Coffee to the cart, open the cart and proceed to checkout
+  - fill in the delivery details from the test data and choose to pay online now
+  - place the order, then in the payment window enter the UPI ID from the test data (a test ID the gateway declines) and pay
+expect:
+  - a message says the payment failed
+  - no page says the order was placed
+data:
+  email: shopper@kulhad.test
+  password: chai-time-42
+  full_name: Test Shopper
+  address: 12 Example Lane
+  city: Pune
+  pincode: "411001"
+  upi_id: failure@razorpay
+max_steps: 30

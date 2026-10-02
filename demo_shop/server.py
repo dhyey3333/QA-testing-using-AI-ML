@@ -10,8 +10,12 @@ that replay heals itself instead of reporting a bug.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import secrets
+import struct
 import threading
 import time
 from collections.abc import Iterable
@@ -60,6 +64,7 @@ BUGS: dict[str, Bug] = {
     "guest-cart-lost": Bug("Logging in during checkout empties the cart", ("guest-checkout",)),
     # server, added with the test inbox
     "otp-wrong-code": Bug("The emailed sign-in code is never accepted", ("login-with-code",)),
+    "payment-failure-ignored": Bug("A declined online payment still places the order", ("pay-online-failure",)),
 }
 
 VARIANTS: dict[str, str] = {
@@ -160,6 +165,8 @@ class ShopHandler(SimpleHTTPRequestHandler):
             self._verify_code(body)
         elif path == "/api/order":
             self._order(body)
+        elif path == "/api/two-factor":
+            self._two_factor(body)
         else:
             self._json(404, {"error": "Not found."})
 
@@ -199,6 +206,15 @@ class ShopHandler(SimpleHTTPRequestHandler):
             self._json(401, {"error": "That code is not right."})
             return
         self._json(200, {"user": {"name": TEST_USER["name"], "email": TEST_USER["email"]}})
+
+    def _two_factor(self, body: dict) -> None:
+        """The lab's two-factor page: the code from an authenticator app holding LAB_TOTP_SECRET."""
+        code = str(body.get("code", "")).strip()
+        now = time.time()
+        if code and code in (_totp(LAB_TOTP_SECRET, now), _totp(LAB_TOTP_SECRET, now - 30)):
+            self._json(200, {"ok": True})
+        else:
+            self._json(401, {"error": "That code is not right."})
 
     def _order(self, body: dict) -> None:
         if "checkout-500" in self.server.bugs:
@@ -249,3 +265,15 @@ class ShopHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+
+# A well-known example secret, for the lab's two-factor page only. Checked here with its own TOTP
+# code (RFC 6238), separate from Nightshift's, so the test doesn't check Nightshift against itself.
+LAB_TOTP_SECRET = "JBSWY3DPEHPK3PXP"
+
+
+def _totp(secret: str, at: float) -> str:
+    key = base64.b32decode(secret)
+    mac = hmac.new(key, struct.pack(">Q", int(at // 30)), hashlib.sha1).digest()
+    start = mac[19] & 15
+    return str((int.from_bytes(mac[start:start + 4], "big") & 0x7FFFFFFF) % 1_000_000).zfill(6)
