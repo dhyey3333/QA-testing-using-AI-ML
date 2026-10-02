@@ -152,3 +152,38 @@ The under-2% false-failure target has not been reached. Every remaining case is 
   - A replay now tolerates a value that changes on every run, like a new order number, but still fails on a changed total.
   - The demo shop starts without `uv run`. A running `uv` process held the cache lock, so setup-uv's end-of-job cleanup waited 5 minutes and then failed the job.
 - **Not yet replayed in CI:** the two payment specs, because a saved path can't act inside an iframe yet.
+
+## Phase 1: a bigger model, for free
+
+**Model:** `gemma4:31b-cloud` (Gemma 4 31B, about 8x the local 4B) through Ollama Cloud's free plan. It runs through the Ollama app you already have, after `ollama signin`, with `MODEL_NAME=gemma4:31b-cloud`. No API key goes into Nightshift. Ollama says cloud prompts are never logged or trained on.
+
+- **Which cloud models are free:** I tried six cloud vision models. Gemma 4 was the only one included in the free plan; GLM 5.3 Flash, DeepSeek V4.1 Flash, Kimi K3 and MiniMax M3 returned HTTP 402, and Mistral Large 3 had no cloud manifest.
+- **Other free options:** OpenRouter's free models allow 50 requests a day without bought credits, and a full benchmark takes about 1,000 calls. Gemini's free daily limit is unclear (reports range from 20 to 1,500).
+- **No code changed.** These are the same specs and the same code as step 5.
+
+| | Local 4B (step 3) | Gemma 4 31B cloud |
+|---|---|---|
+| Public sites: correct, on reachable sites | 21 / 25 (84%) | **24 / 25 (96%)** |
+| Public sites: false alarms | 3 | 1 |
+| Shop: false alarms | 0 / 12 | 0 / 12 |
+| Shop: planted bugs caught | 21 / 22 | **22 / 22** |
+| Clinic (holdout): bugs caught | 8 / 8 | 8 / 8 |
+| Clinic (holdout): false alarms | 0 / 5 | 1 / 5 |
+| **False alarms, all 42 clean runs** | 3 (7.1%) | **2 (4.8%)** |
+| False passes | 0 | **0** (every pass's quote checked) |
+| Median run time: public / shop / clinic | 45 s / 44 s / 50 s (slow-server day; 27 s public in B2) | **22 s / 16 s / 16 s** |
+| Model time per step | about 2 s | about 1 s |
+| Median tokens per run: shop / clinic | 18,367 / 29,129 | 10,807 / 16,307 |
+| Model cost | ₹0 | ₹0 on the free plan; ₹0.12 to ₹0.25 a run at hosted Qwen3-VL rates |
+
+**Target: under 2% false alarms. Not met (4.8%). The two false alarms:**
+
+1. **`lambdatest-signup` (public site).** It has failed in every benchmark run, on both models. The agent can't tick the "I agree to the Privacy Policy" box, which is a styled checkbox whose real input is hidden, so Register never goes through. Gemma said so in its own thought, then clicked the wrong element. This is a tool gap, not a model slip, and it belongs in phase 2 (real sites).
+   - **Also seen in this run:** one Gemma reply was cut off at the 300-token reply limit (a long "thought"), so its JSON was incomplete.
+2. **`cancel-appointment` (holdout clinic).** The judge saw the list was empty, but the code couldn't confirm the absence on the page, so the check failed. It's the holdout set, so it's reported, not tuned. The same kind of check ("Brocolli is not shown") passed on greenkart.
+
+**Not counted as false alarms:**
+- **opencart:** landed on a bot check, labelled ENV_ISSUE.
+- **the-internet:** one page-load timeout (ENV_ISSUE) and one timeout that passed on retry (FLAKY).
+
+**Limit:** Ollama doesn't publish how many free credits there are or how much a run uses, so I don't know how many full benchmarks a month the free plan covers. The usage page at ollama.com/settings shows it.
