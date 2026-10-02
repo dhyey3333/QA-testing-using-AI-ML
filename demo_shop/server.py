@@ -14,6 +14,7 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import struct
 import threading
@@ -64,6 +65,8 @@ BUGS: dict[str, Bug] = {
     "guest-cart-lost": Bug("Logging in during checkout empties the cart", ("guest-checkout",)),
     # server, added with the test inbox
     "otp-wrong-code": Bug("The emailed sign-in code is never accepted", ("login-with-code",)),
+    "phone-spaces-rejected": Bug('The mobile number box shows "98765 43210" and the server rejects the space',
+                                 ("login-with-phone",)),
     "payment-failure-ignored": Bug("A declined online payment still places the order", ("pay-online-failure",)),
 }
 
@@ -100,6 +103,9 @@ class ShopServer(ThreadingHTTPServer):
         # Emails the shop "sends", readable through a Mailpit-style API at /mail: a test inbox.
         self.outbox: list[dict] = []
         self.codes: dict[str, str] = {}
+        # Text messages, the same way at /sms: the test phone's inbox.
+        self.sms: list[dict] = []
+        self.phone_codes: dict[str, str] = {}
         self.lock = threading.Lock()
 
 
@@ -137,18 +143,9 @@ class ShopHandler(SimpleHTTPRequestHandler):
             self._send(200, "text/javascript; charset=utf-8", script.encode())
         elif path == "/api/products":
             self._json(200, PRODUCTS)
-        elif path == "/mail/api/v1/messages":
-            with self.server.lock:
-                newest = list(reversed(self.server.outbox))
-            summaries = [{k: m[k] for k in ("ID", "To", "Subject", "Created")} for m in newest]
-            self._json(200, {"total": len(summaries), "messages": summaries})
-        elif path.startswith("/mail/api/v1/message/"):
-            wanted = path.removeprefix("/mail/api/v1/message/")
-            found = next((m for m in self.server.outbox if m["ID"] == wanted), None)
-            if found is None:
-                self._json(404, {"error": "no such message"})
-            else:
-                self._json(200, {**found, "HTML": "", "Date": found["Created"]})
+        elif path.startswith(("/mail/api/v1/", "/sms/api/v1/")):
+            self._messages(self.server.outbox if path.startswith("/mail/") else self.server.sms,
+                           path.split("/api/v1/", 1)[1])
         else:
             super().do_GET()
 
@@ -163,6 +160,10 @@ class ShopHandler(SimpleHTTPRequestHandler):
             self._send_code(body)
         elif path == "/api/login-code/verify":
             self._verify_code(body)
+        elif path == "/api/phone-code":
+            self._send_phone_code(body)
+        elif path == "/api/phone-code/verify":
+            self._verify_phone_code(body)
         elif path == "/api/order":
             self._order(body)
         elif path == "/api/two-factor":
@@ -204,6 +205,54 @@ class ShopHandler(SimpleHTTPRequestHandler):
             expected = expected[::-1]  # checks against the code reversed: the emailed one never works
         if not expected or str(body.get("code", "")).strip() != expected:
             self._json(401, {"error": "That code is not right."})
+            return
+        self._json(200, {"user": {"name": TEST_USER["name"], "email": TEST_USER["email"]}})
+
+    def _messages(self, box: list[dict], rest: str) -> None:
+        """A Mailpit-style API over a list of messages: GET messages, GET message/{ID}."""
+        if rest == "messages":
+            with self.server.lock:
+                newest = list(reversed(box))
+            summaries = [{k: m[k] for k in ("ID", "To", "Subject", "Created")} for m in newest]
+            self._json(200, {"total": len(summaries), "messages": summaries})
+            return
+        found = next((m for m in box if m["ID"] == rest.removeprefix("message/")), None)
+        if found is None:
+            self._json(404, {"error": "no such message"})
+        else:
+            self._json(200, {**found, "HTML": "", "Date": found["Created"]})
+
+    def _phone(self, body: dict) -> str:
+        """The 10-digit mobile number, or "" if it isn't one. The box formats it as "98765 43210"."""
+        raw = str(body.get("phone", "")).strip()
+        # BUG phone-spaces-rejected: the server takes the number as typed, so the box's own space breaks it.
+        digits = raw if "phone-spaces-rejected" in self.server.bugs else re.sub(r"\D", "", raw)
+        return digits if re.fullmatch(r"\d{10}", digits) else ""
+
+    def _send_phone_code(self, body: dict) -> None:
+        """Text a 6-digit OTP. Unknown numbers get the same answer and no message."""
+        phone = self._phone(body)
+        if not phone:
+            self._json(400, {"error": "Enter a valid 10-digit mobile number."})
+            return
+        if phone == TEST_USER["phone"]:
+            code = f"{secrets.randbelow(900_000) + 100_000}"
+            with self.server.lock:
+                self.server.phone_codes[phone] = code
+                self.server.sms.append({
+                    "ID": secrets.token_hex(8),
+                    "To": [{"Name": "", "Address": f"+91{phone}"}],
+                    "Subject": "SMS from KULHAD",
+                    "Text": f"{code} is your Kulhad & Co. login OTP. It is valid for 10 minutes. Do not share it.",
+                    "Created": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                })
+        self._json(200, {"sent": True})
+
+    def _verify_phone_code(self, body: dict) -> None:
+        phone = self._phone(body)
+        expected = self.server.phone_codes.get(phone)
+        if not expected or str(body.get("code", "")).strip() != expected:
+            self._json(401, {"error": "That OTP is not right."})
             return
         self._json(200, {"user": {"name": TEST_USER["name"], "email": TEST_USER["email"]}})
 

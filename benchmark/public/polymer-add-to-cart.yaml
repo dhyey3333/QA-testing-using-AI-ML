@@ -1,0 +1,13 @@
+# Polymer's demo shop: the whole app is web components, so every control and every line of
+# text is inside a shadow root. Phase 2: before shadow-DOM support Nightshift saw nothing here.
+name: polymer-add-to-cart
+url: https://shop.polymer-project.org/
+steps:
+  - open Men's Outerwear
+  - open the Men's Tech Shell Full-Zip
+  - pick size M and add it to the cart
+  - open the cart
+expect:
+  - the cart lists Men's Tech Shell Full-Zip in size M
+  - the cart total is $50.20
+max_steps: 14

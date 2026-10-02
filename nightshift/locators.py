@@ -17,12 +17,16 @@ import time
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Locator, Page
 
+from .observe import DEEP_JS
+
 RESOLVE_TIMEOUT_S = 4.0
 
 _DESCRIBE_JS = r"""
 (id) => {
-  const el = document.querySelector(`[data-ns-id="${id}"]`);
+  /*DEEP*/
+  const el = deepAll(`[data-ns-id="${id}"]`)[0];
   if (!el) return null;
+  const root = el.getRootNode();  // the document, or the shadow root the element lives in
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
   const tag = el.tagName.toLowerCase();
   const type = (el.getAttribute('type') || '').toLowerCase();
@@ -42,12 +46,13 @@ _DESCRIBE_JS = r"""
     return null;  // password, date, file...: no role Playwright can find them by
   };
 
+  const unique = (node) => node.id && root.querySelectorAll('#' + CSS.escape(node.id)).length === 1;
   const cssPath = (node) => {
-    if (node.id && document.querySelectorAll('#' + CSS.escape(node.id)).length === 1) return '#' + CSS.escape(node.id);
+    if (unique(node)) return '#' + CSS.escape(node.id);
     const parts = [];
     while (node && node.nodeType === 1 && node !== document.body) {
       let part = node.tagName.toLowerCase();
-      if (node.id && document.querySelectorAll('#' + CSS.escape(node.id)).length === 1) {
+      if (unique(node)) {
         parts.unshift('#' + CSS.escape(node.id));
         return parts.join(' > ');
       }
@@ -56,7 +61,8 @@ _DESCRIBE_JS = r"""
       parts.unshift(part);
       node = node.parentElement;
     }
-    return 'body > ' + parts.join(' > ');
+    // Inside a shadow root the path starts at the root's top element; Playwright's CSS pierces open shadow roots.
+    return (root === document ? 'body > ' : '') + parts.join(' > ');
   };
 
   const labelText = el.labels && el.labels.length ? clean([...el.labels].map((l) => l.innerText).join(' ')) : '';
@@ -70,7 +76,7 @@ _DESCRIBE_JS = r"""
     css: cssPath(el),
   };
 }
-"""
+""".replace("/*DEEP*/", DEEP_JS)
 
 
 def to_locator(page: Page, candidate: dict) -> Locator:

@@ -1,7 +1,7 @@
 """What the browser can prove without a model.
 
 Two signals fail a run on their own, even when the page looks fine:
-  - an uncaught JavaScript error
+  - an uncaught JavaScript error (unless the spec or run sets js_errors: warn)
   - an HTTP 5xx from the app's own origin
 The rest are warnings a tester would note: console errors, 404s, slow calls,
 dialogs, and basic accessibility gaps (unlabelled fields, images without alt text).
@@ -65,9 +65,21 @@ def warn(sink: Sink, message: str) -> None:
         sink.warnings.append(message)
 
 
-def listen(page: Page, url: str, sink: Sink) -> None:
-    """Wire the browser's own signals into `sink` for the life of the page."""
+def listen(page: Page, url: str, sink: Sink, js_errors: str = "fail") -> None:
+    """Wire the browser's own signals into `sink` for the life of the page.
+
+    js_errors="warn" turns uncaught JS errors into warnings. Found on a big real shopping
+    site: analytics and ad scripts threw errors in the background on every page, so every
+    test failed on errors no user would notice. The app's 5xx still fail.
+    """
     origin = _origin(url)
+
+    def on_page_error(error) -> None:
+        message = f"uncaught JS error: {_first_line(error.message)}"
+        if js_errors == "warn":
+            warn(sink, f"{message} (a warning only: js_errors is warn)")
+        else:
+            sink.app_errors.append(message)
 
     def on_response(response) -> None:
         # Only the app's own origin: a third-party analytics 503 is not this app's bug.
@@ -101,7 +113,7 @@ def listen(page: Page, url: str, sink: Sink) -> None:
         warn(sink, f"{dialog.type} dialog accepted: {dialog.message[:200]}")
         dialog.accept()
 
-    page.on("pageerror", lambda error: sink.app_errors.append(f"uncaught JS error: {_first_line(error.message)}"))
+    page.on("pageerror", on_page_error)
     page.on("response", on_response)
     page.on("requestfinished", on_request_finished)
     page.on("console", on_console)

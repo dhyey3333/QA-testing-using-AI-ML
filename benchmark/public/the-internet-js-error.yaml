@@ -1,0 +1,10 @@
+# The Internet's page whose own onload handler throws. With js_errors: warn the error is a warning
+# in the report, not a failure. Phase 2: a setting for sites whose background scripts throw.
+name: the-internet-js-error
+url: https://the-internet.herokuapp.com/javascript_error
+js_errors: warn
+steps:
+  - read the page
+expect:
+  - the page says it has a JavaScript error in the onload event
+max_steps: 4

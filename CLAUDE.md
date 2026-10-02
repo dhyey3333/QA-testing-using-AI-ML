@@ -7,7 +7,7 @@ Design reasoning: `docs/DECISIONS.md`.
 
 ## Layout
 - `nightshift/`: the product. `runner.py` (replay, agent loop, judge gate, retries), `judge.py`, `observe.py`, `locators.py`, `recording.py`, `checks.py`, `explore.py`, `generate.py`, `export.py`, `report.py`, `notify.py`, `prompts.py` (every prompt), `cli.py`.
-- `demo_shop/`: Kulhad & Co., the development app. 22 planted bugs in `server.py` -> `BUGS`; the `redesign` variant tests self-healing.
+- `demo_shop/`: Kulhad & Co., the development app. 23 planted bugs in `server.py` -> `BUGS`; the `redesign` variant tests self-healing.
 - `holdout/`: Sehat Clinic, the holdout app. 8 planted bugs, specs in `holdout/specs/`.
 - `benchmark/`: `python -m benchmark [--app shop|clinic]`.
 - `realworld/bakerydemo/`: Wagtail's real bakerydemo site: specs, 8 bug patches for its real source, and `eval.py`. Needs a checkout at `../realapps/bakerydemo` (or `BAKERYDEMO_DIR`) set up per its README (Python 3.12 venv in `.venv`, migrate, load_initial_data). The harness resets the checkout and database before every run and refuses to run over uncommitted edits.
@@ -33,6 +33,8 @@ Design reasoning: `docs/DECISIONS.md`.
 - `uv run nightshift run --url URL --goal "..." [--data k=v] [--edge-cases]`: a goal-only spec, saved to `specs/goals/`.
 - `uv run nightshift client-report runs/<run> --client NAME --brand NAME [--logo F] [--specs specs/]` (or `run --client/--brand`): one self-contained HTML report for a client (`nightshift/client_report.py`); ticket links from `issues.json`.
 - `uv run nightshift edge-cases specs/x.yaml [--to specs/edge-cases]`: generated negative variants (`nightshift/edgecases.py`).
+- Real sites (`tests/test_real_sites.py`): open shadow roots are read (`observe.DEEP_JS`), styled checkboxes are listed by their label, popup close controls that are plain elements are listed; `{{sms_code}}` from `sms_inbox:` / `SMS_INBOX_URL` (Mailpit-shaped; the demo shop's is `/sms`); `session_from: <spec>` starts logged in (`nightshift/sessions.py`, in memory only, includes sessionStorage); `js_errors: warn` or `--js-errors warn`.
+- Bigger model for free: `ollama signin`, then `MODEL_NAME=gemma4:31b-cloud` (Ollama Cloud free plan; the other cloud vision models are paid). The user does not want to spend money on models.
 - Payments: demo shop's `gateway.html` stand-in (cross-origin iframe, Razorpay test UPI IDs); TOTP via `totp_secret` data and `{{totp_code}}` (`nightshift/totp.py`).
 - `uv run python -m realworld.bakerydemo.eval [--only bug,...] [--clean-only] [--skip-clean]` (real app; about 12 min)
 - A new planted bug must be checked to actually show on the site before scoring anything against it.

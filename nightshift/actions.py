@@ -247,7 +247,7 @@ def _act(page: Page, action: Action, data: dict[str, str], target: Locator | Non
         case "click":
             target.click(timeout=ACTION_TIMEOUT_MS)
         case "type":
-            target.fill(fill_placeholders(action.text, data), timeout=ACTION_TIMEOUT_MS)
+            _type(page, target, fill_placeholders(action.text, data))
         case "select":
             _select(target, action.value)
         case "press":
@@ -264,6 +264,62 @@ def _act(page: Page, action: Action, data: dict[str, str], target: Locator | Non
             if urlsplit(url).netloc != urlsplit(page.url).netloc:
                 raise ActionFailed(f"the link goes to another site ({urlsplit(url).netloc}); not following it")
             page.goto(url, wait_until="domcontentloaded", timeout=15_000)
+
+
+# The boxes of a one-time-code input, in order (the same rule as observe.py); [] for any other field.
+_CODE_BOXES_JS = r"""
+(el) => {
+  const narrow = (i) => i.tagName === 'INPUT' && ['text', 'tel', 'number', 'password'].includes(i.type)
+    && i.getBoundingClientRect().width > 0 && i.maxLength === 1;
+  if (!narrow(el)) return [];
+  for (let node = el.parentElement, depth = 0; node && depth < 3; node = node.parentElement, depth++) {
+    const boxes = [...node.querySelectorAll('input')].filter(narrow);
+    if (boxes.length >= 4 && boxes.length <= 8) return boxes;
+  }
+  return [];
+}
+"""
+
+
+def _type(page: Page, target: Locator, text: str) -> None:
+    """Get `text` into the field the way a person would end up with it there."""
+    if len(text) > 1 and _fill_code_boxes(target, text):
+        return
+    target.fill(text, timeout=ACTION_TIMEOUT_MS)
+    if not any(c.isdigit() for c in text):
+        return
+    try:
+        value = target.input_value(timeout=1_000)
+    except PlaywrightError:
+        return  # not a form field (contenteditable): nothing to read back
+    if _digits(value) != _digits(text):
+        # A field that formats as you type ("98765 43210", "4111 1111 1111 1111") rewrote or dropped
+        # the value fill() set all at once. Typed key by key, like a person, its script keeps up.
+        target.fill("", timeout=ACTION_TIMEOUT_MS)
+        target.press_sequentially(text, delay=30, timeout=ACTION_TIMEOUT_MS + 60 * len(text))
+
+
+def _fill_code_boxes(target: Locator, code: str) -> bool:
+    """A one-time code typed into a row of one-character boxes goes one character per box.
+
+    Indian sign-ins send a 4 or 6 digit code by SMS and ask for it in separate boxes. fill()
+    puts the whole code in the first box, which keeps one digit (or all six, unchecked).
+    """
+    handle = target.evaluate_handle(_CODE_BOXES_JS, timeout=ACTION_TIMEOUT_MS)
+    try:
+        props = handle.get_properties()
+        boxes = [props[key].as_element() for key in sorted((k for k in props if k.isdigit()), key=int)]
+        if not boxes or len(code) > len(boxes):
+            return False
+        for box, char in zip(boxes, code):
+            box.fill(char, timeout=ACTION_TIMEOUT_MS)
+        return True
+    finally:
+        handle.dispose()
+
+
+def _digits(text: str) -> str:
+    return re.sub(r"\D", "", text or "")
 
 
 class _Network:
@@ -334,7 +390,10 @@ def _select(target: Locator, wanted: str) -> None:
     """
     options = target.evaluate(_OPTIONS_JS, timeout=ACTION_TIMEOUT_MS)
     if options is None:  # a radio button: selecting it is clicking it
-        target.check(timeout=ACTION_TIMEOUT_MS)
+        if target.evaluate("el => el.tagName", timeout=ACTION_TIMEOUT_MS) == "INPUT":
+            target.check(timeout=ACTION_TIMEOUT_MS)
+        else:
+            target.click(timeout=ACTION_TIMEOUT_MS)  # a styled radio: observe() numbered its label
         return
     norm = lambda s: " ".join(str(s).split()).casefold()  # noqa: E731
     want = norm(wanted)
@@ -354,8 +413,16 @@ def _select(target: Locator, wanted: str) -> None:
     raise ActionFailed(f'no single option matches "{wanted}"; the options are: {labels}')
 
 
+_COVER_RE = re.compile(r"(<[a-zA-Z][^<>\n]{0,160}>)[^\n]*?intercepts pointer events")
+
+
 def _short_reason(exc: Exception) -> str:
     message = str(exc)
+    if cover := _COVER_RE.search(message):
+        # Say what is in the way. On real sites it is usually a cookie banner, a sign-up popup or an
+        # ad, and the agent needs to close it before the page will take the click.
+        return (f"another element is covering it: {cover.group(1)}. If a popup, banner or overlay is open, "
+                "close it first (its ×, Close or No thanks), or press Escape")
     for needle, hint in _HINTS:
         if needle in message:
             return hint

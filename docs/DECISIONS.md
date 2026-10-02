@@ -324,3 +324,38 @@ agent; with no model configured it is reported as ENV_ISSUE ("model call failed"
 pass. The results go to the pull request as one comment, found by a hidden marker and edited on
 every later push, so a PR doesn't fill up with bot comments. The comment leads with what needs
 attention, bugs first, and only counts the passes.
+
+## D31. A bigger model on a free plan, not a paid API
+The 4B model's slips were the main source of false alarms. Phase 1 had a no-spending rule, and
+OpenRouter's free models allow 50 requests a day, about a twentieth of one benchmark. Ollama Cloud's
+free plan runs Gemma 4 31B through the local Ollama app, so nothing in Nightshift changed but
+MODEL_NAME, and no API key is stored. It was the only free cloud vision model; the rest returned 402.
+
+## D32. Read the page the way it is drawn: shadow roots, styled checkboxes, popup close controls
+document.querySelectorAll stops at a shadow root, and innerText leaves shadow content out, so a
+web-component app (Polymer's shop) looked empty. Queries now walk every open shadow root, and pages
+that have them get their text from the rendered tree. A checkbox whose input is hidden behind a
+styled label is listed by its label, the thing a person clicks; this was the one public-site test
+that failed on every model. Plain-element close controls ("×", <p>Close</p>) are listed because a
+popup with no way out stops a real-site test cold. The selector stays narrow otherwise: listing
+every element with cursor: pointer would bury the controls that matter under the 80-element cap.
+
+## D33. Sessions in memory, sessionStorage included
+session_from shares a login between the specs of one run. Saving sessions to disk would make reruns
+faster, but a session is a live credential and runs/ is uploaded as a CI artifact, so it stays in
+memory. Playwright's storage state carries cookies and localStorage only; the demo shop keeps its
+user in sessionStorage, as many apps keep tokens, so that is captured and put back by an init script,
+once per tab, so a test that logs out stays logged out.
+
+## D34. JS errors fail by default; warn is opt-in
+An uncaught error is often a real bug the user never sees (the demo shop's js-error), so the default
+stays fail. Big real sites throw from third-party scripts on every page, which made every test fail;
+js_errors: warn per spec, or --js-errors warn per run, keeps them in the report as warnings. Only
+the JS rule changes: a 5xx from the app still fails.
+
+## D35. SMS codes through the same inbox API as email
+There is no standard SMS test inbox. Reusing Mailpit's message API shape means one reader for both,
+and the demo shop serves its text messages at /sms the way it serves mail at /mail. Phone numbers
+match on their last ten digits, so +91 98765 43210 and 9876543210 are the same phone. A code typed
+into a row of one-digit boxes is spread one digit per box, because fill() would put six digits in
+the first one.

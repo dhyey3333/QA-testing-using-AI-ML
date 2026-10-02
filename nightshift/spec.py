@@ -56,18 +56,26 @@ class Spec:
     requests: tuple = ()
     # Where emails to the test address can be read (inbox.py), e.g. a Mailpit URL. Overrides INBOX_URL.
     inbox: str = ""
+    # Where text messages to the test phone number can be read, for {{sms_code}}. Overrides SMS_INBOX_URL.
+    sms_inbox: str = ""
+    # "warn": uncaught JS errors are warnings, not failures. For sites whose third-party scripts throw.
+    js_errors: str = ""
+    # Start already logged in: the browser session (cookies, storage) the named spec ends with.
+    session_from: str = ""
 
     def with_base_url(self, base_url: str) -> Spec:
         """Point the spec at another deployment (staging, a CI preview), keeping its path.
-        An inbox on the same host as the app moves with it."""
+        An inbox (mail or SMS) on the same host as the app moves with it."""
         base = urlsplit(base_url)
         own = urlsplit(self.url)
         url = urlunsplit((base.scheme, base.netloc, own.path or "/", own.query, own.fragment))
-        inbox = self.inbox
-        if inbox and urlsplit(inbox).netloc == own.netloc:
-            parts = urlsplit(inbox)
-            inbox = urlunsplit((base.scheme, base.netloc, parts.path, parts.query, parts.fragment))
-        return replace(self, url=url, inbox=inbox)
+        def moved(address: str) -> str:
+            if address and urlsplit(address).netloc == own.netloc:
+                parts = urlsplit(address)
+                return urlunsplit((base.scheme, base.netloc, parts.path, parts.query, parts.fragment))
+            return address
+
+        return replace(self, url=url, inbox=moved(self.inbox), sms_inbox=moved(self.sms_inbox))
 
 
 def load_spec(path: Path, expand_env: bool = True) -> Spec:
@@ -136,6 +144,13 @@ def load_spec(path: Path, expand_env: bool = True) -> Spec:
     inbox = str(raw.get("inbox") or "")
     if inbox and not inbox.startswith(("http://", "https://")):
         raise SpecError(f"{path}: inbox must be the http(s) URL of a Mailpit-style mail API")
+    sms_inbox = str(raw.get("sms_inbox") or "")
+    if sms_inbox and not sms_inbox.startswith(("http://", "https://")):
+        raise SpecError(f"{path}: sms_inbox must be the http(s) URL of a Mailpit-style message API")
+    js_errors = str(raw.get("js_errors") or "").lower()
+    if js_errors not in ("", "fail", "warn"):
+        raise SpecError(f"{path}: js_errors must be fail or warn")
+    session_from = str(raw.get("session_from") or "")
 
     return Spec(
         name=str(raw.get("name") or path.stem),
@@ -153,6 +168,9 @@ def load_spec(path: Path, expand_env: bool = True) -> Spec:
         kind=kind,
         requests=requests,
         inbox=inbox,
+        sms_inbox=sms_inbox,
+        js_errors=js_errors,
+        session_from=session_from,
     )
 
 

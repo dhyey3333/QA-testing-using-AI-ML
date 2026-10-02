@@ -1,0 +1,11 @@
+# Starts already logged in, with the browser session the saucedemo-login spec ended with, so
+# there are no login steps. Phase 2: staying logged in between tests.
+name: saucedemo-logged-in
+url: https://www.saucedemo.com/inventory.html
+session_from: saucedemo-login
+steps:
+  - add the Sauce Labs Backpack to the cart
+  - open the cart
+expect:
+  - the cart lists Sauce Labs Backpack
+max_steps: 8

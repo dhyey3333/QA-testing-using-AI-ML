@@ -126,7 +126,8 @@ function viewLogin(params) {
       <p class="error" id="login-error" role="alert"></p>
       <button type="submit">Log in</button>
     </form>
-    <p><a href="#/login-code${next ? `?next=${encodeURIComponent(next)}` : ""}">Sign in with an email code instead</a></p>`;
+    <p><a href="#/login-code${next ? `?next=${encodeURIComponent(next)}` : ""}">Sign in with an email code instead</a></p>
+    <p><a href="#/login-phone${next ? `?next=${encodeURIComponent(next)}` : ""}">Log in with your mobile number</a></p>`;
   const form = document.getElementById("login-form");
   form.onsubmit = async (event) => {
     event.preventDefault();
@@ -177,6 +178,72 @@ function viewLoginCode(params) {
     const { ok, data } = await api("/api/login-code/verify", { email, code: new FormData(verify).get("code") });
     if (!ok) {
       document.getElementById("code-error").textContent = data.error || "Could not sign in.";
+      return;
+    }
+    state.user = data.user;
+    saveState();
+    toast(`Welcome back, ${data.user.name}.`);
+    location.hash = next ? `#/${next}` : "#/";
+  };
+}
+
+// Log in with a mobile number and an OTP by SMS, the way most Indian apps do: a +91 box that
+// formats the number as you type ("98765 43210"), then six one-digit boxes that move along by
+// themselves. The "SMS" lands in the shop's /sms inbox, where Nightshift reads {{sms_code}}.
+function viewLoginPhone(params) {
+  document.title = "Log in with your mobile | Kulhad & Co.";
+  const next = params.get("next") || "";
+  const boxes = [1, 2, 3, 4, 5, 6].map((i) =>
+    `<input class="otp-box" inputmode="numeric" maxlength="1" autocomplete="${i === 1 ? "one-time-code" : "off"}" aria-label="OTP digit ${i}">`).join("");
+  view.innerHTML = `
+    <h1>Log in with your mobile number</h1>
+    <form id="phone-request" class="form" novalidate>
+      <label>Mobile number <span class="prefix">+91</span><input name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="11"></label>
+      <p class="error" id="phone-error" role="alert"></p>
+      <button type="submit">Send OTP</button>
+    </form>
+    <form id="otp-verify" class="form" novalidate hidden>
+      <p id="otp-sent"></p>
+      <fieldset class="otp"><legend>Enter the 6-digit OTP</legend>${boxes}</fieldset>
+      <p class="error" id="otp-error" role="alert"></p>
+      <button type="submit">Verify and log in</button>
+    </form>`;
+  const request = document.getElementById("phone-request");
+  const verify = document.getElementById("otp-verify");
+  const phoneBox = request.elements.phone;
+  phoneBox.oninput = () => {
+    const digits = phoneBox.value.replace(/\D/g, "").slice(0, 10);
+    phoneBox.value = digits.length > 5 ? `${digits.slice(0, 5)} ${digits.slice(5)}` : digits;
+  };
+  const otp = [...verify.querySelectorAll(".otp-box")];
+  otp.forEach((box, i) => {
+    box.oninput = () => {
+      box.value = box.value.replace(/\D/g, "").slice(-1);
+      if (box.value && otp[i + 1]) otp[i + 1].focus();
+    };
+    box.onkeydown = (event) => {
+      if (event.key === "Backspace" && !box.value && otp[i - 1]) otp[i - 1].focus();
+    };
+  });
+  let phone = "";
+  request.onsubmit = async (event) => {
+    event.preventDefault();
+    phone = phoneBox.value;
+    const { ok, data } = await api("/api/phone-code", { phone });
+    if (!ok) {
+      document.getElementById("phone-error").textContent = data.error || "Could not send the OTP.";
+      return;
+    }
+    request.hidden = true;
+    verify.hidden = false;
+    document.getElementById("otp-sent").textContent = `We sent an OTP by SMS to +91 ${phone}.`;
+    otp[0].focus();
+  };
+  verify.onsubmit = async (event) => {
+    event.preventDefault();
+    const { ok, data } = await api("/api/phone-code/verify", { phone, code: otp.map((box) => box.value).join("") });
+    if (!ok) {
+      document.getElementById("otp-error").textContent = data.error || "Could not log in.";
       return;
     }
     state.user = data.user;
@@ -350,7 +417,7 @@ function viewNotFound() {
   view.innerHTML = `<h1>Page not found</h1><p><a href="#/">Back to the shop</a></p>`;
 }
 
-const views = { "": viewProducts, login: viewLogin, "login-code": viewLoginCode, cart: viewCart, checkout: viewCheckout, order: viewOrder };
+const views = { "": viewProducts, login: viewLogin, "login-code": viewLoginCode, "login-phone": viewLoginPhone, cart: viewCart, checkout: viewCheckout, order: viewOrder };
 
 function route() {
   const [name, query] = location.hash.replace(/^#\/?/, "").split("?");

@@ -5,6 +5,12 @@ acting, Nightshift fetches the newest email sent to the test address since the t
 started, and fills in the first code or link in it. The model never reads the inbox;
 it only says where the code goes, which keeps it simple for small models.
 
+Text messages work the same way: {{sms_code}} is the code in the newest SMS to the test
+phone number (data called `phone` or `mobile`), read from an SMS inbox that answers the same
+Mailpit-shaped API: `sms_inbox:` in the spec, or SMS_INBOX_URL. SMS gateways each keep their
+own log, so for a real one that is a small adapter; staging setups that use a fixed test OTP
+need none of this and put the code in the spec's data.
+
 Two ways to reach the mail:
   - a Mailpit-style HTTP API: `inbox:` in the spec, or INBOX_URL (e.g. http://localhost:8025).
     Mailpit is the usual mail catcher in development and CI.
@@ -29,7 +35,7 @@ import httpx
 
 CODE_RE = re.compile(r"(?<![\w-])(\d{4,8})(?![\w-])")
 LINK_RE = re.compile(r"https?://[^\s<>\"')\]]+")
-DYNAMIC = ("email_code", "email_link", "totp_code")  # filled at typing time (inbox, authenticator), not from spec data
+DYNAMIC = ("email_code", "email_link", "totp_code", "sms_code")  # filled at typing time (inbox, authenticator), not from spec data
 
 
 class InboxError(RuntimeError):
@@ -120,8 +126,15 @@ def inbox_for(spec_inbox: str = "") -> Inbox | None:
     return None
 
 
-def wait_for_email(inbox: Inbox, *, to: str, since: float, timeout: float = 30, poll: float = 1.5) -> Email:
-    """The newest email to `to` received since `since`, waiting for it to arrive."""
+def sms_inbox_for(spec_sms_inbox: str = "") -> Inbox | None:
+    """The spec's SMS inbox, else SMS_INBOX_URL, else None."""
+    url = spec_sms_inbox or os.getenv("SMS_INBOX_URL", "")
+    return MailpitInbox(url) if url else None
+
+
+def wait_for_email(inbox: Inbox, *, to: str, since: float, timeout: float = 30, poll: float = 1.5,
+                   what: str = "email") -> Email:
+    """The newest message to `to` (an address, or a phone number) received since `since`, waiting for it."""
     deadline = time.monotonic() + timeout
     while True:
         try:
@@ -129,11 +142,19 @@ def wait_for_email(inbox: Inbox, *, to: str, since: float, timeout: float = 30, 
         except (httpx.HTTPError, OSError, imaplib.IMAP4.error) as exc:
             raise InboxError(f"could not read the inbox ({type(exc).__name__})") from exc
         for mail in mails:
-            if not to or to.lower() in mail.to:
+            if not to or _same_recipient(to, mail.to):
                 return mail
         if time.monotonic() >= deadline:
-            raise InboxError(f"no email to {to or 'the test address'} arrived within {timeout:.0f} s")
+            raise InboxError(f"no {what} to {to or 'the test recipient'} arrived within {timeout:.0f} s")
         time.sleep(poll)
+
+
+def _same_recipient(wanted: str, addresses: tuple[str, ...]) -> bool:
+    if "@" in wanted:
+        return wanted.lower() in addresses
+    # A phone number: +91 98765 43210, 919876543210 and 9876543210 are the same phone.
+    digits = re.sub(r"\D", "", wanted)[-10:]
+    return bool(digits) and any(re.sub(r"\D", "", a)[-10:] == digits for a in addresses)
 
 
 def extract_code(mail: Email) -> str:
@@ -159,6 +180,14 @@ def recipient(data: dict[str, str]) -> str:
     if "@" in data.get("email", ""):
         return data["email"]
     return next((v for v in data.values() if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", v)), "")
+
+
+def phone_number(data: dict[str, str]) -> str:
+    """The test phone number: data called phone or mobile (or ..._number)."""
+    for key in ("phone", "mobile", "phone_number", "mobile_number"):
+        if re.sub(r"\D", "", data.get(key, "")):
+            return data[key]
+    return ""
 
 
 def _iso_time(text: str) -> float:

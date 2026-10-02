@@ -66,6 +66,8 @@ e.g. 2031-01-31 or 14:30.
 8. Use "goto" only when a step names a path on the site, like /admin/.
 9. Lines starting with "[browser says]" are the browser's validation messages: the form \
 was not sent because of that field. Pressing submit again changes nothing.
+10. A cookie banner, sign-up popup or ad that covers the page is not part of the test and \
+not a bug: close it (its ×, Close, No thanks or Reject button, or press Escape) and carry on.
 """
 
 JUDGE_PROMPT = """\
@@ -224,6 +226,8 @@ def agent_messages(context: Context) -> tuple[str, str, bytes | None]:
                      for key in data if key != TOTP_SECRET) or "(none)"
     if TOTP_SECRET in data:
         keys += ". Also {{totp_code}}: the current code from the test account's authenticator app, filled in for you"
+    if spec.sms_inbox or os.getenv("SMS_INBOX_URL"):
+        keys += ". Also {{sms_code}}: the code from the newest text message to the test phone number, typed for you"
     if spec.inbox or os.getenv("INBOX_URL") or os.getenv("INBOX_IMAP_HOST"):
         keys += (". Also {{email_code}}: the code from the newest email to the test address, typed for you; "
                  "and {{email_link}}: the link in that email, to open with goto")

@@ -265,6 +265,35 @@ error message about that value. `nightshift run ... --edge-cases` generates and 
 with `--url`, `--goal` and `--data` that is a whole negative suite from one sentence. They are
 drafts: read a failing one before filing it.
 
+## Real sites: popups, phone logins, staying logged in
+
+**Popups and banners.** A cookie banner, sign-up popup or ad is closed and the test carries on; it
+is not reported as a bug. Close controls that are plain `<span>`, `<div>` or `<p>` elements ("×",
+"Close", "No thanks") are listed like buttons, and a click that something covers says what covers it.
+
+**Phone number and OTP logins.** A row of one-digit OTP boxes gets the code one digit per box, and a
+field that formats as you type ("98765 43210") is typed key by key when filling it at once doesn't
+take. For the code itself: if your staging uses a fixed test OTP, put it in the spec's data. To read
+real text messages, the agent types `{{sms_code}}` and Nightshift fetches the newest SMS to the
+test number (data called `phone` or `mobile`) from `sms_inbox:` in the spec or `SMS_INBOX_URL`: an
+endpoint with Mailpit's message API. The demo shop's `/sms` is one (`specs/login-with-phone.yaml`);
+for a real SMS gateway that is a small adapter over its message log.
+
+**Staying logged in.** `session_from: login` in a spec starts it with the browser session the
+`login` spec ended with (cookies, localStorage and sessionStorage), so it has no login steps. The
+login spec runs first, once per run, or is found next to the spec if it isn't in the run. Sessions
+stay in memory and are never written to disk. A test that logs out should log in by itself.
+
+**Background JavaScript errors.** An uncaught JS error fails a test by default. On a site whose
+analytics or ad scripts throw on every page, `js_errors: warn` in the spec (or `--js-errors warn`
+for the run) turns them into warnings in the report. An HTTP 5xx from the app still fails.
+
+**Web components.** Controls and text inside open shadow roots are read and driven like the rest of
+the page, and saved paths find them again (`benchmark/public/polymer-add-to-cart.yaml`).
+
+**Styled checkboxes.** A checkbox or radio whose real input is hidden behind a styled label ("I
+agree to the Privacy Policy") is listed by its label, with its checked state.
+
 ## A report for your client
 
 ```bash
@@ -308,7 +337,7 @@ uv run nightshift serve
 A web page on your own machine (http://127.0.0.1:8765) for everything the commands do:
 
 - **Overview**: the last run, pass rate across recent runs, open defects, and a switch to start
-  the demo shop with any of its 22 bugs planted
+  the demo shop with any of its 23 bugs planted
 - **Test cases**: every spec with its requirements, technique, priority and last result; read,
   edit (checked before saving), create, run one or a folder; export the test-case document
 - **Run tests**: watch it live, with the log and the screenshot the agent is looking at; stop it
@@ -366,6 +395,12 @@ works but shows the model less of the page.
 | `MODEL_NAME` | `qwen3-vl:4b-instruct` |
 | `MODEL_API_KEY` | empty |
 | `JUDGE_NAME`, `JUDGE_BASE_URL`, `JUDGE_API_KEY` | same as the agent. The judge runs once per test, so a bigger model is cheap here. |
+
+**A bigger model for free.** Ollama Cloud's free plan runs `gemma4:31b-cloud` through the Ollama app
+you already have: run `ollama signin` once, then set `MODEL_NAME=gemma4:31b-cloud` (no API key).
+On the benchmarks it got 24 of 25 reachable public sites right against 21 for the local 4B, at about
+1 s a step (`research/part-c-results.md`, phase 1). The free plan's allowance isn't published; see
+your usage at ollama.com/settings. Ollama says cloud prompts are not logged or trained on.
 
 ## How it works
 
@@ -465,18 +500,20 @@ nightshift/
   export.py     Playwright test export
   report.py     HTML reports, bug reports, history, JUnit
   prompts.py    every prompt, in one place
-demo_shop/      Kulhad & Co.: the development app, 22 planted bugs
+demo_shop/      Kulhad & Co.: the development app, 23 planted bugs
 holdout/        Sehat Clinic: the holdout app, 8 planted bugs, never tuned on
 benchmark/      scores the tester against either app
 ```
 
 ## Known limits
 
-- Visible iframes are read and driven (payment widgets, embedded forms); shadow DOM isn't read yet.
-  A step inside an iframe isn't saved for replay, so those flows use the agent every run.
-- Clickable `<div>`s with no role, no tabindex and no inline handler are invisible to the element list.
+- Visible iframes and open shadow roots are read and driven; closed shadow roots can't be. A step
+  inside an iframe isn't saved for replay, so those flows use the agent every run.
+- Clickable `<div>`s with no role, no tabindex and no inline handler are invisible to the element
+  list, unless they look like a popup's close control.
 - On the 4B model every agent step takes about 2 s, so a 14-step checkout takes about 40 s. Replay
   makes repeat runs cheap. A bigger hosted model is more accurate and not much slower.
 - Firefox, WebKit and the Docker image are wired up but only Chromium was tested here.
-- It checks what the page shows. It reads a test inbox for email codes and links, but not the
-  database or the payment provider. Authenticator-app codes are supported; SMS codes aren't.
+- It checks what the page shows. It reads a test inbox for email codes and links, and an SMS inbox
+  for text-message codes, but not the database or the payment provider. Authenticator-app codes are
+  supported. A real SMS gateway needs a small adapter to Mailpit's message API.

@@ -30,17 +30,19 @@ from playwright.sync_api import Error as PlaywrightError
 
 from .actions import TEST_KINDS, ActionFailed, InvalidAction, execute, settle, track_network, validate_action
 from .checks import check_page, listen
-from .inbox import DYNAMIC, InboxError, extract_code, extract_link, inbox_for, recipient, wait_for_email
+from .inbox import (DYNAMIC, InboxError, extract_code, extract_link, inbox_for, phone_number, recipient,
+                    sms_inbox_for, wait_for_email)
 from .export import write_export
 from .judge import is_on_page, judge_page, normalize
 from .locators import describe_target, resolve
 from .model import Model, ModelError, usage_snapshot
-from .observe import JPEG_QUALITY, Observation, observe, screenshot, watch_form_validation
+from .observe import DEEP_JS, JPEG_QUALITY, Observation, observe, screenshot, watch_form_validation
 from .outcome import categorize, environment_problem
 from .prompts import Context, mask, typed_placeholders
 from .recording import Recording, RecordingStore
 from .report import write_spec_report
 from .result import PENDING, Check, RunResult, Step
+from .sessions import Sessions
 from .spec import Spec
 from .totp import SECRET_KEY, totp
 
@@ -65,6 +67,8 @@ class RunOptions:
     record: bool = True
     video: bool = False
     context: dict = field(default_factory=dict)  # extra browser-context options, e.g. a device profile
+    js_errors: str = "fail"  # "warn": uncaught JS errors are warnings, not failures (a spec's js_errors wins)
+    sessions: Sessions | None = None  # login sessions shared between the specs of one run (sessions.py)
 
 
 @contextmanager
@@ -172,14 +176,26 @@ def run_spec(
     )
     recording = options.recordings.load(spec) if options.recordings and options.replay else None
 
+    session = None
+    if spec.session_from:
+        session = _session_state(browser, spec, model, out_dir, options, log)
+        if isinstance(session, str):
+            result.verdict, result.reason = "error", f"could not start logged in: {session}"
+            result.category = categorize(result)
+            _write_artifacts(result, spec)
+            return result
+        context_options["storage_state"] = session["storage_state"]
+
     usage_before = usage_snapshot(model)
     context = browser.new_context(**context_options)
+    if session and session["session_storage"]["items"]:
+        context.add_init_script(_session_storage_script(session["session_storage"]))
     watch_form_validation(context)
     # The trace is the "steps to reproduce": DOM snapshots, network and console for
     # every action, replayable with `playwright show-trace`.
     context.tracing.start(screenshots=True, snapshots=True)
     page = context.new_page()
-    listen(page, spec.url, result)
+    listen(page, spec.url, result, spec.js_errors or options.js_errors)
     track_network(page)
     new_tabs: list[Page] = []
     context.on("page", lambda tab: new_tabs.append(tab))
@@ -196,6 +212,12 @@ def run_spec(
             final = observe(run.page)
             result.final_url, result.final_text = final.url, mask(final.text, spec.data)[:6_000]
         video = page.video if options.video else None
+        if options.sessions is not None and options.sessions.wants(spec.name):
+            if result.verdict == "pass" and not result.app_errors:
+                with suppress(PlaywrightError):
+                    options.sessions.save(spec.name, _capture_session(context, run.page))  # in memory only, never on disk
+            else:
+                options.sessions.failures[spec.name] = result.reason  # so the specs that need it don't re-run it
         with suppress(PlaywrightError):
             context.tracing.stop(path=str(out_dir / "trace.zip"))
         with suppress(PlaywrightError):
@@ -226,6 +248,51 @@ def run_spec(
 
     _write_artifacts(result, spec)
     return result
+
+
+def _session_state(browser: Browser, spec: Spec, model: Model, out_dir: Path,
+                   options: RunOptions, log: Log) -> dict | str:
+    """The browser session spec.session_from ended with, running that spec first if it hasn't run.
+    A string is why there is none."""
+    name, sessions = spec.session_from, options.sessions
+    if sessions is None:
+        return "session_from works across the specs of one `nightshift run`"
+    if (state := sessions.state(name)) is not None:
+        return state
+    if name in sessions.failures:
+        return f'the "{name}" spec did not pass ({sessions.failures[name]})'
+    provider = sessions.provider(name)
+    if provider is None:
+        return f'there is no spec named "{name}" in this run or next to {spec.path or "this spec"}'
+    if name in sessions.starting:
+        return f'"{name}" needs a session from a spec that needs one from it'
+    sessions.starting.add(name)
+    log(f'starting logged in: running "{name}" first for its session')
+    try:
+        first = run_with_retries(browser, provider, model, out_dir=out_dir.parent / f"_session-{name}",
+                                 options=options, log=log)
+    finally:
+        sessions.starting.discard(name)
+    if (state := sessions.state(name)) is not None:
+        return state
+    sessions.failures[name] = first.reason
+    return f'the "{name}" spec did not pass ({first.reason})'
+
+
+def _capture_session(context, page: Page) -> dict:
+    """Cookies and localStorage (Playwright's storage state), plus the page's sessionStorage, which
+    storage state leaves out. Found on the demo shop: it keeps the logged-in user in sessionStorage,
+    as many real apps keep their tokens, and a test meant to start logged in started logged out."""
+    origin, items = page.evaluate("() => [location.origin, Object.fromEntries(Object.entries(sessionStorage))]")
+    return {"storage_state": context.storage_state(), "session_storage": {"origin": origin, "items": items}}
+
+
+def _session_storage_script(saved: dict) -> str:
+    """Runs before the page's own scripts on every load and fills sessionStorage once per tab, so a
+    test that logs out stays logged out."""
+    return ("(([origin, items]) => { if (location.origin !== origin || sessionStorage.getItem('__nightshift_session')) "
+            "return; for (const [key, value] of Object.entries(items)) sessionStorage.setItem(key, value); "
+            "sessionStorage.setItem('__nightshift_session', '1'); })(" + json.dumps([saved["origin"], saved["items"]]) + ");")
 
 
 def _write_artifacts(result: RunResult, spec: Spec) -> None:
@@ -492,7 +559,8 @@ class _Run:
 
     def _data_for(self, action) -> dict[str, str]:
         """The spec's data, plus what is only known at typing time: {{totp_code}} from the test
-        account's authenticator secret, and {{email_code}} / {{email_link}} from the test inbox."""
+        account's authenticator secret, {{sms_code}} from the test phone's text messages, and
+        {{email_code}} / {{email_link}} from the test inbox."""
         text = f"{action.text or ''} {action.value or ''}"
         wanted = [name for name in DYNAMIC if "{{" + name + "}}" in text.replace(" ", "")]
         if not wanted:
@@ -504,6 +572,21 @@ class _Run:
                 raise ActionFailed(f"no authenticator secret: add {SECRET_KEY} to the spec's data")
             extra["totp_code"] = totp(secret)
             wanted.remove("totp_code")
+            if not wanted:
+                return {**self.spec.data, **extra}
+        if "sms_code" in wanted:
+            sms = sms_inbox_for(self.spec.sms_inbox)
+            if sms is None:
+                raise ActionFailed("no SMS inbox is set up: add sms_inbox: to the spec, or set SMS_INBOX_URL")
+            try:
+                # Only messages since this test started, like the email codes.
+                message = wait_for_email(sms, to=phone_number(self.spec.data), since=self.started - 5,
+                                         what="text message")
+                extra["sms_code"] = extract_code(message)
+            except InboxError as exc:
+                raise ActionFailed(str(exc)) from None
+            self.log("    (read the text message)")
+            wanted.remove("sms_code")
             if not wanted:
                 return {**self.spec.data, **extra}
         inbox = inbox_for(self.spec.inbox)
@@ -520,7 +603,7 @@ class _Run:
         return {**self.spec.data, **extra}
 
     def _follow_new_tab(self) -> None:
-        if tab := adopt_new_tab(self.new_tabs, self.spec.url, self.result):
+        if tab := adopt_new_tab(self.new_tabs, self.spec.url, self.result, self.spec.js_errors or self.options.js_errors):
             self.page = tab
             self.log("    (the link opened a new tab; carrying on there)")
 
@@ -599,7 +682,7 @@ class _Run:
         return verdict, reason
 
 
-def adopt_new_tab(new_tabs: list[Page], url: str, sink) -> Page | None:
+def adopt_new_tab(new_tabs: list[Page], url: str, sink, js_errors: str = "fail") -> Page | None:
     """A link with target="_blank" opens a new tab. A person carries on in it, so the tester does too.
 
     Found on a real site (Wagtail's "Visit the live page"): staying on the old tab,
@@ -611,7 +694,7 @@ def adopt_new_tab(new_tabs: list[Page], url: str, sink) -> Page | None:
     new_tabs.clear()
     with suppress(PlaywrightError):
         tab.wait_for_load_state("domcontentloaded", timeout=10_000)
-    listen(tab, url, sink)
+    listen(tab, url, sink, js_errors)
     track_network(tab)
     settle(tab)
     return tab
@@ -621,9 +704,10 @@ def adopt_new_tab(new_tabs: list[Page], url: str, sink) -> Page | None:
 # its form's empty text fields and unticked checkboxes, by their visible labels.
 _UNFINISHED_FORM_JS = r"""
 (label) => {
+  /*DEEP*/
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
   const base = label.split(' — ')[0].toLowerCase();
-  const control = [...document.querySelectorAll('[data-ns-id]')]
+  const control = deepAll('[data-ns-id]')
     .find((el) => clean(el.innerText || el.value || el.getAttribute('aria-label')).toLowerCase() === base);
   const form = control && control.closest('form');
   if (!form) return [];
@@ -639,7 +723,7 @@ _UNFINISHED_FORM_JS = r"""
   }
   return gaps;
 }
-"""
+""".replace("/*DEEP*/", DEEP_JS)
 
 
 def _still_shown(quote: str, page: str, expected: str) -> bool:

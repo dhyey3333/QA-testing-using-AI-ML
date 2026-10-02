@@ -92,11 +92,12 @@ class HttpModel:
 
     def decide(self, context: Context) -> dict:
         try:
-            return self._ask(self.config, *agent_messages(context), max_tokens=300)
+            # 600, not 300: Gemma 4 31B's longer "thought" ran past 300 tokens and cut its JSON off.
+            return self._ask(self.config, *agent_messages(context), max_tokens=600)
         except ContextTooLong:
             # Found on a public demo shop: a product grid made the prompt 4,119 tokens, over a local
             # Ollama's default 4,096. One retry with a compact prompt instead of a dead run.
-            return self._ask(self.config, *agent_messages(replace(context, compact=True)), max_tokens=300)
+            return self._ask(self.config, *agent_messages(replace(context, compact=True)), max_tokens=600)
 
     def judge(self, context: JudgeContext) -> dict:
         try:

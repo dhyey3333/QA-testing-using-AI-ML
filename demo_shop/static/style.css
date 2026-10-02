@@ -49,3 +49,9 @@ footer { max-width: 960px; margin: 40px auto; padding: 0 24px; color: var(--mute
 .submit-wrap button { width: 100%; }
 .promo-layer { position: absolute; inset: -6px; z-index: 5; }
 [hidden] { display: none !important; }
+
+/* Mobile-number login: a +91 prefix and six one-digit OTP boxes */
+.prefix { display: inline-block; padding: 0 0.4rem 0 0; color: #555; }
+.otp { border: 0; padding: 0; margin: 0; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.otp legend { width: 100%; margin-bottom: 0.4rem; }
+.form .otp .otp-box { width: 2.6rem; text-align: center; font-size: 1.2rem; }

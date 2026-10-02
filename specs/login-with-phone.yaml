@@ -1,0 +1,13 @@
+name: login-with-phone
+url: http://localhost:5180/
+# The shop's text messages speak Mailpit's API at /sms, so it works as the test phone's inbox.
+sms_inbox: http://localhost:5180/sms
+steps:
+  - open the login page and choose to log in with a mobile number
+  - type the test mobile number and ask for an OTP
+  - type the OTP from the text message, {{sms_code}}, and log in
+expect:
+  - the header greets the logged-in user by name
+data:
+  phone: "9876543210"
+max_steps: 15

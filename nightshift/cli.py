@@ -41,6 +41,7 @@ from .recording import RecordingStore
 from .report import pr_comment, write_history, write_junit, write_run_index
 from .result import RunResult
 from .runner import RunOptions, device_options, open_browser, run_with_retries
+from .sessions import Sessions
 from .spec import Spec, SpecError, goal_spec_yaml, load_spec, load_specs
 from .traceability import build_matrix, write_test_cases, write_traceability
 
@@ -188,6 +189,8 @@ def _run_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--file-jira", action="store_true",
                         help="file each defect in Jira (JIRA_URL, JIRA_PROJECT, JIRA_EMAIL + JIRA_API_TOKEN or JIRA_TOKEN)")
     parser.add_argument("--pr-comment", type=Path, help="also write a pull-request comment (Markdown) here, for CI")
+    parser.add_argument("--js-errors", choices=["fail", "warn"], default="fail",
+                        help="uncaught JS errors fail a test (default), or are only warnings; a spec's js_errors wins")
     parser.add_argument("--client", default="", help="also write client-report.html for this client")
     parser.add_argument("--brand", default="", help="the name the client report is prepared by (your company)")
     parser.add_argument("--logo", type=Path, help="a logo for the client report (PNG, JPEG or SVG)")
@@ -283,8 +286,11 @@ def _execute(specs: list[Spec], args: argparse.Namespace, model: HttpModel) -> t
         specs = [replace(spec, max_steps=args.max_steps) for spec in specs]
 
     store = RecordingStore(args.recordings) if not (args.no_replay and args.no_record) else None
+    sessions = Sessions(specs, base_url=args.base_url or "")
+    specs = sessions.first(specs)  # a spec others start logged in from runs before them
     options = _options(args, judge=not args.no_judge, retries=max(0, args.retries), recordings=store,
-                       replay=not args.no_replay, record=not args.no_record)
+                       replay=not args.no_replay, record=not args.no_record,
+                       js_errors=getattr(args, "js_errors", "fail"), sessions=sessions)
     run_dir = args.out / datetime.now().strftime("%Y%m%d-%H%M%S")
     log = _log(args)
 

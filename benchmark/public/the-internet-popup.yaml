@@ -1,0 +1,10 @@
+# The Internet's entry-ad page: a modal pops up over the page on load, and its only way out is
+# a plain <p>Close</p>. Phase 2: popups.
+name: the-internet-popup
+url: https://the-internet.herokuapp.com/entry_ad
+steps:
+  - close the popup window
+expect:
+  - the popup with the text "THIS IS A MODAL WINDOW" is no longer shown
+  - the page heading Entry Ad is shown
+max_steps: 6

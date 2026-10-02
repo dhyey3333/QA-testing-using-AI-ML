@@ -27,6 +27,7 @@ from nightshift.model import HttpModel, ModelConfig
 from nightshift.recording import RecordingStore
 from nightshift.result import RunResult
 from nightshift.runner import RunOptions, open_browser, run_with_retries
+from nightshift.sessions import Sessions
 from nightshift.spec import load_spec
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -41,7 +42,7 @@ PRICES = {
 USD_INR = 96.0  # USD/INR 96.11 on 2026-09-30 (tradingeconomics.com/india/currency), rounded
 
 FLOWS = ("login-validation", "signup-validation", "withdraw-validation", "add-to-cart",
-         "checkout", "signup", "search", "login")
+         "checkout", "signup", "search", "login", "logged-in", "popup", "js-error")
 
 
 def flow_of(name: str) -> tuple[str, str]:
@@ -97,7 +98,9 @@ def main(argv: list[str] | None = None) -> int:
     # The first run is always the agent's (the store starts empty). With --rerun, a passing run's
     # saved path is replayed straight away, the way CI reruns a suite.
     store = RecordingStore(out / "recordings") if args.rerun else None
-    options = RunOptions(retries=args.retries, recordings=store)
+    sessions = Sessions(specs)
+    specs = sessions.first(specs)  # saucedemo-login before saucedemo-logged-in, which starts from its session
+    options = RunOptions(retries=args.retries, recordings=store, sessions=sessions)
     try:
         with open_browser() as browser:
             for spec in specs:
