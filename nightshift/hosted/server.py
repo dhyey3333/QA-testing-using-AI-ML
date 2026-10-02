@@ -154,6 +154,19 @@ class App:
             else:
                 files.delete_secret(m[2])
             return 200, {"secrets": sorted(files.secrets())}
+        if rest == "POST /explore":
+            url = str(body.get("url", "")).strip()
+            if not re.fullmatch(r"https?://[^\s/]+(/\S*)?", url):
+                raise HttpError(400, "give the address of the site, starting with http:// or https://")
+            try:
+                steps = int(body.get("steps") or 25)
+            except ValueError:
+                raise HttpError(400, "steps must be a number") from None
+            if not 5 <= steps <= 60:
+                raise HttpError(400, "steps must be between 5 and 60")
+            params = {"url": url, "steps": steps, "focus": str(body.get("focus", "")).strip()[:200]}
+            run_id = self.runner.enqueue(project, "explore", user["id"], params)
+            return 201, {"run": self._run_view(project, files, self.store.run(run_id))}
         if rest == "POST /runs":
             run_id = self.runner.enqueue(project, "manual", user["id"])
             return 201, {"run": self._run_view(project, files, self.store.run(run_id))}
@@ -198,11 +211,13 @@ class App:
             links["log"] = f"{base}/output.log"
         if run["run_dir"]:
             folder = files.run_folder(run["id"]) / run["run_dir"]
-            for key, name in (("client_report", "client-report.html"), ("report", "index.html")):
+            for key, name in (("client_report", "client-report.html"), ("report", "index.html"),
+                              ("report", "report.html"), ("findings", "findings.md")):
                 if (folder / name).exists():
                     links[key] = f"{base}/{run['run_dir']}/{name}"
         keep = ("id", "trigger", "status", "queued", "started", "finished", "passed", "failed", "flaky", "errors", "message")
-        return {**{key: run[key] for key in keep}, "links": links}
+        target = json.loads(run["params"]).get("url", "") if run.get("params") else ""
+        return {**{key: run[key] for key in keep}, "links": links, "target": target}
 
 
 def _admin(user: dict) -> None:

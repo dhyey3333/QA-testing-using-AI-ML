@@ -33,12 +33,14 @@ class Busy(StoreError):
 
 
 class Runner:
-    def __init__(self, store: Store, data: Path, *, max_runs: int = 2, parallel: int = 2, command=None) -> None:
+    def __init__(self, store: Store, data: Path, *, max_runs: int = 2, parallel: int = 2, command=None,
+                 explore_command=None) -> None:
         # Absolute: each run starts inside its project's folder, where a relative --data path
         # (`--data hosted-data`) would point nowhere. Found on the first real use.
         self.store, self.data = store, data.resolve()
         self.max_runs, self.parallel = max(1, max_runs), max(1, parallel)
         self.command = command or self._command
+        self.explore_command = explore_command or self._explore_command
         self._wake = threading.Condition()
         self._procs: dict[int, subprocess.Popen] = {}
         self._closing = False
@@ -59,12 +61,12 @@ class Runner:
         for run_id in list(self._procs):
             self.stop(run_id)
 
-    def enqueue(self, project: dict, trigger: str, user_id: int | None = None) -> int:
+    def enqueue(self, project: dict, trigger: str, user_id: int | None = None, params: dict | None = None) -> int:
         if self.store.active_run(project["id"]):
             raise Busy("a run of this project is already queued or running")
-        if not self.files(project).spec_names():
+        if trigger != "explore" and not self.files(project).spec_names():
             raise StoreError("this project has no tests yet")
-        run_id = self.store.add_run(project["id"], trigger, user_id)
+        run_id = self.store.add_run(project["id"], trigger, user_id, params)
         with self._wake:
             self._wake.notify()
         return run_id
@@ -123,8 +125,11 @@ class Runner:
         out = files.run_folder(run["id"])
         out.mkdir(parents=True, exist_ok=True)
         env = {**os.environ, **files.secrets(), "PYTHONIOENCODING": "utf-8"}
+        exploring = run["trigger"] == "explore"
+        command = (self.explore_command(json.loads(run["params"] or "{}"), out) if exploring
+                   else self.command(project, files, out))
         with open(out / "output.log", "w", encoding="utf-8") as log:
-            process = subprocess.Popen(self.command(project, files, out), stdout=log, stderr=subprocess.STDOUT,
+            process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT,
                                        env=env, cwd=files.root, start_new_session=os.name != "nt")
             self._procs[run["id"]] = process
             try:
@@ -133,6 +138,9 @@ class Runner:
                 self._procs.pop(run["id"], None)
 
         if self.store.run(run["id"])["status"] == "stopped":
+            return
+        if exploring:
+            self._finish_exploration(run, out, process.returncode)
             return
         folder = _run_folder(out)
         if folder is None:
@@ -145,6 +153,27 @@ class Runner:
                               passed=verdicts.count("pass"), failed=verdicts.count("fail"),
                               flaky=verdicts.count("flaky"), errors=verdicts.count("error"))
 
+    def _finish_exploration(self, run: dict, out: Path, code: int) -> None:
+        found = sorted(out.glob("explore-*/explore.json"))
+        if not found:
+            tail = (out / "output.log").read_text(encoding="utf-8", errors="replace").strip().splitlines()[-3:]
+            self.store.update_run(run["id"], status="failed", finished=time.time(),
+                                  message=" / ".join(tail)[-500:] or f"nightshift explore exited with {code}")
+            return
+        findings = json.loads(found[-1].read_text(encoding="utf-8")).get("findings") or []
+        counts = {severity: sum(f.get("severity") == severity for f in findings) for severity in ("bug", "suspected", "warning")}
+        self.store.update_run(run["id"], status="done", finished=time.time(),
+                              run_dir=found[-1].parent.relative_to(out).as_posix(),
+                              message=f"{_n(counts['bug'], 'bug')} proven, {counts['suspected']} suspected, "
+                                      f"{_n(counts['warning'], 'warning')}")
+
+    def _explore_command(self, params: dict, out: Path) -> list[str]:
+        command = [sys.executable, "-m", "nightshift", "explore", str(params["url"]), "--steps", str(params["steps"]),
+                   "--out", str(out), "--quiet"]
+        if params.get("focus"):
+            command += ["--focus", str(params["focus"])]
+        return command
+
     def _command(self, project: dict, files: ProjectFiles, out: Path) -> list[str]:
         command = [sys.executable, "-m", "nightshift", "run", str(files.specs), "--out", str(out),
                    "--recordings", str(files.recordings), "--parallel", str(self.parallel), "--quiet",
@@ -154,6 +183,10 @@ class Runner:
         if project["base_url"]:
             command += ["--base-url", project["base_url"]]
         return command
+
+
+def _n(count: int, word: str) -> str:
+    return f"{count} {word}" + ("" if count == 1 else "s")
 
 
 def _run_folder(out: Path) -> Path | None:

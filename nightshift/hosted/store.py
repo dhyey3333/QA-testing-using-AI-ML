@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import re
 import secrets
 import sqlite3
@@ -47,7 +48,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY,
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    trigger TEXT NOT NULL,                 -- manual | nightly
+    trigger TEXT NOT NULL,                 -- manual | nightly | explore
     status TEXT NOT NULL,                  -- queued | running | done | failed | stopped
     queued REAL NOT NULL,
     started REAL,
@@ -58,7 +59,8 @@ CREATE TABLE IF NOT EXISTS runs (
     flaky INTEGER NOT NULL DEFAULT 0,
     errors INTEGER NOT NULL DEFAULT 0,
     message TEXT NOT NULL DEFAULT '',
-    user_id INTEGER
+    user_id INTEGER,
+    params TEXT NOT NULL DEFAULT ''        -- JSON: an exploration's URL, steps and focus
 );
 """
 
@@ -111,6 +113,10 @@ class Store:
             self._db.execute("PRAGMA journal_mode=WAL")
             self._db.execute("PRAGMA foreign_keys=ON")
             self._db.executescript(SCHEMA)
+            # Databases made before explore runs existed get the new column.
+            columns = [row[1] for row in self._db.execute("PRAGMA table_info(runs)")]
+            if "params" not in columns:
+                self._db.execute("ALTER TABLE runs ADD COLUMN params TEXT NOT NULL DEFAULT ''")
 
     def close(self) -> None:
         with self._lock:
@@ -230,9 +236,10 @@ class Store:
 
     # --- runs ---------------------------------------------------------------------
 
-    def add_run(self, project_id: int, trigger: str, user_id: int | None = None) -> int:
-        return self._write("INSERT INTO runs (project_id, trigger, status, queued, user_id) VALUES (?, ?, 'queued', ?, ?)",
-                           (project_id, trigger, time.time(), user_id))
+    def add_run(self, project_id: int, trigger: str, user_id: int | None = None, params: dict | None = None) -> int:
+        return self._write("INSERT INTO runs (project_id, trigger, status, queued, user_id, params) "
+                           "VALUES (?, ?, 'queued', ?, ?, ?)",
+                           (project_id, trigger, time.time(), user_id, json.dumps(params) if params else ""))
 
     def run(self, run_id: int) -> dict | None:
         return self._one("SELECT * FROM runs WHERE id = ?", (run_id,))

@@ -4,6 +4,7 @@ and a client report for every run. Plus the model client's patience with a busy 
 import json
 import os
 import sqlite3
+import sys
 import threading
 import time
 from datetime import datetime
@@ -210,3 +211,51 @@ def test_the_database_has_no_plain_session_tokens(hosted):
     token = admin.cookies.get("ns_session")
     rows = sqlite3.connect(hosted.data / "nightshift.db").execute("SELECT token_hash FROM sessions").fetchall()
     assert token and all(token not in row[0] for row in rows)
+
+
+FAKE_EXPLORE = (
+    "import json, pathlib, sys; p = pathlib.Path(sys.argv[1]) / 'explore-1'; p.mkdir(parents=True); "
+    "(p / 'explore.json').write_text(json.dumps({'findings': [{'severity': 'bug'}, {'severity': 'suspected'}, "
+    "{'severity': 'warning'}, {'severity': 'warning'}]})); (p / 'report.html').write_text('<h1>explored</h1>'); "
+    "(p / 'findings.md').write_text('- a bug')"
+)
+
+
+def test_exploring_a_website_from_the_web_app_needs_no_tests(hosted):
+    seen = {}
+
+    def fake_explore(params, out):  # stands in for `nightshift explore`, which needs a model
+        seen.update(params)
+        return [sys.executable, "-c", FAKE_EXPLORE, str(out)]
+
+    hosted.runner.explore_command = fake_explore
+    staff = client(hosted, STAFF)
+    slug = client(hosted, ADMIN).post("/api/projects", json={"client": "Acme"}).json()["project"]["slug"]
+    assert staff.post(f"/api/projects/{slug}/explore", json={"url": "ftp://academybugs.com"}).status_code == 400
+    assert staff.post(f"/api/projects/{slug}/explore", json={"url": "https://academybugs.com/", "steps": 99}).status_code == 400
+    started = staff.post(f"/api/projects/{slug}/explore",
+                         json={"url": "https://academybugs.com/", "steps": "20", "focus": "the cart"})
+    assert started.status_code == 201, started.text
+    hosted.runner.start()
+    deadline = time.time() + 60
+    while (run := staff.get(f"/api/projects/{slug}").json()["runs"][0])["status"] in ("queued", "running"):
+        assert time.time() < deadline
+        time.sleep(0.5)
+    assert seen == {"url": "https://academybugs.com/", "steps": 20, "focus": "the cart"}
+    assert (run["status"], run["trigger"], run["target"]) == ("done", "explore", "https://academybugs.com/")
+    assert run["message"] == "1 bug proven, 1 suspected, 2 warnings"
+    assert staff.get(run["links"]["report"]).text == "<h1>explored</h1>" and "findings" in run["links"]
+
+
+def test_a_database_from_before_explore_runs_gets_the_new_column(tmp_path):
+    old = sqlite3.connect(tmp_path / "old.db")
+    old.execute("CREATE TABLE runs (id INTEGER PRIMARY KEY, project_id INTEGER, trigger TEXT, status TEXT, queued REAL,"
+                " started REAL, finished REAL, run_dir TEXT DEFAULT '', passed INTEGER DEFAULT 0, failed INTEGER DEFAULT 0,"
+                " flaky INTEGER DEFAULT 0, errors INTEGER DEFAULT 0, message TEXT DEFAULT '', user_id INTEGER)")
+    old.commit()
+    old.close()
+    store = Store(tmp_path / "old.db")
+    project = store.add_project("Acme")
+    run_id = store.add_run(project["id"], "explore", params={"url": "https://x.test/"})
+    assert json.loads(store.run(run_id)["params"]) == {"url": "https://x.test/"}
+    store.close()

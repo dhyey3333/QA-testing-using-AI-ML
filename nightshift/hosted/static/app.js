@@ -98,7 +98,7 @@ async function projectsPage() {
 }
 
 function counts(run) {
-  if (run.status !== "done") return `<span class="muted">${esc(run.message || "")}</span>`;
+  if (run.status !== "done" || run.trigger === "explore") return `<span class="muted">${esc(run.message || "")}</span>`;
   return `<span class="n-pass">${run.passed} passed</span>` + (run.failed ? `<span class="n-fail">${run.failed} failed</span>` : "")
     + (run.flaky ? `<span class="n-flaky">${run.flaky} flaky</span>` : "") + (run.errors ? `<span class="n-error">${run.errors} errors</span>` : "");
 }
@@ -133,23 +133,41 @@ async function projectPage(slug, tab, extra) {
   const section = document.getElementById("tab");
   if (tab === "tests") return testsTab(section, slug, data, extra);
   if (tab === "settings" && me.admin) return settingsTab(section, slug, data);
-  runsTab(section, data);
+  runsTab(section, slug, data, Boolean(active));
   if (active) poll = setTimeout(route, 4000);  // follow the run until it finishes
 }
 
-function runsTab(section, data) {
+function runsTab(section, slug, data, busy) {
   const rows = data.runs.map((run) => `
     <tr>
       <td>#${run.id}</td>
-      <td>${esc(when(run.queued))}<div class="muted">${esc(run.trigger)} · ${esc(took(run))}</div></td>
+      <td>${esc(when(run.queued))}<div class="muted">${esc(run.trigger)} · ${esc(took(run))}</div>
+        ${run.target ? `<div class="muted mono">${esc(run.target)}</div>` : ""}</td>
       <td><span class="badge ${esc(run.status)}">${esc(run.status)}</span></td>
       <td class="counts">${counts(run)}</td>
-      <td>${[["client_report", "Client report"], ["report", "Full report"], ["log", "Log"]]
+      <td>${[["client_report", "Client report"], ["report", "Full report"], ["findings", "Findings"], ["log", "Log"]]
         .filter(([key]) => run.links[key]).map(([key, label]) => `<a href="${esc(run.links[key])}" target="_blank" rel="noopener">${label}</a>`).join(" · ")}</td>
     </tr>`).join("");
-  section.innerHTML = rows
-    ? `<table><thead><tr><th>Run</th><th>When</th><th>Status</th><th>Results</th><th>Reports</th></tr></thead><tbody>${rows}</tbody></table>`
-    : '<p class="muted">No runs yet. Add tests, then press Run now.</p>';
+  section.innerHTML = `
+    <form class="card stack" id="explore">
+      <strong>Explore a website for bugs</strong>
+      <span class="muted">No tests needed: paste an address and the AI uses the site like a curious user, then lists what it
+        found broken. Only sites you own or are allowed to test.</span>
+      <div class="row">
+        <label>Website <input name="url" type="url" required placeholder="https://academybugs.com/" value="${esc(data.project.base_url)}"></label>
+        <label>Actions <input name="steps" type="number" min="5" max="60" value="25"></label>
+        <label>Focus on (optional) <input name="focus" placeholder="the checkout"></label>
+      </div>
+      <p class="error" role="alert"></p>
+      <div><button type="submit" ${busy ? "disabled" : ""}>Explore</button></div>
+    </form>
+    ${rows
+      ? `<table><thead><tr><th>Run</th><th>When</th><th>Status</th><th>Results</th><th>Reports</th></tr></thead><tbody>${rows}</tbody></table>`
+      : '<p class="muted">No runs yet. Add tests and press Run now, or explore a website above.</p>'}`;
+  onSubmit(document.getElementById("explore"), async (fields) => {
+    await api("POST", `/api/projects/${slug}/explore`, fields);
+    route();
+  });
 }
 
 const TEMPLATE = `name: login
