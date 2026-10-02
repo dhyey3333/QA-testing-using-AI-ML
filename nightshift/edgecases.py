@@ -1,8 +1,8 @@
 """Edge-case tests generated from one test that passes: the negative cases a tester writes next.
 
 For each value the test types, a variant replaces it with what a careless or hostile user would
-type: nothing, far too much, or the wrong format. Each variant expects the app to refuse it with a
-message, and the original success not to happen.
+type: nothing, far too much, or the wrong format. Each variant expects the app to refuse it with an
+error message about that value.
 
     nightshift edge-cases specs/signup.yaml          writes specs/edge-cases/signup--email-format.yaml ...
     nightshift run --url URL --goal "sign up" --data email=... --edge-cases
@@ -61,11 +61,12 @@ def variants(spec: Spec) -> list[dict]:
                 "technique": "edge case (generated)",
                 "requirements": list(spec.requirements),
                 "url": spec.url,
-                "steps": [*spec.steps, f"(this test types a deliberately bad {{{{{key}}}}}: {why})"],
-                "expect": [
-                    f"an error message about the {human} is shown",
-                    f"this does not happen: {spec.expect[0]}",
-                ],
+                "steps": [*spec.steps, f"(this test types a deliberately bad {{{{{key}}}}}: {why}; "
+                                       "the app should refuse it with an error message)"],
+                # One plain expectation. A second one, "this does not happen: <the original success>",
+                # read to the 4B model on saucedemo as "expects no error", and a correct refusal was
+                # reported as a bug. The quoted error message is the proof the input was refused.
+                "expect": [f"an error message about the {human} is shown"],
                 "data": data,
                 "max_steps": spec.max_steps,
             })

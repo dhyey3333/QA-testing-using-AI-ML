@@ -261,7 +261,7 @@ code, computed right before typing. The model never sees the secret.
 **Edge cases from one test.** `nightshift edge-cases specs/signup.yaml` writes, for each value the
 test types, an empty version and a wrong-format one (an email that isn't one, letters in a phone
 number, a two-digit PIN code, a one-character password) or a 300-character one, each expecting an
-error message and no success. `nightshift run ... --edge-cases` generates and runs them in one go;
+error message about that value. `nightshift run ... --edge-cases` generates and runs them in one go;
 with `--url`, `--goal` and `--data` that is a whole negative suite from one sentence. They are
 drafts: read a failing one before filing it.
 

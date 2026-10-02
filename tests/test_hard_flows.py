@@ -71,8 +71,7 @@ def test_edge_cases_are_generated_from_the_values_a_test_types(spec_for, tmp_pat
     assert len(cases) == 2 * len(spec.data)  # empty, plus a wrong format or a too-long value, per value
     pincode = cases["checkout--pincode-format"]
     assert pincode["data"]["pincode"] == "12" and pincode["data"]["email"] == spec.raw_data["email"]
-    assert pincode["expect"] == ["an error message about the pincode is shown",
-                                 "this does not happen: a page says the order was placed"]
+    assert pincode["expect"] == ["an error message about the pincode is shown"]
     assert cases["checkout--email-format"]["data"]["email"] == "not-an-email"
     assert len(cases["checkout--full-name-too-long"]["data"]["full_name"]) == 300
     assert "full_name" in cases["checkout--full-name-empty"]["data"]
