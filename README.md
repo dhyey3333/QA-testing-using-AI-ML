@@ -265,6 +265,20 @@ error message and no success. `nightshift run ... --edge-cases` generates and ru
 with `--url`, `--goal` and `--data` that is a whole negative suite from one sentence. They are
 drafts: read a failing one before filing it.
 
+## A report for your client
+
+```bash
+uv run nightshift run specs/ --client "Acme Retail" --brand "Your QA Co" --logo logo.png
+uv run nightshift client-report runs/<run> --client "Acme Retail" --brand "Your QA Co" --specs specs/
+```
+
+`client-report.html` is one self-contained file, with screenshots embedded, to email, attach or print
+to PDF. It opens with a release recommendation ("Not ready to release: 2 defects found, 1 of high
+severity"), then counts by cause, each defect with its severity, steps to reproduce, the failing
+screenshot and its Jira or GitHub ticket, a requirements table when specs list requirement ids, and
+every test's result. With `--brand` it carries your company's name and not Nightshift's. The
+dashboard's Runs page links to it.
+
 ## Filing defects in Jira
 
 ```bash

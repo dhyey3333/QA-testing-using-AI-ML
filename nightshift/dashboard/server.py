@@ -268,7 +268,7 @@ class Dashboard:
                     item["defects"] = json.loads((folder / "defects.json").read_text(encoding="utf-8"))
                 elif counts.get("fail") or counts.get("flaky"):
                     item["defects"] = None  # failures, but from before defect analysis existed
-                item["files"] = [n for n in ("index.html", "defects.html", "traceability.html", "test-cases.csv")
+                item["files"] = [n for n in ("index.html", "client-report.html", "defects.html", "traceability.html", "test-cases.csv")
                                  if (folder / n).exists()]
             elif (folder / "explore.json").exists():
                 data = json.loads((folder / "explore.json").read_text(encoding="utf-8"))

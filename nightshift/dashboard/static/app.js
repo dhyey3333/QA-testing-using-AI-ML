@@ -495,7 +495,7 @@ async function runs() {
   const chosen = list.find((r) => r.id === id);
   let viewer = `<div class="card empty">No runs yet.</div>`;
   if (chosen) {
-    const names = { "index.html": "Results", "defects.html": "Defects", "traceability.html": "Traceability matrix", "report.html": "Exploration report", "test-cases.csv": "Test cases (CSV)" };
+    const names = { "index.html": "Results", "client-report.html": "Client report", "defects.html": "Defects", "traceability.html": "Traceability matrix", "report.html": "Exploration report", "test-cases.csv": "Test cases (CSV)" };
     const tabs = chosen.files.map((file, i) => file.endsWith(".csv")
       ? `<a class="button" href="${fileUrl(`${chosen.id}/${file}`)}" download>${names[file]}</a>`
       : `<button data-file="${esc(file)}" class="${i === 0 ? "active" : ""}">${names[file] || file}</button>`).join("");

@@ -28,8 +28,9 @@ from pathlib import Path
 import httpx
 
 from .actions import InvalidAction
+from .client_report import write_client_report
 from .edgecases import write_variants
-from .defects import Defect, analyse, file_github_issues, load_results, write_defects
+from .defects import Defect, analyse, file_github_issues, load_results, record_issue, write_defects
 from .explore import DEFAULT_AVOID, explore
 from .export import write_export
 from .jira import JiraConfig, JiraError, file_jira_issues
@@ -139,6 +140,14 @@ def main(argv: list[str] | None = None) -> int:
     cas.add_argument("--run", type=Path, help="a run folder, to include each case's last result")
     cas.add_argument("--to", type=Path, default=Path("test-cases.csv"), help="output file (default: test-cases.csv)")
 
+    cli_rep = commands.add_parser("client-report", help="the report to send a client: one self-contained HTML file")
+    cli_rep.add_argument("run", type=Path, help="the run folder, e.g. runs/20261001-120000")
+    cli_rep.add_argument("--client", default="", help="the client's name")
+    cli_rep.add_argument("--brand", default="", help="the name it is prepared by (your company)")
+    cli_rep.add_argument("--logo", type=Path, help="your logo (PNG, JPEG or SVG)")
+    cli_rep.add_argument("--specs", action="append", type=Path, help="spec folders, for test titles and requirements")
+    cli_rep.add_argument("--to", type=Path, help="output file (default: <run>/client-report.html)")
+
     tri = commands.add_parser("triage", help="defect analysis of a finished run")
     tri.add_argument("run", type=Path, help="the run folder, e.g. runs/20261001-120000")
     tri.add_argument("--file-github", metavar="OWNER/REPO", help="file each defect as a GitHub issue (uses the gh CLI)")
@@ -153,7 +162,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     handler = {"run": _run, "explore": _explore, "generate": _generate, "export": _export, "report": _report,
                "init": _init, "validate": _validate, "cases": _cases, "triage": _triage,
-               "serve": _serve, "edge-cases": _edge_cases}
+               "serve": _serve, "edge-cases": _edge_cases, "client-report": _client_report}
     try:
         return handler[args.command](args)
     except (SpecError, ValueError) as exc:
@@ -178,6 +187,9 @@ def _run_options(parser: argparse.ArgumentParser) -> None:
                         help="when to post to Slack (default: failures)")
     parser.add_argument("--file-jira", action="store_true",
                         help="file each defect in Jira (JIRA_URL, JIRA_PROJECT, JIRA_EMAIL + JIRA_API_TOKEN or JIRA_TOKEN)")
+    parser.add_argument("--client", default="", help="also write client-report.html for this client")
+    parser.add_argument("--brand", default="", help="the name the client report is prepared by (your company)")
+    parser.add_argument("--logo", type=Path, help="a logo for the client report (PNG, JPEG or SVG)")
 
 
 def _common(parser: argparse.ArgumentParser) -> None:
@@ -229,6 +241,13 @@ def _run(args: argparse.Namespace) -> int:
     # API tests use no model, so naming one would only mislead.
     results, run_dir, defects = _execute(specs, args, _model(announce=any(s.kind != "api" for s in specs)))
     return _exit_code(results)
+
+
+def _client_report(args: argparse.Namespace) -> int:
+    specs = {spec.name: spec for spec in load_specs(args.specs)} if args.specs else {}
+    path = write_client_report(args.run, client=args.client, brand=args.brand, logo=args.logo, specs=specs, out=args.to)
+    print(f"client report: {path}")
+    return 0
 
 
 def _edge_cases(args: argparse.Namespace) -> int:
@@ -313,6 +332,10 @@ def _execute(specs: list[Spec], args: argparse.Namespace, model: HttpModel) -> t
         print(f"defects: {run_dir / 'defects.html'}")
         if args.file_jira:
             _file_in_jira(defects, run_dir)
+    if args.client or args.brand:
+        report = write_client_report(run_dir, client=args.client, brand=args.brand, logo=args.logo,
+                                     specs={spec.name: spec for spec in specs})
+        print(f"client report: {report}")
     print(f"report: {index}")
     return results, run_dir, defects
 
@@ -568,8 +591,9 @@ def _triage(args: argparse.Namespace) -> int:
         print(f"   {defect.id} [{defect.severity.split(':')[0]}] {defect.title}  (affects {len(defect.specs)})")
     print(f"defects: {args.run / 'defects.html'}")
     if args.file_github and defects:
-        for url in file_github_issues(defects, args.run, args.file_github):
+        for defect, url in zip(defects, file_github_issues(defects, args.run, args.file_github)):
             print(f"filed {url}")
+            record_issue(args.run, defect.id, "github", "#" + url.rstrip("/").rsplit("/", 1)[-1], url)
     if args.file_jira and defects:
         _file_in_jira(defects, args.run)
     return 0
@@ -584,6 +608,7 @@ def _file_in_jira(defects: list[Defect], run_dir: Path) -> None:
     try:
         for defect_id, action, key in file_jira_issues(defects, run_dir, config, log=print):
             print(f"jira: {defect_id} {action} {key}  {config.url}/browse/{key}")
+            record_issue(run_dir, defect_id, "jira", key, f"{config.url}/browse/{key}")
     except (JiraError, httpx.HTTPError) as exc:
         print(f"jira: could not file the defects ({exc})", file=sys.stderr)
 

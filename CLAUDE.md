@@ -31,6 +31,7 @@ Design reasoning: `docs/DECISIONS.md`.
 - `uv run python -m benchmark [--app clinic] [--only bug1,bug2] [--no-judge] [--no-vision] [--clean-only]` writes `runs/bench-*/bench.md`
 - `uv run python -m benchmark.public_sites [--only a,b] [--rerun] [--resume runs/public-X]`: 27 specs on public practice sites (`benchmark/public/`), verdict, time, model calls and model cost in INR per run; every verdict must still be checked by hand. Signups use `${NS_RUN}`.
 - `uv run nightshift run --url URL --goal "..." [--data k=v] [--edge-cases]`: a goal-only spec, saved to `specs/goals/`.
+- `uv run nightshift client-report runs/<run> --client NAME --brand NAME [--logo F] [--specs specs/]` (or `run --client/--brand`): one self-contained HTML report for a client (`nightshift/client_report.py`); ticket links from `issues.json`.
 - `uv run nightshift edge-cases specs/x.yaml [--to specs/edge-cases]`: generated negative variants (`nightshift/edgecases.py`).
 - Payments: demo shop's `gateway.html` stand-in (cross-origin iframe, Razorpay test UPI IDs); TOTP via `totp_secret` data and `{{totp_code}}` (`nightshift/totp.py`).
 - `uv run python -m realworld.bakerydemo.eval [--only bug,...] [--clean-only] [--skip-clean]` (real app; about 12 min)

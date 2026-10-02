@@ -212,6 +212,23 @@ def severity(result: RunResult) -> str:
     return "Medium: the page shows a wrong or missing result"
 
 
+def reproduction(result: RunResult) -> list[str]:
+    """The run's steps as instructions a person can follow, with what went wrong on each."""
+    lines = [] if is_api(result) else [f"Open {result.url}"]
+    for step in result.steps:
+        if step.outcome.startswith(("invalid", "not yet", "not accepted")):
+            continue  # the model's slips and the runner's checks are not steps a person takes
+        text = instruction(step)
+        if text is None:
+            continue
+        if step.outcome.startswith("failed"):
+            text += f" (this fails: {step.outcome.removeprefix('failed: ')})"
+        elif step.outcome == "no change":
+            text += " (nothing happens)"
+        lines.append(text)
+    return lines
+
+
 def bug_report(result: RunResult, spec: Spec) -> str:
     out_dir = Path(result.out_dir)
     api = is_api(result)
@@ -230,20 +247,8 @@ def bug_report(result: RunResult, spec: Spec) -> str:
     ]
     lines += ["| | |", "|---|---|", *[f"| {k} | {v} |" for k, v in rows], ""]
 
-    lines += ["## Steps to reproduce", ""] + ([] if api else [f"1. Open {result.url}"])
-    n = 1 if api else 2
-    for step in result.steps:
-        if step.outcome.startswith("invalid"):
-            continue
-        text = instruction(step)
-        if text is None:
-            continue
-        if step.outcome.startswith("failed"):
-            text += f" (this fails: {step.outcome.removeprefix('failed: ')})"
-        elif step.outcome == "no change":
-            text += " (nothing happens)"
-        lines.append(f"{n}. {text}")
-        n += 1
+    lines += ["## Steps to reproduce", ""]
+    lines += [f"{n}. {text}" for n, text in enumerate(reproduction(result), 1)]
     if spec.data:
         lines += ["", "Values in `{{double braces}}` are test data from the spec."]
 

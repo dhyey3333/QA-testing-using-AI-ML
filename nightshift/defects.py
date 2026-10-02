@@ -243,6 +243,17 @@ def file_github_issues(defects: list[Defect], run_dir: Path, repo: str, label: s
     return urls
 
 
+def record_issue(run_dir: Path, defect_id: str, tracker: str, key: str, url: str) -> None:
+    """Remember which ticket a defect was filed as (issues.json), so reports can link to it."""
+    path = run_dir / "issues.json"
+    try:
+        issues = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except ValueError:
+        issues = {}
+    issues[defect_id] = {"tracker": tracker, "key": key, "url": url}
+    path.write_text(json.dumps(issues, indent=2), encoding="utf-8")
+
+
 def load_results(run_dir: Path) -> list[RunResult]:
     """The results of a finished run, read back from its result.json files."""
     results = []

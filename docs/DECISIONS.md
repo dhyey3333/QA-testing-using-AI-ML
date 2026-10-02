@@ -305,3 +305,13 @@ standard library only); the model never sees the secret, and typing `{{totp_secr
 variant and a wrong-format (or 300-character) variant that must be refused with a message. Fixed
 rules, not a model, so the same spec always gives the same cases. They are drafts: an app that
 accepts a 300-character name may be right to.
+
+## D29. A report for the client, not for us
+A QA team's deliverable is a report its client reads: can we release, what is broken and how badly,
+which requirements are covered, and the evidence. `client-report.html` is that, one file per run:
+a release recommendation (worded as a recommendation, not a sign-off), counts by cause, each defect
+with severity, steps to reproduce, the failing screenshot and its ticket link, a requirements table
+when specs carry requirement ids, and every test's result. Screenshots are embedded, so it can be
+emailed or printed to PDF as one file. Light theme only, because it is printed. With `--brand` it
+names the agency that prepared it and never mentions Nightshift. Ticket links come from
+`issues.json`, written whenever Jira or GitHub filing succeeds.
