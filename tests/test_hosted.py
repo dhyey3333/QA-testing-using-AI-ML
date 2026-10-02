@@ -182,6 +182,18 @@ def test_parallel_runs_replay_saved_paths_in_separate_browsers(shop, base_url, t
     assert all(row["verdict"] == "pass" and row["model_calls"] == 0 for row in summary)
 
 
+def test_a_relative_data_folder_still_works_from_inside_a_project(tmp_path, monkeypatch):
+    # Found on first use: `--data hosted-data`, and every run said "specs: no such file or folder".
+    monkeypatch.chdir(tmp_path)
+    store = Store(Path("hosted-data") / "nightshift.db")
+    runner = Runner(store, Path("hosted-data"))
+    project = store.add_project("Acme")
+    files = runner.files(project)
+    command = runner.command(project, files, files.run_folder(1))
+    assert files.specs.is_absolute() and str(files.specs) in command
+    store.close()
+
+
 def test_a_busy_model_is_asked_again_instead_of_failing_the_run(monkeypatch):
     answers = iter([httpx.Response(429, headers={"Retry-After": "1"}), httpx.Response(503),
                     httpx.Response(200, json={"choices": [{"message": {"content": '{"ok": 1}'}}]})])

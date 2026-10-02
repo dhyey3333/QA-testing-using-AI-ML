@@ -34,7 +34,9 @@ class Busy(StoreError):
 
 class Runner:
     def __init__(self, store: Store, data: Path, *, max_runs: int = 2, parallel: int = 2, command=None) -> None:
-        self.store, self.data = store, data
+        # Absolute: each run starts inside its project's folder, where a relative --data path
+        # (`--data hosted-data`) would point nowhere. Found on the first real use.
+        self.store, self.data = store, data.resolve()
         self.max_runs, self.parallel = max(1, max_runs), max(1, parallel)
         self.command = command or self._command
         self._wake = threading.Condition()
