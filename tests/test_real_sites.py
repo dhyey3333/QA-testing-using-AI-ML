@@ -240,3 +240,20 @@ def test_when_the_login_test_fails_the_tests_that_need_its_session_are_errors(br
     finally:
         shop.bugs = set()
     assert result.verdict == "error" and "could not start logged in" in result.reason
+
+
+def test_ad_networks_never_load_in_a_test_browser(browser):
+    from nightshift.observe import block_ads
+
+    context = browser.new_context()
+    block_ads(context)
+    page = context.new_page()
+    failed = []
+    page.on("requestfailed", lambda request: failed.append(request.url))
+    # Blocked before any network traffic, so this needs no internet connection.
+    page.set_content('<img src="https://pagead2.googlesyndication.com/pagead/ad.gif">'
+                     '<img src="https://securepubads.g.doubleclick.net/x.gif">')
+    page.wait_for_timeout(300)
+    context.close()
+    assert sorted(failed) == ["https://pagead2.googlesyndication.com/pagead/ad.gif",
+                              "https://securepubads.g.doubleclick.net/x.gif"]

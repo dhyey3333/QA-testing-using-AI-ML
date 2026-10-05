@@ -25,7 +25,7 @@ from playwright.sync_api import Error as PlaywrightError
 from .actions import EXPLORE_KINDS, ActionFailed, InvalidAction, execute, settle, track_network, validate_action
 from .checks import check_page, listen
 from .model import Model, ModelError, usage_snapshot
-from .observe import Observation, observe, screenshot, watch_form_validation
+from .observe import Observation, block_ads, observe, screenshot, watch_form_validation
 from .prompts import Context, format_element, mask
 from .report import page_html, step_html
 from .result import PENDING, Step
@@ -84,6 +84,8 @@ def explore(
 
     usage_before = usage_snapshot(model)
     context = browser.new_context(**{"viewport": VIEWPORT, **options.context})
+    if options.block_ads:
+        block_ads(context)
     watch_form_validation(context)
     context.tracing.start(screenshots=True, snapshots=True)
     page = context.new_page()

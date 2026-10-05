@@ -36,7 +36,7 @@ from .export import write_export
 from .judge import is_on_page, judge_page, normalize
 from .locators import describe_target, resolve
 from .model import Model, ModelError, usage_snapshot
-from .observe import DEEP_JS, JPEG_QUALITY, Observation, observe, screenshot, watch_form_validation
+from .observe import DEEP_JS, JPEG_QUALITY, Observation, block_ads, observe, screenshot, watch_form_validation
 from .outcome import categorize, environment_problem
 from .prompts import Context, mask, typed_placeholders
 from .recording import Recording, RecordingStore
@@ -68,6 +68,7 @@ class RunOptions:
     video: bool = False
     context: dict = field(default_factory=dict)  # extra browser-context options, e.g. a device profile
     js_errors: str = "fail"  # "warn": uncaught JS errors are warnings, not failures (a spec's js_errors wins)
+    block_ads: bool = True  # ad networks' requests never load (observe.block_ads)
     sessions: Sessions | None = None  # login sessions shared between the specs of one run (sessions.py)
 
 
@@ -188,6 +189,8 @@ def run_spec(
 
     usage_before = usage_snapshot(model)
     context = browser.new_context(**context_options)
+    if options.block_ads:
+        block_ads(context)
     if session and session["session_storage"]["items"]:
         context.add_init_script(_session_storage_script(session["session_storage"]))
     watch_form_validation(context)

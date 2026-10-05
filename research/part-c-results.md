@@ -224,3 +224,50 @@ Same model as phase 1 (Gemma 4 31B, Ollama Cloud free plan), same benchmarks, pl
 - **Staying logged in:** `saucedemo-logged-in` ran with no login steps.
 - **JS-error page:** passed, with the onload error kept as a warning.
 - **Phone and OTP:** no public practice site sends real SMS, so this was tested on the demo shop only. A clean pass, plus the planted bug caught.
+
+## Phase 3: hosted product
+
+**What was built (commits 0cb8e61 to the ad-blocking fix, 188 tests pass):**
+- **`nightshift hosted serve`:** a web app for a QA agency.
+  - Staff logins, with admin and staff roles.
+  - One project per client: tests edited in the browser, saved paths, write-only secrets and a nightly time.
+  - Runs in the background, each ending with a client report.
+  - An "Explore a website" box that needs no tests.
+  - Built from the standard library only: SQLite and scrypt, behind Caddy for HTTPS.
+- **`nightshift run --parallel N`:** each worker gets its own browser and model client. The 10 saved shop paths replay in 26 s instead of 55 s with 3 at a time.
+- **A busy model is waited for:** the client retries on 429 and 503, since Ollama Cloud's free plan answers one request at a time.
+- **Hosting:**
+  - `deploy/oracle/` is ready: a setup script, systemd service, Caddyfile and guide.
+  - **Not deployed:** Oracle's free plan needs card details, and the user chose not to give any.
+  - **Free alternative used instead:** the user's laptop, plus a Cloudflare quick tunnel (no account) for a public link.
+- **Ads are blocked** in test browsers (D39). This was found by this phase's benchmark, below.
+
+**Bugs found by using it for real, all fixed:**
+- **A relative `--data` folder** broke every run.
+- **A refused request** was sometimes seen as a dropped connection.
+- **A bot firewall's block page** (Spree's demo, on Vercel) was reported as a bug in the app. It's now ENV_ISSUE.
+
+**On real e-commerce platforms' public demos, through the hosted app:**
+
+| Site | Result |
+|---|---|
+| Saleor (demo.saleor.io) | Add-to-cart **passed**, after `js_errors: warn`. The homepage throws "Minified React error #419" in the background on every load. |
+| Medusa (next.medusajs.com) | **Real bug caught, 6 runs:** adding the hoodie got an HTTP 500 from the server, and the cart stayed at 0. Products are out of stock, and the server crashes instead of saying so. |
+| Spree (demo.spreecommerce.org) | Blocked by Vercel's firewall. Now reported as ENV_ISSUE, correctly. |
+| AcademyBugs (a store with planted bugs) | **Explore, 25 actions:** 3 suspected bugs. One is the wrong grand total, $123.13 for $15.14 + $7.99 shipping. Turned into a test, it **fails as a BUG** on 2 of 2 runs, with the arithmetic in the judge's proof. |
+
+**Benchmarks (Gemma 4 31B, Ollama Cloud free plan):**
+
+| | Phase 2 | Phase 3 |
+|---|---|---|
+| Shop: bugs caught / false alarms | 23 / 23, 0 / 13 | 23 / 23, 0 / 13 |
+| Clinic (holdout): bugs / false alarms | 8 / 8, 1 / 5 | 8 / 8, 1 / 5 (the same `cancel-appointment`) |
+| Public sites: correct on reachable sites | 27 / 27 | 26 / 27 in the run; **27 / 27** after the ad fix |
+| False passes | 0 | 0 |
+| Median run time: public / shop / clinic | 21 s / 14 s / 17 s | 21 s / 13 s / 17 s |
+
+- **The public-site miss** was `automationexercise-add-to-cart`: a full-page Google ad covered the page.
+  - **After blocking ads,** all three automationexercise specs passed: add-to-cart 21 s, search 16 s, signup 32 s.
+  - **Not rerun:** the other 28 specs. Nothing else in them touches ads.
+- **Unreachable this run (ENV_ISSUE, not counted):** opencart (bot check) and the-internet's three pages (Heroku timed out).
+- **False alarms over all clean runs:** 1 / 45 (2.2%) with the ad fix, the holdout one. The under-2% target is still just missed.

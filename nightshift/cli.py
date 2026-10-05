@@ -220,6 +220,8 @@ def _common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--browser", choices=["chromium", "firefox", "webkit"], default="chromium")
     parser.add_argument("--device", help='emulate a device, e.g. "iPhone 13" or "Pixel 7"')
     parser.add_argument("--video", action="store_true", help="record a video of every run")
+    parser.add_argument("--allow-ads", action="store_true",
+                        help="let ad networks load (by default they are blocked: ads are not the app under test)")
     parser.add_argument("--no-vision", action="store_true",
                         help="send the model page text and elements only, no screenshot (faster on small models)")
     parser.add_argument("--out", type=Path, default=Path("runs"), help="where results go (default: runs/)")
@@ -237,7 +239,8 @@ def _model(announce: bool = True) -> HttpModel:
 
 def _options(args: argparse.Namespace, **extra) -> RunOptions:
     context = device_options(args.device) if args.device else {}
-    return RunOptions(send_screenshot=not args.no_vision, video=args.video, context=context, **extra)
+    return RunOptions(send_screenshot=not args.no_vision, video=args.video, context=context,
+                      block_ads=not getattr(args, "allow_ads", False), **extra)
 
 
 def _log(args: argparse.Namespace, prefix: str = ""):

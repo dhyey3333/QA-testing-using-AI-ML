@@ -380,3 +380,11 @@ own model client, so each result's token count stays its own. Specs that others 
 from run first. Ollama Cloud's free plan answers one request at a time and answers 429 when busy,
 so the model client waits (Retry-After, else a growing back-off) instead of failing the run.
 Replays need no model and get the full speed-up: 10 saved shop paths in 26 s instead of 55 s.
+
+## D39. Ad networks are blocked in test browsers
+Found in the phase 3 benchmark: Google showed automationexercise's visitors a full-page ad that
+covered the page, and its close button lived inside the ad's own cross-origin frame, which Nightshift
+never reads (ad frames are noise). A working add-to-cart failed, and only on the runs where the ad
+appeared, so the result was random too. Ads are not the app under test, so their servers' requests
+are aborted by default (`observe.block_ads`, ad servers only: tag managers and analytics still load,
+since some sites need them). `--allow-ads` is for a publisher whose ads are the product.

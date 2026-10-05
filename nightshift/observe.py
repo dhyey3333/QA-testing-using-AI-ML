@@ -9,6 +9,7 @@ text list and the picture agree.
 from __future__ import annotations
 
 import hashlib
+import re
 from contextlib import suppress
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -368,6 +369,23 @@ _AD_HOSTS = ("doubleclick.net", "googlesyndication.com", "googleadservices.com",
              "amazon-adsystem.com", "adnxs.com", "taboola.com", "outbrain.com", "criteo.", "pubmatic.com",
              "rubiconproject.com", "openx.net", "media.net", "googletagmanager.com", "facebook.com/tr")
 MIN_FRAME_PX = 40  # smaller frames are trackers, pixels and hidden helpers
+
+# Ad networks' own servers. Tag managers and analytics are left alone: some sites need them to work.
+AD_REQUEST_RE = re.compile(
+    r"^https?://([^/]*\.)?(doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.[a-z.]+|"
+    r"amazon-adsystem\.com|adnxs\.com|taboola\.com|outbrain\.com|criteo\.(com|net)|pubmatic\.com|"
+    r"rubiconproject\.com|openx\.net|media\.net)(:\d+)?(/|$)")
+
+
+def block_ads(context) -> None:
+    """Ads never load in a test's browser.
+
+    Found on a public demo shop: a full-page Google ad covered the page, its own close button sat in
+    the ad's cross-origin frame (which is never read, see _AD_HOSTS), and a working add-to-cart was
+    reported broken. It came and went between runs, so it made the result random as well. Ads are
+    not the app under test; --allow-ads turns this off for a site whose ads are the product.
+    """
+    context.route(AD_REQUEST_RE, lambda route: route.abort())
 
 # For each page: which frame owns each element id from the last observe(), and the frames read then.
 _FRAMES: WeakKeyDictionary = WeakKeyDictionary()

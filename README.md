@@ -267,6 +267,10 @@ drafts: read a failing one before filing it.
 
 ## Real sites: popups, phone logins, staying logged in
 
+**Ads are blocked.** Ad networks' requests never load in a test's browser: a full-page ad whose close
+button sits in the ad's own frame made a working site look broken. `--allow-ads` turns that off for a
+site whose ads are the product.
+
 **Popups and banners.** A cookie banner, sign-up popup or ad is closed and the test carries on; it
 is not reported as a bug. Close controls that are plain `<span>`, `<div>` or `<p>` elements ("×",
 "Close", "No thanks") are listed like buttons, and a click that something covers says what covers it.
