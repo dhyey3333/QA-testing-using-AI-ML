@@ -468,3 +468,12 @@ window, copies the public link, and on exit stops the tunnel it started; a tunne
 force-closed window is stopped on the next start. With a public URL set, changes made on the
 laptop itself (Origin http://127.0.0.1) are still allowed, and the login cookie is HTTPS-only only
 when the request came over HTTPS, or a browser on the laptop would be logged out at once.
+
+## D49. A redesigned web app, still with no build step and no inline code
+The first web app worked but looked like a bare form, which is not something you show a paying
+agency. The new one has a sidebar with every client and the status of its last run, client cards
+with a pass/fail bar and a strip of the last ten runs, stat tiles and plain-English causes on a run,
+toasts instead of browser alerts, a split login screen, dark mode and a phone layout. It is still
+one plain-JS file and one stylesheet, with no framework and no bundler, so the app runs straight
+from the repo. The page's CSP forbids inline styles and scripts, so every look is a class, and the
+result bars are SVG whose widths are attributes, not styles.

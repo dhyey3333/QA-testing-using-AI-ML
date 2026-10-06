@@ -438,6 +438,20 @@ def test_a_double_click_on_run_now_starts_one_run(hosted):
     assert codes.count(201) == 1 and codes.count(409) == 7, codes
 
 
+def test_each_client_card_carries_its_last_ten_runs_oldest_first(hosted):
+    admin = client(hosted, ADMIN)
+    project = admin.post("/api/projects", json={"client": "History Co"}).json()["project"]
+    ids = []
+    for failed in [0] * 11 + [2]:
+        run_id = hosted.store.add_run(project["id"], "manual")
+        hosted.store.update_run(run_id, status="done", passed=3 - failed, failed=failed)
+        ids.append(run_id)
+    card = next(p for p in admin.get("/api/projects").json()["projects"] if p["slug"] == project["slug"])
+    assert [run["id"] for run in card["history"]] == ids[-10:]
+    assert card["history"][-1]["failed"] == 2 and card["last_run"]["id"] == ids[-1]
+    assert set(card["history"][0]) == {"id", "trigger", "status", "passed", "failed", "flaky", "errors"}
+
+
 def test_only_the_newest_runs_keep_their_files_so_the_disk_never_fills(tmp_path):
     store = Store(tmp_path / "db.sqlite")
     runner = Runner(store, tmp_path, keep_runs=2)

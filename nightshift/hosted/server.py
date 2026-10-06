@@ -331,8 +331,11 @@ class App:
     # --- views --------------------------------------------------------------------
 
     def _project_card(self, project: dict) -> dict:
-        runs = self.store.runs(project["id"], limit=1)
-        return {**project, "last_run": self._run_view(project, None, runs[0]) if runs else None}
+        runs = self.store.runs(project["id"], limit=10)
+        # The last ten runs, oldest first, for the history strip on the client's card.
+        history = [{key: run[key] for key in ("id", "trigger", "status", "passed", "failed", "flaky", "errors")}
+                   for run in reversed(runs)]
+        return {**project, "last_run": self._run_view(project, None, runs[0]) if runs else None, "history": history}
 
     def _project_view(self, project: dict, files: ProjectFiles) -> dict:
         return {"project": project, "specs": files.spec_names(), "secrets": sorted(files.secrets()),

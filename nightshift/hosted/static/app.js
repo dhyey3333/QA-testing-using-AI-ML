@@ -1,8 +1,10 @@
-// Nightshift hosted: login, projects (one per client), their tests, runs and client reports.
+// Nightshift hosted: login, a project per client, their tests, runs and client reports.
 // Plain JS, no build step. Every request sends X-Nightshift: 1, which the server requires for
-// changes (a form on another site can't send it).
+// changes (a form on another site can't send it). The page's CSP allows no inline styles, so all
+// looks are classes in app.css; bars are SVG, whose sizes are attributes, not styles.
 
 const view = document.getElementById("view");
+const side = document.getElementById("side");
 let me = null;
 let poll = null;
 // Each page load gets a number. A load that finishes after the user moved on (an auto-refresh still in
@@ -11,8 +13,136 @@ let routeToken = 0;
 const stale = (token) => token !== routeToken;
 
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const when = (seconds) => (seconds ? new Date(seconds * 1000).toLocaleString() : "");
-const took = (run) => (run.started && run.finished ? `${Math.round(run.finished - run.started)} s` : "");
+const lines = (text) => esc(text).replace(/\n/g, "&#10;");  // a newline inside an attribute
+
+// --- icons (24 px line icons, drawn with currentColor) --------------------------------------
+const PATHS = {
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  play: '<path d="M7 4.5v15l12-7.5z"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  sparkles: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.7 1.8 1.8.7-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z"/>',
+  compass: '<circle cx="12" cy="12" r="9"/><path d="M16 8l-2 6-6 2 2-6z"/>',
+  upload: '<path d="M12 15V3M7 8l5-5 5 5M5 21h14"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  alert: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+  ban: '<circle cx="12" cy="12" r="9"/><path d="m5.7 5.7 12.6 12.6"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  loader: '<path d="M21 12a9 9 0 1 1-6.2-8.6"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  monitor: '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  phone: '<rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/>',
+  external: '<path d="M14 3h7v7M21 3l-9 9"/><path d="M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/>',
+  report: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
+  log: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  left: '<path d="m15 18-6-6 6-6"/>',
+  right: '<path d="m9 18 6-6-6-6"/>',
+  key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.3-9.3M17 6l3 3M15 8l2 2"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>',
+  edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  ticket: '<path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4z"/>',
+  message: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  layers: '<path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/>',
+  list: '<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01"/>',
+  sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+  file: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/>',
+};
+const icon = (name, cls = "") => `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PATHS[name] || ""}</svg>`;
+
+// --- small pieces ---------------------------------------------------------------------------
+const TARGETS = { chrome: ["Chrome", "monitor"], firefox: ["Firefox", "monitor"], safari: ["Safari", "monitor"],
+  iphone: ["iPhone", "phone"], android: ["Android", "phone"] };
+const initials = (name) => (String(name).match(/[A-Za-z0-9]+/g) || ["?"]).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+function ago(seconds) {
+  if (!seconds) return "";
+  const s = Date.now() / 1000 - seconds;
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  if (s < 7 * 86400) return `${Math.floor(s / 86400)} d ago`;
+  return new Date(seconds * 1000).toLocaleDateString();
+}
+const fullTime = (seconds) => (seconds ? new Date(seconds * 1000).toLocaleString() : "");
+const took = (run) => {
+  if (!run.started || !run.finished) return "";
+  const s = Math.round(run.finished - run.started);
+  return s < 90 ? `${s} s` : `${Math.round(s / 60)} min`;
+};
+
+// How a run went, as one tone: ok, bad, warn, block, run, info (explore/generate), off.
+function runTone(run) {
+  if (["queued", "running"].includes(run.status)) return "run";
+  if (run.status === "stopped") return "off";
+  if (run.status === "failed") return "bad";
+  if (["explore", "generate"].includes(run.trigger)) return "info";
+  if (run.failed) return "bad";
+  if (run.flaky) return "warn";
+  if (run.errors && !run.passed) return "block";
+  if (run.errors) return "warn";
+  return "ok";
+}
+const TONE_ICON = { ok: "check", bad: "x", warn: "alert", block: "ban", run: "loader", info: "sparkles", off: "stop" };
+const statusIcon = (tone) => `<span class="status-icon ${tone}">${icon(TONE_ICON[tone] || "clock", `${tone} ${tone === "run" ? "spin" : ""}`)}</span>`;
+const RUN_LABEL = { queued: "Queued", running: "Running", done: "Done", failed: "Didn't finish", stopped: "Stopped" };
+function runPill(run) {
+  const tone = runTone(run);
+  const label = ["queued", "running", "stopped", "failed"].includes(run.status) ? RUN_LABEL[run.status]
+    : { ok: "All passed", bad: "Bugs found", warn: "Needs a look", block: "Blocked", info: "Done" }[tone];
+  return `<span class="pill ${tone === "info" ? "run" : tone}">${label}</span>`;
+}
+const VERDICT = { pass: ["ok", "Passed"], fail: ["bad", "Failed"], flaky: ["warn", "Flaky"], error: ["block", "Couldn't finish"] };
+
+function resultBar(run) {
+  const total = run.passed + run.failed + run.flaky + run.errors;
+  if (!total) return "";
+  let x = 0;
+  const part = (n, cls) => { if (!n) return ""; const w = (100 * n) / total; const r = `<rect class="${cls}" x="${x}" y="0" width="${w}" height="8"/>`; x += w; return r; };
+  return `<svg class="bar" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true">${part(run.passed, "b-ok")}${part(run.flaky, "b-warn")}${part(run.failed, "b-bad")}${part(run.errors, "b-block")}</svg>`;
+}
+function countsLine(run) {
+  if (["queued", "running"].includes(run.status)) return `<span class="run">${run.status === "queued" ? "Waiting to start…" : "Running…"}</span>`;
+  if (run.status !== "done" || ["explore", "generate"].includes(run.trigger)) return `<span class="muted">${esc(run.message || "")}</span>`;
+  const parts = [[run.passed, "passed", "ok"], [run.failed, "failed", "bad"], [run.flaky, "flaky", "warn"], [run.errors, "couldn't finish", "block"]]
+    .filter(([n]) => n).map(([n, word, cls]) => `<span class="${cls}">${n} ${word}</span>`);
+  return parts.join("") || '<span class="muted">No tests ran</span>';
+}
+function historyStrip(history) {
+  const cells = (history || []).map((run) => `<i class="${runTone(run)}" title="#${run.id} · ${esc(run.trigger)}: ${run.passed} passed, ${run.failed} failed"></i>`);
+  for (let i = cells.length; i < 10; i++) cells.unshift("<i></i>");
+  return `<div class="history" aria-label="last runs">${cells.join("")}</div>`;
+}
+const targetChips = (targets) => (targets || "chrome").split(",").map((t) => {
+  const [label, ic] = TARGETS[t] || [t, "monitor"];
+  return `<span class="chip">${icon(ic)}${esc(label)}</span>`;
+}).join("");
+// "checkout@iphone" -> the test's name and a chip for where it ran. When a run used several targets, a
+// name without "@" ran on Chrome, and says so.
+function testName(spec, several) {
+  const [name, target = several ? "chrome" : ""] = spec.split("@");
+  if (!target) return `<span>${esc(name)}</span>`;
+  const [label, ic] = TARGETS[target] || [target, "monitor"];
+  return `<span>${esc(name)}</span><span class="chip">${icon(ic)}${esc(label)}</span>`;
+}
+const linkButton = (href, label, name) => (href
+  ? `<a class="btn ghost small" href="${esc(href)}" target="_blank" rel="noopener" title="${esc(label)}">${icon(name)}<span class="hide-sm">${esc(label)}</span></a>` : "");
+
+function toast(message, tone = "") {
+  const box = document.createElement("div");
+  box.className = `toast ${tone}`;
+  box.innerHTML = `${icon(tone === "bad" ? "alert" : "check")}<span></span>`;
+  box.querySelector("span").textContent = message;
+  document.getElementById("toasts").append(box);
+  setTimeout(() => box.remove(), 4200);
+}
 
 async function api(method, path, body) {
   const response = await fetch(path, {
@@ -43,26 +173,78 @@ function onSubmit(form, action) {
       await action(Object.fromEntries(new FormData(form)));
     } catch (exc) {
       if (error) error.textContent = exc.message;
+      else toast(exc.message, "bad");
     } finally {
       if (button) button.disabled = false;
     }
   });
 }
+// A button that calls the API, shows a toast, and refreshes the page.
+function action(button, run, message) {
+  button?.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      const result = await run();
+      const text = typeof message === "function" ? message(result) : message;
+      if (text) toast(text);
+      route();
+    } catch (exc) {
+      toast(exc.message, "bad");
+      button.disabled = false;
+    }
+  });
+}
 
-// --- pages ---------------------------------------------------------------------------
+// --- the sidebar ----------------------------------------------------------------------------
+
+let clients = [];
+async function renderSide(active) {
+  side.hidden = false;
+  try { clients = (await api("GET", "/api/projects")).projects; } catch { clients = []; }
+  const nav = [["#/", "grid", "Clients", "projects"], ...(me.admin ? [["#/users", "users", "Team", "users"]] : []),
+    ["#/account", "user", "Account", "account"]];
+  side.innerHTML = `
+    <a href="#/" class="logo"><span class="logo-mark">${icon("moon")}</span><span class="word">Nightshift</span></a>
+    <nav class="side-nav">${nav.map(([href, ic, label, key]) => `<a href="${href}" class="${active === key ? "on" : ""}">${icon(ic)}<span class="word">${label}</span></a>`).join("")}</nav>
+    <div class="side-label">Clients</div>
+    <div class="side-projects">${clients.map((p) => `<a href="#/p/${esc(p.slug)}" class="${active === `p:${p.slug}` ? "on" : ""}">
+      <span class="dot ${p.last_run ? runTone(p.last_run) : ""}"></span><span class="name">${esc(p.client)}</span></a>`).join("")
+      || '<div class="side-label">None yet</div>'}</div>
+    <div class="side-foot"><div class="who"><div>${esc(me.name || me.email)}</div><div class="muted">${me.admin ? "Admin" : "Staff"}</div></div>
+      <button type="button" class="ghost small" id="logout" title="Log out">${icon("logout")}</button></div>`;
+  document.getElementById("logout").addEventListener("click", async () => {
+    await api("POST", "/api/logout").catch(() => {});
+    me = null;
+    location.hash = "#/login";
+  });
+}
+
+// --- pages ----------------------------------------------------------------------------------
 
 function loginPage() {
-  document.getElementById("bar").hidden = true;
+  side.hidden = true;
+  view.classList.add("bare");
   view.innerHTML = `
-    <div class="card narrow">
-      <h1>Nightshift</h1>
-      <p class="muted">AI QA runs for your clients.</p>
-      <form class="stack" id="login">
-        <label>Email <input name="email" type="email" autocomplete="username" required></label>
-        <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
-        <p class="error" role="alert"></p>
-        <button type="submit">Log in</button>
-      </form>
+    <div class="auth">
+      <div class="auth-brand">
+        <div class="logo"><span class="logo-mark">${icon("moon")}</span>Nightshift</div>
+        <h1>AI regression testing your clients can trust.</h1>
+        <ul class="proof">
+          <li>${icon("check")} Plain-English tests, run every night in a real browser</li>
+          <li>${icon("check")} Every pass proven by a quote from the page</li>
+          <li>${icon("check")} Visual checks, and why every failure happened</li>
+          <li>${icon("check")} A client report with your agency's name after each run</li>
+        </ul>
+      </div>
+      <div class="auth-form">
+        <form class="card stack" id="login">
+          <div><h2>Welcome back</h2><p class="muted">Log in to your agency's workspace.</p></div>
+          <label>Email <input name="email" type="email" autocomplete="username" required autofocus></label>
+          <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+          <p class="error" role="alert"></p>
+          <button type="submit">Log in</button>
+        </form>
+      </div>
     </div>`;
   onSubmit(document.getElementById("login"), async (form) => {
     me = (await api("POST", "/api/login", form)).user;
@@ -72,73 +254,84 @@ function loginPage() {
 
 async function projectsPage() {
   const token = routeToken;
-  const { projects } = await api("GET", "/api/projects");
+  await renderSide("projects");
   if (stale(token)) return;
-  const cards = projects.map((p) => `
-    <div class="card">
-      <div class="row spread"><a href="#/p/${esc(p.slug)}"><strong>${esc(p.client)}</strong></a>
-        ${p.last_run ? `<span class="badge ${esc(p.last_run.status)}">${esc(p.last_run.status)}</span>` : ""}</div>
-      <div class="muted mono">${esc(p.base_url) || "each test's own URL"}</div>
-      <div class="muted">${p.nightly ? `Nightly at ${esc(p.nightly)}` : "No schedule"}</div>
-      ${p.last_run ? `<div class="counts">${counts(p.last_run)}</div>` : '<div class="muted">No runs yet</div>'}
-    </div>`).join("");
+  const cards = clients.map((p) => {
+    const last = p.last_run;
+    return `
+    <a class="card client" href="#/p/${esc(p.slug)}">
+      <div class="client-top">
+        <span class="avatar">${esc(initials(p.client))}</span>
+        <div class="grow"><div class="client-name">${esc(p.client)}</div>
+          <div class="muted small ellipsis">${esc(p.base_url) || "No main website"}</div></div>
+        ${last ? runPill(last) : '<span class="pill off">No runs yet</span>'}
+      </div>
+      <div class="chips"><span class="chip">${icon("calendar")}${p.nightly ? `Nightly ${esc(p.nightly)}` : "No schedule"}</span>${targetChips(p.targets)}</div>
+      <div class="last">
+        ${last ? `${resultBar(last)}<div class="last-line"><div class="counts">${countsLine(last)}</div>
+          <span class="muted" title="${esc(fullTime(last.queued))}">${esc(ago(last.queued))}</span></div>` : '<div class="muted small">Add tests, then run them or schedule a nightly run.</div>'}
+      </div>
+      ${historyStrip(p.history)}
+    </a>`;
+  }).join("");
   view.innerHTML = `
-    <div class="row spread"><h1>Projects</h1></div>
-    <p class="muted">One project per client: its tests, a nightly schedule, and a client report for every run.</p>
-    <div class="grid">${cards || '<p class="muted">No projects yet.</p>'}</div>
-    ${me.admin ? `
-    <h2>New project</h2>
-    <form class="card stack" id="new-project">
-      <label>Client <input name="client" required placeholder="Acme Retail"></label>
-      <label>Base URL (optional) <input name="base_url" placeholder="https://staging.acme.example"></label>
-      <label>Report prepared by (your agency) <input name="brand" placeholder="Your QA Co"></label>
-      <label>Nightly run at (24-hour, server time; empty for none) <input name="nightly" placeholder="02:30"></label>
+    <div class="page-head">
+      <div><h1>Clients</h1><div class="sub">One project per client: its tests, a nightly run, and a report you can send.</div></div>
+      ${me.admin ? `<div class="head-actions"><button type="button" id="new-client">${icon("plus")}New client</button></div>` : ""}
+    </div>
+    <form class="card stack" id="new-project" hidden>
+      <div class="card-head">${icon("plus")}<h3>New client</h3></div>
+      <div class="fields">
+        <label>Client name <input name="client" required placeholder="Acme Retail"></label>
+        <label>Website <span class="hint">optional: their staging site</span><input name="base_url" type="url" placeholder="https://staging.acme.example"></label>
+        <label>Reports prepared by <span class="hint">your agency's name</span><input name="brand" placeholder="Your QA Co"></label>
+        <label>Nightly run at <span class="hint">24-hour, empty for none</span><input name="nightly" placeholder="02:30"></label>
+      </div>
       <p class="error" role="alert"></p>
-      <div><button type="submit">Create project</button></div>
-    </form>` : ""}`;
+      <div class="actions"><button type="submit">Create client</button><button type="button" class="ghost" id="cancel-new">Cancel</button></div>
+    </form>
+    ${cards ? `<div class="grid">${cards}</div>` : `
+    <div class="card empty">${icon("layers")}<h3>No clients yet</h3>
+      <p>Each client gets its own tests, nightly schedule and branded reports.</p>
+      ${me.admin ? `<div class="actions"><button type="button" id="new-client-empty">${icon("plus")}Add your first client</button></div>` : ""}</div>`}`;
   const form = document.getElementById("new-project");
-  if (form) onSubmit(form, async (fields) => {
+  const open = () => { form.hidden = false; form.elements.client.focus(); };
+  document.getElementById("new-client")?.addEventListener("click", open);
+  document.getElementById("new-client-empty")?.addEventListener("click", open);
+  document.getElementById("cancel-new")?.addEventListener("click", () => { form.hidden = true; });
+  onSubmit(form, async (fields) => {
     const { project } = await api("POST", "/api/projects", fields);
+    toast(`${project.client} added. Now give it some tests.`);
     location.hash = `#/p/${project.slug}/tests`;
   });
 }
 
-function counts(run) {
-  if (run.status !== "done" || ["explore", "generate"].includes(run.trigger)) return `<span class="muted">${esc(run.message || "")}</span>`;
-  return `<span class="n-pass">${run.passed} passed</span>` + (run.failed ? `<span class="n-fail">${run.failed} failed</span>` : "")
-    + (run.flaky ? `<span class="n-flaky">${run.flaky} flaky</span>` : "") + (run.errors ? `<span class="n-error">${run.errors} errors</span>` : "");
-}
-
 async function projectPage(slug, tab, extra) {
   const token = routeToken;
-  const data = await api("GET", `/api/projects/${slug}`);
+  const [data] = await Promise.all([api("GET", `/api/projects/${slug}`), renderSide(`p:${slug}`)]);
   if (stale(token)) return;
   const p = data.project;
   const active = data.runs.find((r) => ["queued", "running"].includes(r.status));
-  const tabs = [["runs", "Runs"], ["tests", `Tests (${data.specs.length})`], ...(me.admin ? [["settings", "Settings"]] : [])]
-    .map(([key, label]) => `<a href="#/p/${esc(slug)}/${key}" class="${tab === key || (tab === "run" && key === "runs") ? "on" : ""}">${label}</a>`).join("");
+  const tabs = [["runs", "Runs", data.runs.length], ["tests", "Tests", data.specs.length], ...(me.admin ? [["settings", "Settings", null]] : [])]
+    .map(([key, label, n]) => `<a href="#/p/${esc(slug)}/${key}" class="${tab === key || (tab === "run" && key === "runs") ? "on" : ""}">${label}${n !== null ? `<span class="count">${n}</span>` : ""}</a>`).join("");
   view.innerHTML = `
-    <div class="row spread">
-      <div><h1>${esc(p.client)}</h1>
-        <div class="muted">${p.nightly ? `Runs nightly at ${esc(p.nightly)}` : "No nightly schedule"} · ${data.parallel} tests at a time
-        · on ${esc((p.targets || "chrome").split(",").map((t) => (TARGET_LABELS.find(([k]) => k === t) || [t, t])[1]).join(", "))}
-        ${p.base_url ? ` · <span class="mono">${esc(p.base_url)}</span>` : ""}</div></div>
-      <div class="row">
-        ${active ? `<span class="badge ${esc(active.status)}">${esc(active.status)}</span>
-          <button type="button" class="danger" id="stop" data-run="${active.id}">Stop</button>`
-          : `<button type="button" id="run-now" ${data.specs.length ? "" : "disabled"}>Run now</button>`}
+    <div class="crumbs"><a href="#/">Clients</a>${icon("right")}<span>${esc(p.client)}</span></div>
+    <div class="page-head">
+      <div class="head-left"><span class="avatar lg">${esc(initials(p.client))}</span>
+        <div><h1>${esc(p.client)}</h1>
+          <div class="chips">${p.base_url ? `<span class="chip">${icon("globe")}${esc(p.base_url)}</span>` : ""}
+            <span class="chip">${icon("calendar")}${p.nightly ? `Nightly ${esc(p.nightly)}` : "No schedule"}</span>${targetChips(p.targets)}
+            <span class="chip">${icon("layers")}${data.parallel} at a time</span></div></div></div>
+      <div class="head-actions">
+        ${active ? `${runPill(active)}<button type="button" class="danger" id="stop" data-run="${active.id}">${icon("stop")}Stop</button>`
+          : `<button type="button" id="run-now" ${data.specs.length ? "" : "disabled title=\"Add tests first\""}>${icon("play")}Run now</button>`}
       </div>
     </div>
-    <p class="error" id="project-error" role="alert"></p>
     <nav class="tabs">${tabs}</nav>
     <section id="tab"></section>`;
-  const error = document.getElementById("project-error");
-  document.getElementById("run-now")?.addEventListener("click", async () => {
-    try { await api("POST", `/api/projects/${slug}/runs`); route(); } catch (exc) { error.textContent = exc.message; }
-  });
-  document.getElementById("stop")?.addEventListener("click", async (event) => {
-    try { await api("POST", `/api/projects/${slug}/runs/${event.target.dataset.run}/stop`); route(); } catch (exc) { error.textContent = exc.message; }
-  });
+  action(document.getElementById("run-now"), () => api("POST", `/api/projects/${slug}/runs`), "Run started");
+  const stop = document.getElementById("stop");
+  action(stop, () => api("POST", `/api/projects/${slug}/runs/${stop.dataset.run}/stop`), "Run stopped");
   const section = document.getElementById("tab");
   if (tab === "run") return runDetail(section, slug, extra);
   if (tab === "tests") return testsTab(section, slug, data, extra);
@@ -147,8 +340,45 @@ async function projectPage(slug, tab, extra) {
   if (active) poll = setTimeout(route, 4000);  // follow the run until it finishes
 }
 
-const VISUAL = { baseline: "saved as the approved look", same: "looks as approved", changed: "looks different (judged harmless)",
-  "visual bug": "visual bug", skipped: "not checked (no approved look yet)" };
+function runsTab(section, slug, data, busy) {
+  const rows = data.runs.map((run) => `
+    <tr class="click" data-href="#/p/${esc(slug)}/run/${run.id}">
+      <td class="status">${statusIcon(runTone(run))}</td>
+      <td><div class="cell-title"><a href="#/p/${esc(slug)}/run/${run.id}">Run #${run.id}</a>${runPill(run)}</div>
+        <div class="muted small">${esc({ manual: "Started by hand", nightly: "Nightly", explore: "Explore", generate: "Generate tests" }[run.trigger] || run.trigger)}${run.target ? ` · ${esc(run.target)}` : ""}</div></td>
+      <td class="bar-cell hide-sm">${run.status === "done" && !["explore", "generate"].includes(run.trigger) ? resultBar(run) : ""}<div class="counts small">${countsLine(run)}</div></td>
+      <td class="narrow"><div title="${esc(fullTime(run.queued))}">${esc(ago(run.queued))}</div><div class="muted small">${esc(took(run))}</div></td>
+      <td class="narrow"><div class="links">${linkButton(run.links.client_report, "Client report", "report")}${linkButton(run.links.report, "Full report", "file")}${linkButton(run.links.findings, "Findings", "list")}${linkButton(run.links.log, "Log", "log")}</div></td>
+    </tr>`).join("");
+  section.innerHTML = `
+    <details class="card panel" id="explore-panel">
+      <summary>${icon("compass")}Explore a website for bugs <span class="hint">no tests needed</span>${icon("right", "chev")}</summary>
+      <form class="stack" id="explore">
+        <p class="muted">Paste an address: the AI uses the site like a curious user and lists what it found broken. Only sites you own or are allowed to test.</p>
+        <div class="fields">
+          <label>Website <input name="url" type="url" required placeholder="https://academybugs.com/" value="${esc(data.project.base_url)}"></label>
+          <label>Actions <span class="hint">how many clicks it may use</span><input name="steps" type="number" min="5" max="60" value="25"></label>
+          <label>Focus on <span class="hint">optional</span><input name="focus" placeholder="the checkout"></label>
+        </div>
+        <p class="error" role="alert"></p>
+        <div class="actions"><button type="submit" ${busy ? "disabled" : ""}>${icon("compass")}Explore</button></div>
+      </form>
+    </details>
+    ${rows ? `<div class="table-wrap"><table><thead><tr><th></th><th>Run</th><th class="hide-sm">Results</th><th>When</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : `<div class="card empty">${icon("play")}<h3>No runs yet</h3><p>${data.specs.length ? "Press Run now, or set a nightly time in Settings." : "Add tests on the Tests tab, or explore a website above."}</p></div>`}
+    ${data.keep_runs ? `<p class="muted small">The newest ${data.keep_runs} runs keep their screenshots and reports; older ones keep only their summary.</p>` : ""}`;
+  section.querySelectorAll("tr.click").forEach((row) => row.addEventListener("click", (event) => {
+    if (!event.target.closest("a")) location.hash = row.dataset.href;
+  }));
+  onSubmit(document.getElementById("explore"), async (fields) => {
+    await api("POST", `/api/projects/${slug}/explore`, fields);
+    toast("Exploring: it takes a few minutes");
+    route();
+  });
+}
+
+const VISUAL = { baseline: "Saved as the approved look", same: "Looks as approved", changed: "Looks different (judged harmless)",
+  "visual bug": "Visual bug", skipped: "Not checked (no approved look yet)" };
 
 // One run: every test with its result, why it failed, and its visual check; and what to do next.
 async function runDetail(section, slug, id) {
@@ -157,171 +387,143 @@ async function runDetail(section, slug, id) {
   if (stale(token)) return;
   const r = d.run;
   const changes = d.tests.filter((t) => ["changed", "visual bug"].includes(t.visual.status)).length;
-  const rows = d.tests.map((t) => `
+  const isTests = !["explore", "generate"].includes(r.trigger);
+  const several = d.tests.some((t) => t.spec.includes("@"));
+  const stat = (n, label, cls) => `<div class="stat ${n ? "" : "zero"}"><div class="n ${n ? cls : ""}">${n}</div><div class="l">${label}</div></div>`;
+  const rows = d.tests.map((t) => {
+    const [tone, label] = VERDICT[t.verdict] || ["off", t.verdict];
+    const visualBad = t.visual.status === "visual bug";
+    return `
     <tr>
-      <td class="mono">${esc(t.spec)}${t.mode === "replay" ? '<div class="muted">replayed, no AI</div>' : ""}</td>
-      <td><span class="badge ${t.verdict === "pass" ? "done" : "failed"}">${esc(t.verdict)}</span>
-        ${t.category ? `<div class="muted">${esc(t.category)}</div>` : ""}</td>
-      <td>${t.cause ? esc(t.cause) : t.verdict === "pass" ? '<span class="muted">Every expected result was proven on the page.</span>' : esc(t.reason)}
-        ${t.visual.status ? `<div class="muted">Visual check: ${esc(VISUAL[t.visual.status] || t.visual.status)}${t.visual.what ? `: ${esc(t.visual.what)}` : ""}
-          ${t.visual.picture ? ` · <a href="${esc(t.visual.picture)}" target="_blank" rel="noopener">compare</a>` : ""}</div>` : ""}</td>
-      <td>${[["report", "Report"], ["bug", "Bug report"]].filter(([k]) => t.links[k])
-        .map(([k, label]) => `<a href="${esc(t.links[k])}" target="_blank" rel="noopener">${label}</a>`).join(" · ")}</td>
-    </tr>`).join("");
-  const reports = [["client_report", "Client report"], ["report", "Full report"], ["findings", "Findings"], ["log", "Log"]]
-    .filter(([k]) => r.links[k])
-    .map(([k, label]) => `<a href="${esc(r.links[k])}" target="_blank" rel="noopener">${label}</a>`).join(" · ");
+      <td class="status">${statusIcon(visualBad && t.verdict === "pass" ? "warn" : tone)}</td>
+      <td><div class="cell-title">${testName(t.spec, several)}</div>
+        <div class="muted small">${label}${t.category && t.verdict !== "pass" ? ` · ${esc(t.category)}` : ""}${t.mode === "replay" ? " · replayed, no AI" : ""}</div></td>
+      <td><div class="cause">${t.cause ? esc(t.cause) : t.verdict === "pass" ? '<span class="muted">Every expected result was proven on the page.</span>' : esc(t.reason)}</div>
+        ${t.visual.status ? `<div class="visual-line ${visualBad ? "bad" : ""}">${icon("eye")}${esc(VISUAL[t.visual.status] || t.visual.status)}${t.visual.what && t.visual.status !== "visual bug" ? `: ${esc(t.visual.what)}` : ""}
+          ${t.visual.picture ? `<a href="${esc(t.visual.picture)}" target="_blank" rel="noopener">compare</a>` : ""}</div>` : ""}</td>
+      <td class="narrow"><div class="links">${linkButton(t.links.report, "Report", "file")}${linkButton(t.links.bug, "Bug report", "alert")}</div></td>
+    </tr>`;
+  }).join("");
   section.innerHTML = `
-    <p><a href="#/p/${esc(slug)}/runs">← All runs</a></p>
-    <h2>Run #${r.id} · ${esc(r.trigger)} · ${esc(when(r.queued))}</h2>
-    <div class="row spread"><div class="counts">${counts(r)}</div><div>${reports}</div></div>
-    <div class="row">
-      ${changes ? `<button type="button" class="secondary" id="accept-visual">Accept the new look (${changes})</button>` : ""}
-      <button type="button" class="secondary" id="jira" ${d.jira ? "" : "disabled"}>File bugs in Jira</button>
-      <button type="button" class="secondary" id="slack" ${d.slack ? "" : "disabled"}>Post to Slack</button>
+    <div class="page-head">
+      <div><div class="cell-title"><h2 class="flush">Run #${r.id}</h2>${runPill(r)}</div>
+        <div class="sub">${esc({ manual: "Started by hand", nightly: "Nightly run", explore: "Exploration", generate: "Generating tests" }[r.trigger] || r.trigger)}
+          · <span title="${esc(fullTime(r.queued))}">${esc(ago(r.queued))}</span>${took(r) ? ` · took ${esc(took(r))}` : ""}${r.target ? ` · ${esc(r.target)}` : ""}</div></div>
+      <div class="head-actions">${r.links.client_report ? `<a class="btn" href="${esc(r.links.client_report)}" target="_blank" rel="noopener">${icon("report")}Client report</a>` : ""}
+        ${linkButton(r.links.report, "Full report", "file")}${linkButton(r.links.findings, "Findings", "list")}${linkButton(r.links.log, "Log", "log")}</div>
     </div>
-    ${d.jira && d.slack ? "" : `<p class="muted">To file in Jira or post to Slack, add these under Settings → Secrets:
-      ${d.jira ? "" : "JIRA_URL, JIRA_PROJECT, JIRA_EMAIL and JIRA_API_TOKEN"}${!d.jira && !d.slack ? "; " : ""}${d.slack ? "" : "SLACK_WEBHOOK_URL"}.</p>`}
-    ${d.issues.length ? `<p>Filed: ${d.issues.map((i) => `<a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.key)}</a>`).join(", ")}</p>` : ""}
-    <p class="error" id="run-error" role="alert"></p>
-    <table><thead><tr><th>Test</th><th>Result</th><th>What happened</th><th>Reports</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="4" class="muted">${
-        r.trigger === "explore" ? "An exploration has findings, not test results: open Findings or the Full report above."
-        : r.trigger === "generate" ? "Generating writes draft tests: review them on the Tests tab."
-        : ["queued", "running"].includes(r.status) ? "Still running…"
-        : esc(r.message || "No test results: the run did not finish.")}</td></tr>`}</tbody></table>`;
-  const error = document.getElementById("run-error");
-  const act = (buttonId, path, done) => document.getElementById(buttonId)?.addEventListener("click", async (event) => {
-    event.target.disabled = true;
-    error.textContent = "";
-    try { done(await api("POST", `/api/projects/${slug}/runs/${id}/${path}`)); }
-    catch (exc) { error.textContent = exc.message; event.target.disabled = false; }
-  });
-  act("accept-visual", "accept-visual", (res) => { error.textContent = ""; alert(`${res.accepted} new look(s) approved. Later runs compare against them.`); route(); });
-  act("jira", "jira", (res) => { alert(res.filed.length ? `Filed: ${res.filed.map((f) => f.key).join(", ")}` : "No bugs to file in this run."); route(); });
-  act("slack", "slack", () => alert("Posted to Slack."));
+    ${isTests && r.status === "done" ? `<div class="stats">${stat(r.passed, "Passed", "ok")}${stat(r.failed, "Failed", "bad")}${stat(r.flaky, "Flaky", "warn")}${stat(r.errors, "Couldn't finish", "block")}</div>` : ""}
+    ${isTests && d.tests.length ? `<div class="actions">
+      ${changes ? `<button type="button" class="secondary" id="accept-visual">${icon("eye")}Accept the new look (${changes})</button>` : ""}
+      <button type="button" class="secondary" id="jira" ${d.jira ? "" : "disabled"}>${icon("ticket")}File bugs in Jira</button>
+      <button type="button" class="secondary" id="slack" ${d.slack ? "" : "disabled"}>${icon("message")}Post to Slack</button>
+      ${d.issues.length ? `<span class="muted small">Filed: ${d.issues.map((i) => `<a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.key)}</a>`).join(", ")}</span>` : ""}
+    </div>
+    ${d.jira && d.slack ? "" : `<p class="muted small">To use Jira or Slack, add under Settings → Secrets: ${[d.jira ? "" : "JIRA_URL, JIRA_PROJECT, JIRA_EMAIL, JIRA_API_TOKEN", d.slack ? "" : "SLACK_WEBHOOK_URL"].filter(Boolean).join("; ")}.</p>`}` : ""}
+    <h2>What happened</h2>
+    ${rows ? `<div class="table-wrap"><table><thead><tr><th></th><th>Test</th><th>Why</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : `<div class="card empty">${icon(r.trigger === "explore" ? "compass" : r.trigger === "generate" ? "sparkles" : "clock")}<h3>${
+        r.trigger === "explore" ? "An exploration has findings, not test results"
+        : r.trigger === "generate" ? "Generating writes draft tests"
+        : ["queued", "running"].includes(r.status) ? "Still running…" : "No test results"}</h3><p>${
+        r.trigger === "explore" ? "Open Findings or the Full report above."
+        : r.trigger === "generate" ? "Review them on the Tests tab."
+        : ["queued", "running"].includes(r.status) ? "This page updates by itself." : esc(r.message || "The run did not finish.")}</p></div>`}`;
+  action(document.getElementById("accept-visual"), () => api("POST", `/api/projects/${slug}/runs/${id}/accept-visual`),
+    (res) => `${plural(res.accepted, "new look")} approved`);
+  action(document.getElementById("jira"), () => api("POST", `/api/projects/${slug}/runs/${id}/jira`),
+    (res) => (res.filed.length ? `Filed ${res.filed.map((f) => f.key).join(", ")}` : "No bugs to file in this run"));
+  action(document.getElementById("slack"), () => api("POST", `/api/projects/${slug}/runs/${id}/slack`), "Posted to Slack");
   if (["queued", "running"].includes(r.status)) poll = setTimeout(route, 4000);
 }
-
-function runsTab(section, slug, data, busy) {
-  const rows = data.runs.map((run) => `
-    <tr>
-      <td><a href="#/p/${esc(slug)}/run/${run.id}">#${run.id}</a></td>
-      <td>${esc(when(run.queued))}<div class="muted">${esc(run.trigger)} · ${esc(took(run))}</div>
-        ${run.target ? `<div class="muted mono">${esc(run.target)}</div>` : ""}</td>
-      <td><span class="badge ${esc(run.status)}">${esc(run.status)}</span></td>
-      <td class="counts">${counts(run)}</td>
-      <td>${[["client_report", "Client report"], ["report", "Full report"], ["findings", "Findings"], ["log", "Log"]]
-        .filter(([key]) => run.links[key]).map(([key, label]) => `<a href="${esc(run.links[key])}" target="_blank" rel="noopener">${label}</a>`).join(" · ")}</td>
-    </tr>`).join("");
-  section.innerHTML = `
-    <form class="card stack" id="explore">
-      <strong>Explore a website for bugs</strong>
-      <span class="muted">No tests needed: paste an address and the AI uses the site like a curious user, then lists what it
-        found broken. Only sites you own or are allowed to test.</span>
-      <div class="row">
-        <label>Website <input name="url" type="url" required placeholder="https://academybugs.com/" value="${esc(data.project.base_url)}"></label>
-        <label>Actions <input name="steps" type="number" min="5" max="60" value="25"></label>
-        <label>Focus on (optional) <input name="focus" placeholder="the checkout"></label>
-      </div>
-      <p class="error" role="alert"></p>
-      <div><button type="submit" ${busy ? "disabled" : ""}>Explore</button></div>
-    </form>
-    ${rows
-      ? `<table><thead><tr><th>Run</th><th>When</th><th>Status</th><th>Results</th><th>Reports</th></tr></thead><tbody>${rows}</tbody></table>`
-      : '<p class="muted">No runs yet. Add tests and press Run now, or explore a website above.</p>'}
-    ${data.keep_runs ? `<p class="muted">The newest ${data.keep_runs} runs keep their screenshots and reports; older runs keep only their summary.</p>` : ""}`;
-  onSubmit(document.getElementById("explore"), async (fields) => {
-    await api("POST", `/api/projects/${slug}/explore`, fields);
-    route();
-  });
-}
-
-// Multi-line placeholders: a newline in an attribute is &#10;.
-const lines = (text) => esc(text).replace(/\n/g, "&#10;");
 
 async function testsTab(section, slug, data, editing) {
   const draft = (editing || "").startsWith("draft:");
   const name = draft ? editing.slice(6) : editing || "";
   const missing = data.missing.map((m) => `<li><span class="mono">${esc(m.test)}</span> needs <span class="mono">${esc(m.secret)}</span></li>`).join("");
   const drafts = data.drafts.map((d) => `
-    <tr><td class="mono">${esc(d.name)}</td>
-      <td>${d.review.map((r) => `<div class="muted">Check: ${esc(r)}</div>`).join("")}
-        ${d.needs.length ? `<div class="n-flaky">Needs secrets: ${d.needs.map(esc).join(", ")}</div>` : ""}</td>
-      <td class="row"><a href="#/p/${esc(slug)}/tests/draft:${esc(d.name)}">Review</a>
-        <button type="button" class="link" data-accept="${esc(d.name)}">Accept</button>
-        <button type="button" class="link" data-drop="${esc(d.name)}">Delete</button></td></tr>`).join("");
+    <tr>
+      <td class="status">${statusIcon("info")}</td>
+      <td><div class="cell-title">${esc(d.name)}</div>
+        ${d.review.map((r) => `<div class="muted small">Check: ${esc(r)}</div>`).join("")}
+        ${d.needs.length ? `<div class="warn small">Needs secrets: ${d.needs.map(esc).join(", ")}</div>` : ""}</td>
+      <td class="narrow"><div class="links">
+        <a class="btn ghost small" href="#/p/${esc(slug)}/tests/draft:${esc(d.name)}">${icon("edit")}Review</a>
+        <button type="button" class="secondary small" data-accept="${esc(d.name)}">${icon("check")}Accept</button>
+        <button type="button" class="ghost small" data-drop="${esc(d.name)}" title="Delete">${icon("trash")}</button></div></td>
+    </tr>`).join("");
   const tests = data.specs.map((n) => `
-    <tr><td class="mono">${esc(n)}</td>
-      <td class="row"><a href="#/p/${esc(slug)}/tests/${esc(n)}">Edit</a>
-      <button type="button" class="link" data-delete="${esc(n)}">Delete</button></td></tr>`).join("");
+    <tr><td class="status"><span class="status-icon off">${icon("file")}</span></td><td><div class="cell-title"><a href="#/p/${esc(slug)}/tests/${esc(n)}">${esc(n)}</a></div></td>
+      <td class="narrow"><div class="links"><a class="btn ghost small" href="#/p/${esc(slug)}/tests/${esc(n)}">${icon("edit")}Edit</a>
+        <button type="button" class="ghost small" data-delete="${esc(n)}" title="Delete">${icon("trash")}</button></div></td></tr>`).join("");
   section.innerHTML = `
-    ${missing ? `<div class="card warn"><strong>Set these secrets before running</strong> (Settings → Secrets):<ul>${missing}</ul></div>` : ""}
-    <form class="card stack" id="generate">
-      <strong>Generate tests with AI</strong>
-      <span class="muted">Give it the website. It explores the site like a new user, then writes tests for you to review
-        below. Takes a few minutes; follow it on the Runs tab. Only sites you own or are allowed to test.</span>
-      <div class="row">
-        <label class="grow">Website <input name="url" type="url" required value="${esc(data.project.base_url)}" placeholder="https://academybugs.com/"></label>
-        <label>Tests <input name="count" type="number" min="1" max="10" value="5"></label>
-        <label>Explore first (actions) <input name="steps" type="number" min="0" max="40" value="20"></label>
-      </div>
-      <label>What is the site for? (optional, but it helps)
-        <textarea name="about" class="short" placeholder="${lines("An online shop: people search for products, add them to a cart and check out.")}"></textarea></label>
-      <p class="error" role="alert"></p>
-      <div><button type="submit">Generate tests</button></div>
-    </form>
-    <details class="card"><summary>Import Cucumber tests (.feature)</summary>
-      <form class="stack" id="gherkin">
-        <span class="muted">Paste a .feature file. Each Scenario becomes a draft test: Given and When lines are its steps,
-          Then lines are what should happen. No step definitions needed.</span>
-        <label>Website (if the feature doesn't say) <input name="url" type="url" value="${esc(data.project.base_url)}"
-          placeholder="https://staging.example.com/"></label>
-        <label>Feature <textarea name="text" spellcheck="false" placeholder="${lines("Feature: Checkout\n  Scenario: Pay by card\n    Given I am on the shop\n    When I add a T-shirt to the cart\n    Then the cart shows 1 item")}"></textarea></label>
+    ${missing ? `<div class="card warn-card"><strong>${icon("key")} Set these secrets before running</strong> <span class="muted">(Settings → Secrets)</span><ul>${missing}</ul></div>` : ""}
+    <div class="two">
+      <form class="card stack" id="generate">
+        <div class="card-head">${icon("sparkles")}<h3>Generate tests with AI</h3></div>
+        <p class="muted small">It explores the site like a new user, then writes draft tests for you to review. A few minutes.</p>
+        <div class="fields">
+          <label>Website <input name="url" type="url" required value="${esc(data.project.base_url)}" placeholder="https://academybugs.com/"></label>
+          <label>Tests <input name="count" type="number" min="1" max="10" value="5"></label>
+        </div>
+        <label>What is the site for? <span class="hint">optional, but it helps</span>
+          <textarea name="about" placeholder="${lines("An online shop: people search for products, add them to a cart and check out.")}"></textarea></label>
+        <details class="more"><summary>More options</summary>
+          <label>Explore first <span class="hint">actions before writing</span><input name="steps" type="number" min="0" max="40" value="20"></label></details>
         <p class="error" role="alert"></p>
-        <div><button type="submit">Import as drafts</button></div>
+        <div class="actions"><button type="submit">${icon("sparkles")}Generate tests</button></div>
       </form>
-    </details>
+      <form class="card stack" id="gherkin">
+        <div class="card-head">${icon("upload")}<h3>Import Cucumber tests</h3></div>
+        <p class="muted small">Paste a .feature file. Each Scenario becomes a draft: Given/When are steps, Then is what should happen.</p>
+        <label>Website <span class="hint">if the feature doesn't say</span><input name="url" type="url" value="${esc(data.project.base_url)}" placeholder="https://staging.example.com/"></label>
+        <label>Feature <textarea name="text" class="mono" spellcheck="false" placeholder="${lines("Feature: Checkout\n  Scenario: Pay by card\n    Given I am on the shop\n    When I add a T-shirt to the cart\n    Then the cart shows 1 item")}"></textarea></label>
+        <p class="error" role="alert"></p>
+        <div class="actions"><button type="submit" class="secondary">${icon("upload")}Import as drafts</button></div>
+      </form>
+    </div>
     ${drafts ? `
-    <h2>Drafts to review (${data.drafts.length})</h2>
-    <p class="muted">Written by the AI from what it saw. Read each one and fix what's wrong before you accept it: a wrong test reports wrong bugs.</p>
-    <table><tbody>${drafts}</tbody></table>
-    <p class="error" id="draft-error" role="alert"></p>
-    <div class="row"><button type="button" class="secondary" id="accept-all">Accept all</button></div>` : ""}
-    <h2>Tests (${data.specs.length})</h2>
-    <table><tbody>${tests || '<tr><td class="muted">No tests yet: generate some above, or write one below.</td></tr>'}</tbody></table>
-    <h2>${draft ? `Review draft: ${esc(name)}` : name ? `Edit test: ${esc(name)}` : "New test"}</h2>
+    <div class="section-title"><h2>Drafts to review <span class="count">${data.drafts.length}</span></h2>
+      <button type="button" class="secondary small" id="accept-all">${icon("check")}Accept all</button></div>
+    <p class="muted small">Written from what the AI saw or imported. Read each one before accepting it: a wrong test reports wrong bugs.</p>
+    <div class="table-wrap"><table><tbody>${drafts}</tbody></table></div>` : ""}
+    <div class="section-title"><h2>Tests <span class="count">${data.specs.length}</span></h2>
+      ${name ? `<a class="btn secondary small" href="#/p/${esc(slug)}/tests">${icon("plus")}New test</a>` : ""}</div>
+    ${tests ? `<div class="table-wrap"><table><tbody>${tests}</tbody></table></div>`
+      : `<div class="card empty">${icon("list")}<h3>No tests yet</h3><p>Generate some with AI above, import Cucumber features, or write one below.</p></div>`}
     <form class="card stack" id="spec">
-      <label>Test name <input name="name" required pattern="[a-z0-9][a-z0-9-]*" ${name ? "readonly" : ""}
-        placeholder="checkout" title="lowercase letters, digits and dashes"></label>
-      <label>Website <input name="url" type="url" required placeholder="https://staging.example.com/"></label>
-      <label>Steps: what a person does, one per line
-        <textarea name="steps" class="short" placeholder="${lines("log in with the test account\nadd the Blue Top to the cart\nopen the cart")}"></textarea></label>
-      <label>What should happen: one expected result per line
-        <textarea name="expect" class="short" placeholder="${lines("the cart lists the Blue Top\nthe total is correct")}"></textarea>
-        <span class="muted">Leave it empty when the test is one sentence (like "subscribe to the newsletter"): the AI then has to prove it was done.</span></label>
-      <label>Test data: one per line, as name = value
-        <textarea name="data" class="short mono" placeholder="${lines("email = qa@example.com\npassword = ${SHOP_PASSWORD}")}"></textarea>
-        <span class="muted">The AI only ever sees the name, never the value. For passwords, add a secret under Settings and write \${NAME} here.</span></label>
-      <details><summary>More options</summary>
-        <div class="stack">
+      <div class="card-head">${icon(name ? "edit" : "plus")}<h3>${draft ? `Review draft: ${esc(name)}` : name ? `Edit: ${esc(name)}` : "Write a test"}</h3></div>
+      <div class="fields">
+        <label>Test name <span class="hint">lowercase, digits and dashes</span><input name="name" required pattern="[a-z0-9][a-z0-9-]*" ${name ? "readonly" : ""} placeholder="checkout"></label>
+        <label>Website <input name="url" type="url" required placeholder="https://staging.example.com/"></label>
+      </div>
+      <div class="fields">
+        <label>Steps <span class="hint">what a person does, one per line</span>
+          <textarea name="steps" placeholder="${lines("log in with the test account\nadd the Blue Top to the cart\nopen the cart")}"></textarea></label>
+        <label>What should happen <span class="hint">one per line; empty for a one-sentence goal</span>
+          <textarea name="expect" placeholder="${lines("the cart lists the Blue Top\nthe total is correct")}"></textarea></label>
+      </div>
+      <label>Test data <span class="hint">name = value, one per line. The AI sees only the name. For passwords, add a secret and write \${NAME}.</span>
+        <textarea name="data" class="mono" placeholder="${lines("email = qa@example.com\npassword = ${SHOP_PASSWORD}")}"></textarea></label>
+      <details class="more"><summary>More options</summary>
+        <div class="fields">
           <label>Step limit <input name="max_steps" type="number" min="1" max="60" value="30"></label>
-          <label class="inline"><input type="checkbox" name="js_errors_warn" value="1"> Background JavaScript errors are only warnings</label>
+          <label class="check"><input type="checkbox" name="js_errors_warn" value="1"> Background JavaScript errors are only warnings</label>
         </div>
       </details>
       <p class="error" role="alert"></p>
-      <div class="row">
-        <button type="submit">${draft ? "Save draft" : "Save test"}</button>
-        ${draft ? '<button type="button" id="save-accept">Save and accept</button>' : ""}
-        ${name ? `<a href="#/p/${esc(slug)}/tests">New test instead</a>` : ""}
-        <button type="button" class="link" id="as-yaml">Edit as YAML instead</button>
+      <div class="actions">
+        <button type="submit">${icon("check")}${draft ? "Save draft" : "Save test"}</button>
+        ${draft ? `<button type="button" class="secondary" id="save-accept">Save and accept</button>` : ""}
+        <button type="button" class="ghost" id="as-yaml">Edit as YAML</button>
       </div>
     </form>
     <form class="card stack" id="spec-yaml" hidden>
+      <div class="card-head">${icon("file")}<h3>Edit as YAML</h3></div>
       <label>Test name <input name="name" required pattern="[a-z0-9][a-z0-9-]*" ${name ? "readonly" : ""}></label>
-      <label>YAML (advanced) <textarea name="text" spellcheck="false"></textarea></label>
+      <label>YAML <textarea name="text" class="code" spellcheck="false"></textarea></label>
       <p class="error" role="alert"></p>
-      <div class="row"><button type="submit">Save</button><button type="button" class="link" id="as-form">Back to the form</button></div>
+      <div class="actions"><button type="submit">Save</button><button type="button" class="ghost" id="as-form">Back to the form</button></div>
     </form>`;
 
   const form = document.getElementById("spec");
@@ -342,19 +544,20 @@ async function testsTab(section, slug, data, editing) {
     for (const key of ["url", "steps", "expect", "data", "max_steps"]) form.elements[key].value = f[key] ?? "";
     form.elements.js_errors_warn.checked = Boolean(f.js_errors_warn);
   }
+  if (name) form.scrollIntoView({ block: "start" });
   const fields = () => ({
     url: form.elements.url.value, steps: form.elements.steps.value, expect: form.elements.expect.value,
     data: form.elements.data.value, max_steps: form.elements.max_steps.value, js_errors_warn: form.elements.js_errors_warn.checked,
   });
-  const done = () => { location.hash = `#/p/${slug}/tests`; route(); };
-  onSubmit(form, async () => { await api("PUT", `${base}/${form.elements.name.value}`, { form: fields() }); done(); });
-  onSubmit(yamlForm, async (values) => { await api("PUT", `${base}/${values.name}`, { text: values.text }); done(); });
+  const done = (message) => { toast(message); location.hash = `#/p/${slug}/tests`; route(); };
+  onSubmit(form, async () => { await api("PUT", `${base}/${form.elements.name.value}`, { form: fields() }); done("Test saved"); });
+  onSubmit(yamlForm, async (values) => { await api("PUT", `${base}/${values.name}`, { text: values.text }); done("Test saved"); });
   document.getElementById("save-accept")?.addEventListener("click", async () => {
     const error = form.querySelector(".error");
     try {
       await api("PUT", `${base}/${name}`, { form: fields() });
       await api("POST", `/api/projects/${slug}/drafts/${name}/accept`);
-      done();
+      done("Draft accepted as a test");
     } catch (exc) { error.textContent = exc.message; }
   });
   document.getElementById("as-yaml").addEventListener("click", () => {
@@ -365,158 +568,172 @@ async function testsTab(section, slug, data, editing) {
   document.getElementById("as-form").addEventListener("click", () => { yamlForm.hidden = true; form.hidden = false; });
 
   onSubmit(document.getElementById("gherkin"), async (values) => {
-    await api("POST", `/api/projects/${slug}/import-gherkin`, values);
+    const result = await api("POST", `/api/projects/${slug}/import-gherkin`, values);
+    toast(`${plural(result.imported, "draft")} imported: review them below`);
     route();
   });
   onSubmit(document.getElementById("generate"), async (values) => {
     await api("POST", `/api/projects/${slug}/generate`, values);
+    toast("Writing tests: follow it on the Runs tab");
     location.hash = `#/p/${slug}/runs`;
   });
-  const draftError = document.getElementById("draft-error");
-  section.querySelectorAll("[data-accept]").forEach((button) => button.addEventListener("click", async () => {
-    try { await api("POST", `/api/projects/${slug}/drafts/${button.dataset.accept}/accept`); route(); }
-    catch (exc) { draftError.textContent = exc.message; }
-  }));
+  section.querySelectorAll("[data-accept]").forEach((button) => action(button,
+    () => api("POST", `/api/projects/${slug}/drafts/${button.dataset.accept}/accept`), "Draft accepted"));
   section.querySelectorAll("[data-drop]").forEach((button) => button.addEventListener("click", async () => {
     if (!confirm(`Delete the draft ${button.dataset.drop}?`)) return;
     await api("DELETE", `/api/projects/${slug}/drafts/${button.dataset.drop}`);
+    toast("Draft deleted");
     route();
   }));
-  document.getElementById("accept-all")?.addEventListener("click", async () => {
-    const result = await api("POST", `/api/projects/${slug}/drafts/accept-all`);
-    if (result.problems.length) draftError.textContent = result.problems.join(" · ");
-    else route();
+  // Accept-all takes every draft it can; the ones it couldn't stay as drafts, with the reason shown.
+  action(document.getElementById("accept-all"), () => api("POST", `/api/projects/${slug}/drafts/accept-all`), (result) => {
+    if (!result.problems.length) return "All drafts accepted";
+    toast(`Some stayed drafts: ${result.problems.join(" · ")}`, "bad");
+    return "";
   });
   section.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", async () => {
     if (!confirm(`Delete the test ${button.dataset.delete}?`)) return;
     await api("DELETE", `/api/projects/${slug}/specs/${button.dataset.delete}`);
+    toast("Test deleted");
     route();
   }));
 }
 
-const TARGET_LABELS = [["chrome", "Chrome"], ["firefox", "Firefox"], ["safari", "Safari (WebKit)"],
-  ["iphone", "iPhone"], ["android", "Android phone"]];
-
 function settingsTab(section, slug, data) {
   const p = data.project;
+  const chosen = (p.targets || "chrome").split(",");
   const secrets = data.secrets.map((name) => `
-    <tr><td class="mono">${esc(name)}</td><td>set</td>
-      <td><button type="button" class="link" data-secret="${esc(name)}">Delete</button></td></tr>`).join("");
+    <tr><td class="status">${statusIcon("ok")}</td><td><div class="cell-title mono">${esc(name)}</div><div class="muted small">set (values can't be read back)</div></td>
+      <td class="narrow"><button type="button" class="ghost small" data-secret="${esc(name)}" title="Delete">${icon("trash")}</button></td></tr>`).join("");
   section.innerHTML = `
     <form class="card stack" id="settings">
-      <label>Client <input name="client" required value="${esc(p.client)}"></label>
-      <label>Base URL (optional: runs every test against this deployment, keeping each test's path)
-        <input name="base_url" value="${esc(p.base_url)}" placeholder="https://staging.acme.example"></label>
-      <label>Report prepared by <input name="brand" value="${esc(p.brand)}"></label>
-      <label>Nightly run at (24-hour, server time; empty for none) <input name="nightly" value="${esc(p.nightly)}" placeholder="02:30"></label>
-      <fieldset class="targets"><legend>Run every test on</legend>
-        ${TARGET_LABELS.map(([key, label]) => `<label class="inline"><input type="checkbox" name="target" value="${key}"
-          ${(p.targets || "chrome").split(",").includes(key) ? "checked" : ""}> ${label}</label>`).join("")}
-      </fieldset>
+      <div class="card-head">${icon("sliders")}<h3>Client</h3></div>
+      <div class="fields">
+        <label>Client name <input name="client" required value="${esc(p.client)}"></label>
+        <label>Website <span class="hint">optional: every test runs against it, keeping its own path</span>
+          <input name="base_url" value="${esc(p.base_url)}" placeholder="https://staging.acme.example"></label>
+        <label>Reports prepared by <input name="brand" value="${esc(p.brand)}" placeholder="Your QA Co"></label>
+        <label>Nightly run at <span class="hint">24-hour, server time; empty for none</span><input name="nightly" value="${esc(p.nightly)}" placeholder="02:30"></label>
+      </div>
+      <div><h3>Run every test on</h3><p class="muted small">Each test runs once on each, with results side by side.</p></div>
+      <div class="targets">${Object.entries(TARGETS).map(([key, [label, ic]]) => `
+        <label class="target"><input type="checkbox" name="target" value="${key}" ${chosen.includes(key) ? "checked" : ""}>${icon(ic)}${label}</label>`).join("")}</div>
       <p class="error" role="alert"></p>
-      <div><button type="submit">Save settings</button></div>
+      <div class="actions"><button type="submit">${icon("check")}Save settings</button></div>
     </form>
-    <h2>Secrets</h2>
-    <p class="muted">Test passwords and keys. A test uses one as \${NAME} in its data. Values can't be read back.</p>
-    <table><tbody>${secrets || '<tr><td class="muted">None yet.</td></tr>'}</tbody></table>
-    <form class="card row" id="secret">
-      <label>Name <input name="name" required pattern="[A-Z_][A-Z0-9_]*" placeholder="SHOP_PASSWORD"></label>
-      <label>Value <input name="value" type="password" autocomplete="new-password" required></label>
-      <button type="submit">Set secret</button>
+    <div class="section-title"><h2>Secrets <span class="count">${data.secrets.length}</span></h2></div>
+    <p class="muted small">Test passwords and keys. A test uses one as \${NAME} in its data. Jira and Slack read JIRA_URL, JIRA_PROJECT, JIRA_EMAIL, JIRA_API_TOKEN and SLACK_WEBHOOK_URL.</p>
+    ${secrets ? `<div class="table-wrap"><table><tbody>${secrets}</tbody></table></div>` : ""}
+    <form class="card stack" id="secret">
+      <div class="card-head">${icon("key")}<h3>Add a secret</h3></div>
+      <div class="fields">
+        <label>Name <input name="name" required pattern="[A-Z_][A-Z0-9_]*" placeholder="SHOP_PASSWORD"></label>
+        <label>Value <input name="value" type="password" autocomplete="new-password" required></label>
+      </div>
       <p class="error" role="alert"></p>
+      <div class="actions"><button type="submit">${icon("plus")}Set secret</button></div>
     </form>`;
   onSubmit(document.getElementById("settings"), async (fields) => {
     const targets = [...document.querySelectorAll("#settings input[name=target]:checked")].map((box) => box.value).join(",");
     delete fields.target;
     await api("PUT", `/api/projects/${slug}`, { ...fields, targets });
+    toast("Settings saved");
     route();
   });
   onSubmit(document.getElementById("secret"), async (fields) => {
     await api("PUT", `/api/projects/${slug}/secrets/${fields.name}`, { value: fields.value });
+    toast(`${fields.name} set`);
     route();
   });
   section.querySelectorAll("[data-secret]").forEach((button) => button.addEventListener("click", async () => {
     if (!confirm(`Delete the secret ${button.dataset.secret}?`)) return;
     await api("DELETE", `/api/projects/${slug}/secrets/${button.dataset.secret}`);
+    toast("Secret deleted");
     route();
   }));
 }
 
 async function usersPage() {
   const token = routeToken;
-  const { users } = await api("GET", "/api/users");
+  const [{ users }] = await Promise.all([api("GET", "/api/users"), renderSide("users")]);
   if (stale(token)) return;
   const rows = users.map((u) => `
-    <tr><td>${esc(u.email)}</td><td>${esc(u.name)}</td><td>${u.admin ? "admin" : "staff"}</td>
-      <td>${u.id === me.id ? "" : `<button type="button" class="link" data-user="${u.id}">Delete</button>`}</td></tr>`).join("");
+    <tr><td class="status"><span class="avatar">${esc(initials(u.name || u.email))}</span></td>
+      <td><div class="cell-title">${esc(u.name || u.email)}${u.id === me.id ? '<span class="chip">you</span>' : ""}</div><div class="muted small">${esc(u.email)}</div></td>
+      <td class="narrow"><span class="pill ${u.admin ? "run" : "off"}">${u.admin ? "Admin" : "Staff"}</span></td>
+      <td class="narrow">${u.id === me.id ? "" : `<button type="button" class="ghost small" data-user="${u.id}" title="Delete">${icon("trash")}</button>`}</td></tr>`).join("");
   view.innerHTML = `
-    <h1>Users</h1>
-    <table><thead><tr><th>Email</th><th>Name</th><th>Role</th><th></th></tr></thead><tbody>${rows}</tbody></table>
-    <h2>Add a user</h2>
+    <div class="page-head"><div><h1>Team</h1><div class="sub">Admins manage clients, team and secrets; staff write tests and start runs.</div></div></div>
+    <div class="table-wrap"><table><tbody>${rows}</tbody></table></div>
     <form class="card stack" id="new-user">
-      <label>Email <input name="email" type="email" required></label>
-      <label>Name <input name="name"></label>
-      <label>First password (they change it under Account) <input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
-      <label class="inline"><input name="admin" type="checkbox" value="1"> Admin (manages users, projects and secrets)</label>
+      <div class="card-head">${icon("plus")}<h3>Add someone</h3></div>
+      <div class="fields">
+        <label>Email <input name="email" type="email" required></label>
+        <label>Name <input name="name"></label>
+        <label>First password <span class="hint">10+ characters; they change it under Account</span><input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
+      </div>
+      <label class="check"><input name="admin" type="checkbox" value="1"> Admin</label>
       <p class="error" role="alert"></p>
-      <div><button type="submit">Add user</button></div>
+      <div class="actions"><button type="submit">${icon("plus")}Add to team</button></div>
     </form>`;
   onSubmit(document.getElementById("new-user"), async (fields) => {
     await api("POST", "/api/users", { ...fields, admin: fields.admin === "1" });
+    toast(`${fields.email} added`);
     route();
   });
   view.querySelectorAll("[data-user]").forEach((button) => button.addEventListener("click", async () => {
-    if (!confirm("Delete this user?")) return;
+    if (!confirm("Remove this person from the team?")) return;
     await api("DELETE", `/api/users/${button.dataset.user}`);
+    toast("Removed");
     route();
   }));
 }
 
-function accountPage() {
+async function accountPage() {
+  await renderSide("account");
   view.innerHTML = `
-    <h1>Account</h1>
-    <p class="muted">${esc(me.email)}</p>
-    <form class="card stack narrow" id="password">
-      <label>Current password <input name="current" type="password" autocomplete="current-password" required></label>
-      <label>New password (10 characters or more) <input name="new" type="password" autocomplete="new-password" minlength="10" required></label>
+    <div class="page-head"><div class="head-left"><span class="avatar lg">${esc(initials(me.name || me.email))}</span>
+      <div><h1>${esc(me.name || "Account")}</h1><div class="sub">${esc(me.email)} · ${me.admin ? "Admin" : "Staff"}</div></div></div></div>
+    <form class="card stack" id="password">
+      <div class="card-head">${icon("key")}<h3>Change password</h3></div>
+      <div class="fields">
+        <label>Current password <input name="current" type="password" autocomplete="current-password" required></label>
+        <label>New password <span class="hint">10+ characters</span><input name="new" type="password" autocomplete="new-password" minlength="10" required></label>
+      </div>
       <p class="error" role="alert"></p>
-      <div><button type="submit">Change password</button></div>
+      <div class="actions"><button type="submit">Change password</button></div>
     </form>`;
   onSubmit(document.getElementById("password"), async (fields) => {
     await api("PUT", "/api/me/password", fields);
     me = null;
+    toast("Password changed: log in again");
     location.hash = "#/login";
   });
 }
 
-// --- routing ---------------------------------------------------------------------------
+// --- routing -------------------------------------------------------------------------------
 
 async function route() {
   routeToken += 1;
   clearTimeout(poll);
   const parts = location.hash.replace(/^#\/?/, "").split("/");
   if (parts[0] === "login") return loginPage();
+  view.classList.remove("bare");
   try {
     if (!me) me = (await api("GET", "/api/me")).user;
   } catch {
     return;  // api() sent us to the login page
   }
-  document.getElementById("bar").hidden = false;
-  document.getElementById("nav-users").hidden = !me.admin;
   try {
     if (parts[0] === "p" && parts[1]) return await projectPage(parts[1], parts[2] || "runs", parts[3]);
     if (parts[0] === "users" && me.admin) return await usersPage();
-    if (parts[0] === "account") return accountPage();
+    if (parts[0] === "account") return await accountPage();
     return await projectsPage();
   } catch (exc) {
-    view.innerHTML = `<p class="error">${esc(exc.message)}</p>`;
+    view.innerHTML = `<div class="card empty">${icon("alert")}<h3>Something went wrong</h3><p>${esc(exc.message)}</p>
+      <div class="actions"><a class="btn secondary" href="#/">Back to clients</a></div></div>`;
   }
 }
 
-document.getElementById("logout").addEventListener("click", async () => {
-  await api("POST", "/api/logout").catch(() => {});
-  me = null;
-  location.hash = "#/login";
-});
 window.addEventListener("hashchange", route);
 route();
