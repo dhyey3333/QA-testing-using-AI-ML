@@ -388,3 +388,19 @@ never reads (ad frames are noise). A working add-to-cart failed, and only on the
 appeared, so the result was random too. Ads are not the app under test, so their servers' requests
 are aborted by default (`observe.block_ads`, ad servers only: tag managers and analytics still load,
 since some sites need them). `--allow-ads` is for a publisher whose ads are the product.
+
+## D40. Tests are a form, and the AI's tests are drafts
+The person setting up a client's tests is a QA tester, not a developer, so a test is written as a
+form: website, steps, what should happen, test data. The form writes the same YAML spec as before,
+keeps any key it doesn't edit (an inbox, a session), and YAML stays one click away for API tests.
+"Generate tests" reuses `nightshift generate` (explore, then write specs), but its output goes to a
+drafts folder, not the tests: a model that misreads the site writes a wrong test, and a wrong test
+reports wrong bugs to a client. A person reviews each draft (with what to double-check and which
+secrets it needs listed) and accepts it.
+
+## D41. The judge can quote what a form field holds
+innerText leaves out what is typed into or selected in a field, so "the quantity shows 2" could
+never be proven: on AcademyBugs the judge saw the 2 and had to fail an AI-written test anyway.
+Visible fields with a value now add "[field] <label>: <value>" lines, the way the browser's own
+validation messages already did ("[browser says]"). Password fields never do, and typed test data
+is masked like any other text before a model sees it.

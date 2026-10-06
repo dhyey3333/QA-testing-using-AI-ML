@@ -301,8 +301,20 @@ agree to the Privacy Policy") is listed by its label, with its checked state.
 ## Hosted, for a QA agency
 
 `nightshift hosted serve` is the web app an agency's staff log in to. Each client is a project:
-its tests (edited in the browser), its saved paths, its test secrets, a nightly run time, and a
-history of runs, each with its **client report**, full report and log. Runs go in the background,
+its tests, its saved paths, its test secrets, a nightly run time, and a history of runs, each with
+its **client report**, full report and log.
+
+Nobody writes YAML:
+- **A test is a form:** the website, the steps one per line, what should happen one per line, and
+  test data as `name = value`. A single sentence with nothing under "what should happen" becomes a
+  goal the AI has to prove it reached.
+- **"Generate tests with AI"** takes a URL (and, optionally, what the site is for), explores the site,
+  and writes draft tests. Each draft lists what to double-check and the secrets it needs. A person
+  reviews, edits and accepts them.
+- **"Explore a website for bugs"** needs no tests at all: the AI uses the site and lists what it
+  found broken, with screenshots.
+
+A run that would stop on a missing secret is refused up front, naming the test and the secret. Runs go in the background,
 two at a time and two tests at a time within a run (`--max-runs`, `--parallel`); a nightly suite
 of saved paths replays with no model calls.
 
