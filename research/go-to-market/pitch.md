@@ -21,6 +21,12 @@
    to reproduce, screenshots. Ready to send.
 6. **Passing runs are saved and replayed with no AI.** A stable nightly suite runs in seconds and
    costs nothing; the AI steps in only when the app changed.
+7. **It sees what text checks can't.** A price printed white on white, overlapping cards, a missing
+   image: the final screen is compared with the approved look, and the AI judges whether a change is
+   a bug or just new content. You approve each new look.
+8. **Every failure says why, in one sentence, from evidence.** Examples: "The server crashed on POST
+   /api/order (HTTP 500)", or "“Place order” can't be used: a promo layer sits on top of it". One
+   click files it in Jira or posts it to Slack.
 
 ## Measured, not claimed
 
@@ -33,6 +39,7 @@ Same free model throughout; every number is in the repository with its run logs.
 | Public practice sites judged correctly | **28 / 28** reachable sites |
 | False alarms on bug-free runs | 1 in 45 (2.2%), on a holdout app it was never tuned on |
 | Median time per test | 14 to 17 s |
+| Visual bugs told apart from harmless changes | 6 / 6 on the tuned page, 4 / 5 on a page it never saw |
 
 **Real bugs it found on real platforms' public demo stores:**
 - **Medusa:** the server crashes (HTTP 500) when adding an out-of-stock item, so the cart stays empty.

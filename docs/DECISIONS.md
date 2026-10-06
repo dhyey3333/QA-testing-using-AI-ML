@@ -411,3 +411,22 @@ page: a site that greets "Welcome ns20261006" reaches the judge as "Welcome {{us
 a benchmark run: the judge read that literally ("the page shows a placeholder, not a username")
 and failed a working sign-up. Both prompts now say a {{name}} on the page is the real value, hidden
 on purpose. The values themselves stay out of every prompt.
+
+## D43. Visual checks: pixels find the change, the model judges it, a person approves it
+A text check can't see a price printed white on white. Pixel diffs alone flag every new product
+and date, which is why teams stop reading them. So both: a pixel comparison (in the test's own
+browser on a canvas, so no image library) decides whether anything really changed; only then
+does the model look, at the two screens zoomed in on the change, and decide whether a person
+would call it broken. Measured on a lab page: the red change boxes made the model call a harmless
+change a bug (it took them for part of the page), and at half size it couldn't see a missing
+price; clean, zoomed, stacked pictures fixed both (6/6 on the tuned page, 4/5 on a held-out one).
+The model never approves a new look: a changed screen stays a warning until a person accepts it,
+so a slow drift can't become the baseline.
+
+## D44. Why it failed is assembled from evidence, not written by a model
+A model could write a fluent explanation, and sometimes a wrong one, and a developer would chase
+it. The cause sentence is built only from what the browser recorded (the 5xx and its request, the
+uncaught error, the covering element, the judge's finding, the agent's own bug title) plus the
+app's refused API calls, now recorded as warnings. When the agent described the bug itself
+("Adding Clay Kulhad to the cart does nothing"), its words lead, because they are sharper than
+"the cart doesn't list it".

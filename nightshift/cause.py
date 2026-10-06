@@ -27,7 +27,7 @@ def probable_cause(result: RunResult) -> str:
     also = f" Before that, the app's API refused {api_errors[0]}." if api_errors else ""
 
     if result.category == "ENV_ISSUE" or (problem := environment_problem(result)):
-        problem = environment_problem(result) or reason
+        problem = _plain_environment((environment_problem(result) or reason).removeprefix("environment: "))
         return f"Not the app: {problem}. Nothing was tested; run it again when the site is reachable."
     if result.app_errors:
         first = result.app_errors[0]
@@ -66,6 +66,20 @@ def probable_cause(result: RunResult) -> str:
     # The agent failed it in its own words ("Adding Clay Kulhad to the cart does nothing"), and the
     # judge confirmed the expected result is missing: the agent's words are the sharper cause.
     return reason.rstrip(".") + "." + also
+
+
+# Browser errors a developer would recognise, said the way a tester would.
+_ENVIRONMENT = (("Timeout", "the site didn't load within 30 seconds"),
+                ("ERR_NAME_NOT_RESOLVED", "the site's address doesn't exist (DNS)"),
+                ("ERR_CONNECTION_REFUSED", "nothing answered at the site's address"),
+                ("ERR_CONNECTION", "the connection to the site failed"),
+                ("model call failed", "the AI model couldn't be reached"))
+
+
+def _plain_environment(problem: str) -> str:
+    if problem.startswith(("browser error:", "model call failed")):
+        problem = next((plain for needle, plain in _ENVIRONMENT if needle in problem), problem)
+    return problem.rstrip(".")
 
 
 def _page(result: RunResult) -> str:

@@ -324,3 +324,52 @@ Four documents in `research/go-to-market/`:
 **Features marked as command-line only, to build into the web app before selling Pro:** Jira and Slack filing, and the traceability matrix. SSO isn't built.
 
 **No product code changed in phase 4,** so the tests (193 pass) and the latest benchmarks (commit c11c768) still stand.
+
+## Closing the gaps against the market: visual checks and why it failed
+
+Chosen by the user from the comparison with BlinqIO, testers.ai, Mabl, Katalon, Applitools, ACCELQ, BrowserStack, Testim, TestMu KaneAI, TestResults.io, Tricentis and Parasoft. The two gaps to close first:
+- **Visual checks:** against Applitools and Mabl.
+- **Root-cause analysis plus Jira/Slack:** against BrowserStack.
+
+**Visual checks (`nightshift/visual.py`, D43):**
+- **When it runs:** after a passing test with saved paths, the final screen is compared with its approved look, in the test's own browser.
+- **What the model sees:** a real change goes to the model as clean screenshots, zoomed in and stacked when the change is small. The model says whether a person would call it broken.
+- **Who decides:** a person approves every new look.
+
+| Visual benchmark (`python -m benchmark.visual`, Gemma 4 31B) | Correct |
+|---|---|
+| First version (red change boxes, half-size, 0.2% threshold) | 4 / 6 |
+| Clean pictures for the model | 5 / 6 |
+| Plus zoom, stacking and catching small concentrated changes | **6 / 6, twice** |
+| **Held-out page** (another design, other bugs, never tuned on) | **4 / 5**: it missed form fields drawn over their labels |
+
+**End to end in the web app:**
+1. The approved look was saved on the first run.
+2. Then prices were printed white on white.
+3. The test still passed its text checks with no AI (a replay in 1.2 s).
+4. The visual check reported "the price for 'Filter Coffee' is missing", using one model call (614 tokens).
+5. The run details page offers **Accept the new look**.
+
+**Why it failed (`nightshift/cause.py`, D44):**
+- **One sentence per failure,** built only from recorded evidence. The app's refused 4xx API calls are now recorded too.
+- **Checked against all 23 planted-bug runs of the last shop benchmark.** Examples:
+  - "The server crashed on POST /api/order (HTTP 500)"
+  - "“Place order” can't be used: <div class="promo-layer"> sits on top of it"
+  - "Incorrect order total: expected ₹240, but got ₹290"
+  - "Adding 'Clay Kulhad (set of 6)' to the cart does nothing"
+- **On public sites:**
+  - "The server crashed on GET /parabank/overview.htm (HTTP 500)"
+  - "Not the app: the site didn't load within 30 seconds"
+
+**Web app:** each run has a details page listing every test with its result, probable cause and visual check. It has buttons for Accept the new look, File bugs in Jira and Post to Slack, which use the project's secrets.
+
+**Benchmarks after both:**
+
+| | Before | After |
+|---|---|---|
+| Shop: bugs / false alarms | 23 / 23, 0 / 13 | 23 / 23, 0 / 13 |
+| Clinic (holdout) | 8 / 8, 1 / 5 | 8 / 8, 1 / 5 |
+| Public sites, correct on reachable sites | 28 / 28 | 28 / 28 (Parabank's 500 again, reported correctly) |
+| False passes | 0 | 0 |
+
+**Tests:** 201 pass, plus 1 new for the plainer wording when a site is unreachable.

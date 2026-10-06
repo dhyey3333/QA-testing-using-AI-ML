@@ -103,3 +103,9 @@ def test_the_cause_prefers_the_agents_own_words_and_else_says_what_the_judge_fou
                      final_text="This request was blocked\n403 FORBIDDEN")
     assert probable_cause(blocked).startswith("Not the app: the browser landed on \"This request was blocked\"")
     assert probable_cause(RunResult(spec="s", url="u", model="m", verdict="pass")) == ""
+
+
+def test_an_unreachable_site_is_said_plainly():
+    down = failed(verdict="error", category="ENV_ISSUE", reason="environment: browser error: Page.goto: Timeout 30000ms exceeded.")
+    assert probable_cause(down) == ("Not the app: the site didn't load within 30 seconds. Nothing was tested; "
+                                    "run it again when the site is reachable.")

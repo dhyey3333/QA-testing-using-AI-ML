@@ -298,6 +298,27 @@ the page, and saved paths find them again (`benchmark/public/polymer-add-to-cart
 **Styled checkboxes.** A checkbox or radio whose real input is hidden behind a styled label ("I
 agree to the Privacy Policy") is listed by its label, with its checked state.
 
+## Visual checks and why a test failed
+
+**Visual checks.** A page can say all the right things and still look broken: a price printed
+white on white, two cards drawn on top of each other, a missing image. When a test with saved paths
+passes, its final screen is compared with the approved look from an earlier pass. A real change
+goes to the model, zoomed in on where it changed, and the model says whether a person would call
+it broken or whether it's just different content (another product, a new date).
+
+- **A visual bug is a warning by default.** Use `--visual fail` or `visual: fail` in a spec to make it
+  fail the test, or `--visual off` to switch the check off.
+- **A new look is never approved by itself.** Use `--update-visual`, or "Accept the new look" in the
+  web app.
+- **Measured** (`uv run python -m benchmark.visual`):
+  - 6 / 6 on the page it was tuned on.
+  - 4 / 5 on a held-out page it never saw. It missed form fields drawn over their labels.
+
+**Why it failed.** Every failure gets one plain sentence, built only from what the browser recorded:
+the server error and its request, the script that crashed, the element covering a button, the
+value the judge found instead of the expected one, or the agent's own description of the bug. It
+also notes any API call the app refused. It's in each report, in `bug.md` and in the web app.
+
 ## Hosted, for a QA agency
 
 `nightshift hosted serve` is the web app an agency's staff log in to. Each client is a project:
@@ -314,7 +335,12 @@ Nobody writes YAML:
 - **"Explore a website for bugs"** needs no tests at all: the AI uses the site and lists what it
   found broken, with screenshots.
 
-A run that would stop on a missing secret is refused up front, naming the test and the secret. Runs go in the background,
+A run that would stop on a missing secret is refused up front, naming the test and the secret.
+
+Each run has a details page: every test, its result, why it failed and its visual check, plus
+**Accept the new look**, **File bugs in Jira** and **Post to Slack**. Jira and Slack read the
+project's secrets: `JIRA_URL`, `JIRA_PROJECT`, `JIRA_EMAIL`, `JIRA_API_TOKEN` and
+`SLACK_WEBHOOK_URL`. With `SLACK_WEBHOOK_URL` set, a run that finds problems posts by itself. Runs go in the background,
 two at a time and two tests at a time within a run (`--max-runs`, `--parallel`); a nightly suite
 of saved paths replays with no model calls.
 
