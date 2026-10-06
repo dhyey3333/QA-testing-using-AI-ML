@@ -319,6 +319,35 @@ the server error and its request, the script that crashed, the element covering 
 value the judge found instead of the expected one, or the agent's own description of the bug. It
 also notes any API call the app refused. It's in each report, in `bug.md` and in the web app.
 
+## One click on Windows
+
+Double-click `launch\Start Nightshift.bat`, or the desktop icon `launch\make-shortcut.ps1` puts there.
+It does the rest:
+- checks Ollama and uses the free cloud model;
+- on first start, creates your admin login in its window;
+- starts the app and opens your browser;
+- with `cloudflared` installed (`winget install Cloudflare.cloudflared`), opens a free public link
+  and copies it to the clipboard, to paste to anyone.
+
+Close the window to stop it all.
+
+## Browsers, phones and Cucumber
+
+**Browsers and phones.** `nightshift run specs/ --on chrome,firefox,safari,iphone,android` runs
+every test on each one: Firefox, WebKit (Safari's engine), an iPhone in WebKit and an Android phone
+in Chrome. Results sit side by side as `checkout`, `checkout@iphone` and so on, each with its own
+saved path and approved look. In the web app it's a project setting: Settings → "Run every test
+on". Firefox and WebKit need one download: `uv run playwright install firefox webkit`.
+
+**Cucumber.** `nightshift gherkin import checkout.feature --url https://staging.example/` turns
+each Scenario into a draft test:
+- Given and When become the steps, and Then becomes what should happen.
+- Background steps come first in every scenario.
+- An Outline becomes one test per Examples row.
+
+No step definitions are needed. `nightshift gherkin export specs/` writes tests back out as
+`.feature` files. In the web app, the Tests tab has "Import Cucumber tests".
+
 ## Hosted, for a QA agency
 
 `nightshift hosted serve` is the web app an agency's staff log in to. Each client is a project:
@@ -582,7 +611,8 @@ benchmark/      scores the tester against either app
   list, unless they look like a popup's close control.
 - On the 4B model every agent step takes about 2 s, so a 14-step checkout takes about 40 s. Replay
   makes repeat runs cheap. A bigger hosted model is more accurate and not much slower.
-- Firefox, WebKit and the Docker image are wired up but only Chromium was tested here.
+- Firefox, WebKit, an iPhone and an Android phone are tested on the demo shop's login. The Docker
+  image is wired up but untested.
 - It checks what the page shows. It reads a test inbox for email codes and links, and an SMS inbox
   for text-message codes, but not the database or the payment provider. Authenticator-app codes are
   supported. A real SMS gateway needs a small adapter to Mailpit's message API.

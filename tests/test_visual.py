@@ -116,3 +116,9 @@ def test_a_read_only_run_compares_but_never_writes_a_new_approved_look(browser, 
     result = run(browser, lab(base_url, "approved"), ScriptedModel(evidence=["Masala Chai"]), tmp_path, "ro", record=False)
     assert result.verdict == "pass" and result.visual["status"] == "skipped"
     assert not (tmp_path / "visual").exists()
+
+
+def test_firefox_and_safari_connection_errors_are_said_plainly_too():
+    for message in ("Page.goto: NS_ERROR_CONNECTION_REFUSED", "Page.goto: Could not connect to server"):
+        down = failed(verdict="error", category="ENV_ISSUE", reason=f"environment: browser error: {message}")
+        assert probable_cause(down).startswith("Not the app: nothing answered at the site's address.")

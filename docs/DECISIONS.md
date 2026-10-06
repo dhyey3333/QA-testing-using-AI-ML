@@ -443,3 +443,28 @@ Two passes found ten bugs that 200 tests didn't. Three ways of looking each foun
   server was busy.
 Each fix has a test, so the bug stays found. Running Nightshift on itself is now part of looking
 for bugs: it uses the product the way a customer does.
+
+## D46. Browsers and phones are named the way QA teams say them
+A run doesn't need every browser crossed with every device, which would be 15 targets, most of them
+meaningless (a Pixel in Firefox). So `--on` takes five names a QA team uses: chrome, firefox,
+safari (WebKit), iphone (iPhone 13 in WebKit) and android (Pixel 7 in Chromium). Each spec runs
+once per target, as spec@target with its own saved path, approved look and session; the chrome
+variant keeps the plain name so everything saved before still matches. Each worker opens engines
+from one Playwright on first use, and device settings are read once in a thread of their own,
+because a second sync Playwright in a busy thread is an error (the tests caught it).
+
+## D47. Cucumber features become drafts, not tests
+Gherkin is plain English, which is what Nightshift reads, so features need no step definitions.
+Given and When become steps, and Then becomes expected results. But a feature written for a
+Cucumber suite can lean on glue code ("Given the database is seeded") or name no site, so imports
+land in the drafts folder like AI-written tests, with what to check listed, and a person accepts
+them.
+
+## D48. One click starts everything, and closing the window stops everything
+Starting the app took several commands: the model, the server, a tunnel, a URL to paste. A demo
+call shouldn't start with a terminal. The launcher does it all from one double-click, in Windows
+PowerShell 5.1 so it runs on any Windows 10 or 11 machine. It creates the first admin in the
+window, copies the public link, and on exit stops the tunnel it started; a tunnel left behind by a
+force-closed window is stopped on the next start. With a public URL set, changes made on the
+laptop itself (Origin http://127.0.0.1) are still allowed, and the login cookie is HTTPS-only only
+when the request came over HTTPS, or a browser on the laptop would be logged out at once.

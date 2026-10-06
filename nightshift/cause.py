@@ -69,9 +69,14 @@ def probable_cause(result: RunResult) -> str:
 
 
 # Browser errors a developer would recognise, said the way a tester would.
+# Chrome, Firefox and Safari's engine each word them their own way.
 _ENVIRONMENT = (("Timeout", "the site didn't load within 30 seconds"),
                 ("ERR_NAME_NOT_RESOLVED", "the site's address doesn't exist (DNS)"),
+                ("NS_ERROR_UNKNOWN_HOST", "the site's address doesn't exist (DNS)"),
+                ("hostname could not be found", "the site's address doesn't exist (DNS)"),
                 ("ERR_CONNECTION_REFUSED", "nothing answered at the site's address"),
+                ("NS_ERROR_CONNECTION_REFUSED", "nothing answered at the site's address"),
+                ("Could not connect to server", "nothing answered at the site's address"),
                 ("ERR_CONNECTION", "the connection to the site failed"),
                 ("model call failed", "the AI model couldn't be reached"))
 
