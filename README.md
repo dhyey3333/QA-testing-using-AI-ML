@@ -326,10 +326,15 @@ It does the rest:
 - checks Ollama and uses the free cloud model;
 - on first start, creates your admin login in its window;
 - starts the app and opens your browser;
-- with `cloudflared` installed (`winget install Cloudflare.cloudflared`), opens a free public link
-  and copies it to the clipboard, to paste to anyone.
+- with Tailscale installed and signed in (free, no card), opens your **fixed** public link with
+  Tailscale Funnel: the same https address every time, so it can go on the website;
+- otherwise, with `cloudflared` installed (`winget install Cloudflare.cloudflared`), opens a free
+  public link that changes on every start;
+- copies the link to the clipboard, to paste to anyone.
 
 Close the window to stop it all.
+
+The public website is in `site/`; see `deploy/site/README.md` to preview and publish it.
 
 ## Browsers, phones and Cucumber
 

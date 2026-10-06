@@ -1,6 +1,6 @@
 <#
-  Nightshift, one click. Checks the model, starts the web app, opens a free public link
-  (a Cloudflare quick tunnel) when cloudflared is installed, and opens the browser.
+  Nightshift, one click. Checks the model, starts the web app, opens a free public link (a fixed
+  one with Tailscale Funnel, else a Cloudflare quick tunnel), and opens the browser.
   Close this window, or press Ctrl+C, to stop everything.
 
   Works in Windows PowerShell 5.1 (every Windows 10/11) and PowerShell 7.
@@ -72,8 +72,9 @@ if (-not $users) {
     if ($LASTEXITCODE -ne 0) { Stop-Here "The login wasn't created. Run this again to retry." }
 }
 
-# 5. A public link, when cloudflared is installed. A tunnel left over from a window closed last
-#    time is stopped first (closing the window can't always stop it).
+# 5. A public link. Tailscale Funnel gives a fixed https address that never changes (a free account,
+#    no card), so it can go on the website. Without it, a Cloudflare quick tunnel gives a new random
+#    address on every start. A tunnel left over from a window closed last time is stopped first.
 if (Test-Path $PidFile) {
     $old = Get-Content $PidFile -ErrorAction SilentlyContinue
     if ($old) { Stop-Process -Id ([int]$old) -ErrorAction SilentlyContinue }
@@ -81,6 +82,30 @@ if (Test-Path $PidFile) {
 }
 $PublicUrl = ""
 $Tunnel = $null
+$Funnel = $null
+$tailscale = Get-Command tailscale -ErrorAction SilentlyContinue
+if (-not $tailscale -and (Test-Path "$env:ProgramFiles\Tailscale\tailscale.exe")) { $tailscale = Get-Command "$env:ProgramFiles\Tailscale\tailscale.exe" }
+if ($tailscale -and -not $NoTunnel) {
+    # Windows PowerShell turns a native program's error output into a stopping error; read it softly.
+    $ErrorActionPreference = "Continue"
+    $status = $null
+    try { $status = (& $tailscale.Source status --json 2>$null | Out-String) | ConvertFrom-Json } catch { }
+    if ($status -and $status.BackendState -eq "Running" -and $status.Self.DNSName) {
+        Say "Opening your fixed link with Tailscale Funnel (the first time, it may ask you to allow Funnel in the browser)..."
+        & $tailscale.Source funnel --bg --https=443 "http://127.0.0.1:$Port"
+        if ($LASTEXITCODE -eq 0) {
+            $PublicUrl = "https://" + $status.Self.DNSName.TrimEnd(".")
+            $Funnel = $tailscale
+            Set-Clipboard -Value $PublicUrl
+            Say "Your fixed link (copied): $PublicUrl" "Green"
+        } else {
+            Say "Tailscale Funnel didn't start; using a Cloudflare link instead." "Yellow"
+        }
+    } else {
+        Say "Tailscale is installed but not signed in. Open the Tailscale app and sign in for your fixed link." "Yellow"
+    }
+    $ErrorActionPreference = "Stop"
+}
 $cloudflared = Get-Command cloudflared -ErrorAction SilentlyContinue
 if (-not $cloudflared) {
     $candidates = @("$env:ProgramFiles\cloudflared\cloudflared.exe", "${env:ProgramFiles(x86)}\cloudflared\cloudflared.exe",
@@ -88,10 +113,12 @@ if (-not $cloudflared) {
     $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
     if ($found) { $cloudflared = Get-Command $found }
 }
-if ($NoTunnel) {
+if ($PublicUrl) {
+    # Tailscale Funnel already gave the fixed link.
+} elseif ($NoTunnel) {
     Say "No public link (-NoTunnel): only this computer can open the app."
 } elseif (-not $cloudflared) {
-    Say "No public link: install cloudflared once with  winget install Cloudflare.cloudflared" "Yellow"
+    Say "No public link: install Tailscale (a fixed link) from https://tailscale.com/download, or cloudflared with  winget install Cloudflare.cloudflared" "Yellow"
 } else {
     Remove-Item $TunnelLog -ErrorAction SilentlyContinue
     $Tunnel = Start-Process $cloudflared.Source -ArgumentList "tunnel", "--no-autoupdate", "--url", $Local.TrimEnd("/") `
@@ -132,5 +159,10 @@ try {
     if ($Tunnel) {
         Stop-Process -Id $Tunnel.Id -ErrorAction SilentlyContinue
         Remove-Item $PidFile -ErrorAction SilentlyContinue
+    }
+    if ($Funnel) {
+        # The fixed link stays reserved for you; it just stops pointing at a closed app.
+        $ErrorActionPreference = "Continue"
+        & $Funnel.Source funnel reset 2>$null | Out-Null
     }
 }

@@ -77,7 +77,7 @@ def client_report_html(results: list[RunResult], defects: list[Defect], run_dir:
     hosts = sorted({urlsplit(r.url).netloc for r in results if r.url})
     title = f"Test report: {client}" if client else "Test report"
 
-    parts = [f"<header>{_logo(logo)}<span class='brand'>{escape(brand or 'Nightshift')}</span></header>",
+    parts = [f"<header>{_logo(logo)}<span class='brand'>{escape(brand or 'Nightshift QA')}</span></header>",
              f"<h1>{escape(title)}</h1>",
              f"<p class='sub'>{escape(when)} · {escape(', '.join(hosts) or 'no environment')} · {len(results)} tests</p>"]
 
@@ -128,7 +128,7 @@ def client_report_html(results: list[RunResult], defects: list[Defect], run_dir:
                  "and checked. DEFECT: the app did something wrong; each defect lists how to reproduce it. FLAKY: "
                  "failed, then passed when run again. NOT TESTED: the site was unreachable or behind a bot check, "
                  "or the test could not be carried out as written and needs updating.</p>"
-                 + (f"<p>Prepared by {escape(brand)}.</p>" if brand else "<p>Prepared with Nightshift.</p>") + "</footer>")
+                 + (f"<p>Prepared by {escape(brand)}.</p>" if brand else "<p>Prepared with Nightshift QA.</p>") + "</footer>")
     return ("<!doctype html>\n<html lang='en'>\n<head>\n<meta charset='utf-8'>\n"
             "<meta name='viewport' content='width=device-width, initial-scale=1'>\n"
             f"<title>{escape(title)}</title>\n<style>{CSS}</style>\n</head>\n<body>\n<main>\n"

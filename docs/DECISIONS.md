@@ -477,3 +477,13 @@ toasts instead of browser alerts, a split login screen, dark mode and a phone la
 one plain-JS file and one stylesheet, with no framework and no bundler, so the app runs straight
 from the repo. The page's CSP forbids inline styles and scripts, so every look is a class, and the
 result bars are SVG whose widths are attributes, not styles.
+
+## D50. A public website on GitHub Pages, and a fixed link for the app with Tailscale Funnel
+Agencies have to find Nightshift QA on Google and open a link that works tomorrow. Both are free
+with no card: the website is static HTML on GitHub Pages (`site/`, published to the
+`nightshift-qa.github.io` repository), with a sitemap, structured data and a share picture; the app
+stays on the laptop, and Tailscale Funnel gives it a fixed https address in place of the quick
+tunnel's new random one on every start. The brand becomes "Nightshift QA" so search can tell it
+from Apple's Night Shift. The site claims only measured numbers, names no third-party sites whose
+bugs it found, and shows no testimonials or customer logos until there are real ones. Contact goes
+through a Google Form so no personal email is published.

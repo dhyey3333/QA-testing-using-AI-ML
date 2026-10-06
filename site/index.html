@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nightshift QA: AI regression testing for QA agencies</title>
+  <meta name="description" content="Nightshift QA runs your regression tests every night with AI in a real browser. Plain-English tests, proof for every pass, failures explained, white-label client reports. Free 30-day pilot for QA agencies in India.">
+  <link rel="canonical" href="https://nightshift-qa.github.io/">
+  <meta name="theme-color" content="#0b0e1f">
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Nightshift QA">
+  <meta property="og:title" content="Nightshift QA: AI regression testing for QA agencies">
+  <meta property="og:description" content="Plain-English tests, run every night in a real browser. Every pass proven, every failure explained, a client report under your agency's name.">
+  <meta property="og:url" content="https://nightshift-qa.github.io/">
+  <meta property="og:image" content="https://nightshift-qa.github.io/assets/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:locale" content="en_IN">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="/assets/site.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://nightshift-qa.github.io/#org",
+        "name": "Nightshift QA",
+        "url": "https://nightshift-qa.github.io/",
+        "logo": "https://nightshift-qa.github.io/assets/apple-touch-icon.png"
+      },
+      {
+        "@type": "WebSite",
+        "name": "Nightshift QA",
+        "url": "https://nightshift-qa.github.io/",
+        "publisher": { "@id": "https://nightshift-qa.github.io/#org" }
+      },
+      {
+        "@type": "SoftwareApplication",
+        "name": "Nightshift QA",
+        "applicationCategory": "DeveloperApplication",
+        "applicationSubCategory": "AI regression testing",
+        "operatingSystem": "Web",
+        "url": "https://nightshift-qa.github.io/",
+        "description": "AI regression testing for QA agencies: plain-English tests run every night in a real browser, with proof for every pass, failures explained and white-label client reports.",
+        "publisher": { "@id": "https://nightshift-qa.github.io/#org" },
+        "offers": [
+          { "@type": "Offer", "name": "Pilot", "price": "0", "priceCurrency": "INR" },
+          { "@type": "Offer", "name": "Agency Starter", "price": "14999", "priceCurrency": "INR" },
+          { "@type": "Offer", "name": "Agency Pro", "price": "34999", "priceCurrency": "INR" }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          { "@type": "Question", "name": "Do my testers need to code?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. A test is a form: the steps and what should happen, in plain English. YAML is one click away for those who want it." } },
+          { "@type": "Question", "name": "Which websites can it test?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Any website your client lets you test, ideally a staging or test environment. Sites with bot protection, such as large marketplaces, block automated browsers; Nightshift QA reports those as blocked instead of guessing." } },
+          { "@type": "Question", "name": "How often is it wrong?",
+            "acceptedAnswer": { "@type": "Answer", "text": "On our benchmark it caught 23 of 23 planted bugs, made no false passes in about 400 runs, and raised a false alarm on 1 in 45 clean runs of an app it was never tuned on. The pilot measures the same numbers on your project." } },
+          { "@type": "Question", "name": "Does it test mobile apps?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Mobile websites, yes: iPhone and Android screen sizes, touch and browsers. Native apps from the Play Store or App Store, not yet." } },
+          { "@type": "Question", "name": "What does the AI see?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Screenshots and text of the page under test, with your test data replaced by placeholders. Passwords and keys stay on the server and are never sent to the AI." } },
+          { "@type": "Question", "name": "What happens after the pilot?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Pick a plan, or leave with your tests as plain text and your passing paths as standard Playwright tests." } }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+<svg width="0" height="0" class="sr" aria-hidden="true">
+  <symbol id="i-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-repeat" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></g></symbol>
+  <symbol id="i-broken" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/><path d="m14 4-4 16"/></g></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></g></symbol>
+  <symbol id="i-quote" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></g></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M7 12h10M10 18h4"/></g></symbol>
+  <symbol id="i-why" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M11 8v3M11 14h.01"/></g></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></g></symbol>
+  <symbol id="i-devices" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="14" height="11" rx="2"/><path d="M5 19h8"/><rect x="17" y="9" width="5" height="11" rx="1.5"/></g></symbol>
+  <symbol id="i-brand" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><path d="M7.5 7.5h.01"/></g></symbol>
+  <symbol id="i-ticket" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4z"/></symbol>
+  <symbol id="i-heal" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></g></symbol>
+  <symbol id="i-unlock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></g></symbol>
+  <symbol id="i-bug" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="13" rx="5"/><path d="M12 11v9M9 4l1.5 3M15 4l-1.5 3M3 13h4M17 13h4M4 8l3 2M20 8l-3 2M4 19l3-2M20 19l-3-2"/></g></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></g></symbol>
+  <symbol id="i-flask" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6l-5.5 9.5A2 2 0 0 0 6.2 21h11.6a2 2 0 0 0 1.7-2.5L14 9V3"/><path d="M7 15h10"/></g></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></g></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.3-9.3M17 6l3 3M15 8l2 2"/></g></symbol>
+</svg>
+
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="Nightshift QA home"><span class="logo-mark"><svg class="icon"><use href="#i-moon"/></svg></span>Nightshift QA</a>
+    <nav class="nav" aria-label="Main">
+      <a href="#how">How it works</a><a href="#features">Features</a><a href="#proof">Proof</a><a href="#pricing">Pricing</a><a href="/pilot/">Pilot</a><a href="#faq">FAQ</a>
+    </nav>
+    <div class="top-actions">
+      <a class="login" href="__APP_URL__">Log in</a>
+      <a class="btn small" href="/pilot/#apply">Start a free pilot</a>
+      <details class="menu">
+        <summary aria-label="Menu"><svg class="icon"><use href="#i-menu"/></svg></summary>
+        <div class="panel">
+          <a href="#how">How it works</a><a href="#features">Features</a><a href="#proof">Proof</a><a href="#pricing">Pricing</a>
+          <a href="/pilot/">The pilot</a><a href="#faq">FAQ</a><a href="__APP_URL__">Log in</a><a href="/pilot/#apply">Start a free pilot</a>
+        </div>
+      </details>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="wrap">
+      <span class="eyebrow"><span class="dot"></span>For QA agencies · Free 30-day pilot</span>
+      <h1>Regression testing that <em>runs itself, every night.</em></h1>
+      <p class="lead">Write tests in plain English. Nightshift QA runs them in a real browser, proves every pass with a quote from the page, explains every failure, and sends your client a report under your agency's name.</p>
+      <div class="ctas">
+        <a class="btn" href="/pilot/#apply">Start a free pilot <svg class="icon"><use href="#i-arrow"/></svg></a>
+        <a class="btn ghost" href="#how">See how it works</a>
+      </div>
+      <p class="fine">No card. No code. Your tests stay yours.</p>
+      <div class="shot-frame">
+        <div class="shot-bar"><i></i><i></i><i></i></div>
+        <img src="/assets/shot-run-dark.jpg" width="1280" height="800" fetchpriority="high"
+             alt="A Nightshift QA run: two tests passed, one with a visual bug caught because the product prices went missing">
+      </div>
+    </div>
+  </div>
+
+  <section class="after-hero" id="proof">
+    <div class="wrap">
+      <div class="stats">
+        <div class="stat"><div class="n">23<small>/23</small></div><div class="l">planted bugs caught in our test shop</div></div>
+        <div class="stat"><div class="n">0</div><div class="l">false passes in about 400 benchmark runs</div></div>
+        <div class="stat"><div class="n">28<small>/28</small></div><div class="l">public practice sites judged correctly</div></div>
+        <div class="stat"><div class="n">15<small> s</small></div><div class="l">median time per test</div></div>
+      </div>
+      <p class="note">Measured on our own benchmark suite with a free open-weights model, including an app it was never tuned on.</p>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <div class="head">
+        <div class="kicker">The problem</div>
+        <h2>Regression eats your testers' week</h2>
+        <p>Every release, the same flows get clicked through again by hand. It's slow, it's dull, and clients still ask how you know it works.</p>
+      </div>
+      <div class="grid3">
+        <div class="card"><div class="badge warn"><svg class="icon"><use href="#i-repeat"/></svg></div>
+          <h3>The same clicks, every release</h3><p>Login, search, cart, checkout, forms. Your testers re-run the same flows before every release.</p></div>
+        <div class="card"><div class="badge bad"><svg class="icon"><use href="#i-broken"/></svg></div>
+          <h3>Scripts that break when a button moves</h3><p>Selenium suites need someone fixing selectors instead of testing.</p></div>
+        <div class="card"><div class="badge"><svg class="icon"><use href="#i-doc"/></svg></div>
+          <h3>Reports written by hand</h3><p>Clients want to know what was tested and how you know it works. Someone writes that up, every time.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="head center">
+        <div class="kicker">How it works</div>
+        <h2>From a sentence to a nightly test suite</h2>
+        <p>Your testers describe what a person does and what should happen. Nightshift QA does the clicking, every night.</p>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-text">
+            <div class="step-num">1</div>
+            <h3>Describe the test, or let the AI draft it</h3>
+            <p>Steps and expected results go in a form, in plain English. No selectors, no code.</p>
+            <ul>
+              <li><svg class="icon"><use href="#i-check"/></svg>Paste a URL: the AI explores the site and drafts tests to review</li>
+              <li><svg class="icon"><use href="#i-check"/></svg>Already on Cucumber? Import your .feature files</li>
+              <li><svg class="icon"><use href="#i-check"/></svg>Passwords stay in write-only secrets the AI never sees</li>
+            </ul>
+          </div>
+          <img class="shot" src="/assets/shot-tests.jpg" width="720" height="600" loading="lazy"
+               alt="The Tests tab: generate tests with AI, import Cucumber features, and the list of tests">
+        </div>
+        <div class="step">
+          <div class="step-text">
+            <div class="step-num">2</div>
+            <h3>It runs every night, in real browsers</h3>
+            <p>Schedule a nightly time per client, or press Run now before a release. Several tests run at once.</p>
+            <ul>
+              <li><svg class="icon"><use href="#i-check"/></svg>Chrome, Firefox and Safari, plus iPhone and Android screens</li>
+              <li><svg class="icon"><use href="#i-check"/></svg>Passing paths are replayed with no AI: a stable suite runs in seconds for ₹0</li>
+              <li><svg class="icon"><use href="#i-check"/></svg>When the page changes, the AI finds the new path and saves it</li>
+            </ul>
+          </div>
+          <img class="shot" src="/assets/shot-runs.jpg" width="960" height="464" loading="lazy"
+               alt="A client's runs, each with a result bar, the time it took and links to its reports">
+        </div>
+        <div class="step">
+          <div class="step-text">
+            <div class="step-num">3</div>
+            <h3>You get proof, not a green tick</h3>
+            <p>Every expected result must be quoted from the page, and code checks the quote is really there.</p>
+            <ul>
+              <li><svg class="icon"><use href="#i-check"/></svg>Each failure is sorted: bug, flaky, outdated test, or site problem</li>
+              <li><svg class="icon"><use href="#i-check"/></svg>The likely cause, in one sentence, from the evidence</li>
+              <li><svg class="icon"><use href="#i-check"/></svg>A client report under your agency's name, ready to send</li>
+            </ul>
+          </div>
+          <img class="shot" src="/assets/shot-report.jpg" width="860" height="620" loading="lazy"
+               alt="A client report prepared by the agency: what was tested, what passed and what failed">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt" id="features">
+    <div class="wrap">
+      <div class="head center">
+        <div class="kicker">Features</div>
+        <h2>Everything an agency needs to sell regression as a service</h2>
+      </div>
+      <div class="grid3">
+        <div class="card"><div class="badge ok"><svg class="icon"><use href="#i-quote"/></svg></div>
+          <h3>Proof for every pass</h3><p>Nothing passes on a guess. The judge quotes the page for each expected result.</p></div>
+        <div class="card"><div class="badge"><svg class="icon"><use href="#i-sort"/></svg></div>
+          <h3>Failures sorted for you</h3><p>BUG, FLAKY, TEST_OUTDATED or ENV_ISSUE, so testers spend their time on real bugs.</p></div>
+        <div class="card"><div class="badge bad"><svg class="icon"><use href="#i-why"/></svg></div>
+          <h3>Why it failed</h3><p>One sentence from the evidence: “The server returned HTTP 500 on POST /api/order.”</p></div>
+        <div class="card"><div class="badge"><svg class="icon"><use href="#i-eye"/></svg></div>
+          <h3>Visual checks</h3><p>Catches a price printed white on white or cards that overlap, and tells a visual bug from new content.</p></div>
+        <div class="card"><div class="badge"><svg class="icon"><use href="#i-devices"/></svg></div>
+          <h3>Browsers and phones</h3><p>Chrome, Firefox, Safari (WebKit), iPhone and Android, with results side by side.</p></div>
+        <div class="card"><div class="badge"><svg class="icon"><use href="#i-brand"/></svg></div>
+          <h3>White-label client reports</h3><p>Every run ends in a report under your agency's name, with steps to reproduce and screenshots.</p></div>
+        <div class="card"><div class="badge"><svg class="icon"><use href="#i-ticket"/></svg></div>
+          <h3>Jira and Slack</h3><p>File a run's bugs in Jira, or post the summary to Slack, in one click.</p></div>
+        <div class="card"><div class="badge ok"><svg class="icon"><use href="#i-heal"/></svg></div>
+          <h3>Self-healing replays</h3><p>A passing path is saved and replayed without AI. When the page changes, it heals itself.</p></div>
+        <div class="card"><div class="badge"><svg class="icon"><use href="#i-unlock"/></svg></div>
+          <h3>No lock-in</h3><p>Tests are plain text. Passing paths export as standard Playwright tests. Cucumber in and out.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="head">
+        <div class="kicker">Found in the wild</div>
+        <h2>Real bugs it found on public demo sites</h2>
+        <p>Found by exploring, with no tests written first. Each one is the kind of bug a regression pass exists to catch.</p>
+      </div>
+      <div class="grid4">
+        <div class="card"><div class="badge bad"><svg class="icon"><use href="#i-bug"/></svg></div>
+          <h3>The cart stays empty</h3><p>An open-source commerce platform's demo store crashed when adding an out-of-stock item.</p><span class="chip">HTTP 500</span></div>
+        <div class="card"><div class="badge bad"><svg class="icon"><use href="#i-bug"/></svg></div>
+          <h3>An error on every visit</h3><p>Another storefront demo threw a rendering error each time its homepage loaded.</p><span class="chip">React error</span></div>
+        <div class="card"><div class="badge bad"><svg class="icon"><use href="#i-bug"/></svg></div>
+          <h3>The wrong grand total</h3><p>A practice shop's cart showed $123.13 as the total for $15.14 + $7.99.</p><span class="chip">$123.13 ≠ $23.13</span></div>
+        <div class="card"><div class="badge bad"><svg class="icon"><use href="#i-bug"/></svg></div>
+          <h3>A crash after login</h3><p>A demo banking site returned a server error right after a successful login.</p><span class="chip">HTTP 500</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <div class="head center">
+        <div class="kicker">Compare</div>
+        <h2>How it compares</h2>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th class="us">Nightshift QA</th><th>Scripted automation</th><th>Manual regression</th></tr></thead>
+          <tbody>
+            <tr><th>Writing a test</th><td class="us">Plain English, in a form</td><td>Code and selectors</td><td>A checklist</td></tr>
+            <tr><th>When the page changes</th><td class="us">Finds the new path and saves it</td><td>The script breaks until someone fixes it</td><td>Fine, but slow</td></tr>
+            <tr><th>Proof that a flow works</th><td class="us">A quote from the page for each result</td><td>Whatever assertions were coded</td><td>The tester's word</td></tr>
+            <tr><th>Report for the client</th><td class="us">Automatic, under your brand</td><td>Build it yourself</td><td>Written by hand</td></tr>
+            <tr><th>Cost of a nightly run</th><td class="us">₹0 for replays</td><td>CI minutes plus upkeep</td><td>A tester's day</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="pricing">
+    <div class="wrap">
+      <div class="head center">
+        <div class="kicker">Pricing</div>
+        <h2>Simple pricing, in rupees</h2>
+        <p>Per agency, with unlimited client projects. Replays are always free. Prices are per month and exclude 18% GST.</p>
+      </div>
+      <div class="plans">
+        <div class="card plan">
+          <h3>Pilot</h3>
+          <div class="price">₹0 <small>for 30 days</small></div>
+          <p class="who">Prove it on one client project</p>
+          <ul>
+            <li><svg class="icon"><use href="#i-check"/></svg>Up to 3 testers</li>
+            <li><svg class="icon"><use href="#i-check"/></svg>1,500 AI runs</li>
+            <li><svg class="icon"><use href="#i-check"/></svg>One client project</li>
+            <li><svg class="icon"><use href="#i-check"/></svg>Set up together with us</li>
+          </ul>
+          <a class="btn" href="/pilot/#apply">Start the pilot</a>
+        </div>
+        <div class="card plan">
+          <h3>Agency Starter</h3>
+          <div class="price">₹14,999 <small>/ month</small></div>
+          <p class="who">Up to 5 testers</p>
+          <ul>
+            <li><svg class="icon"><use href="#i-check"/></svg>3,000 AI runs a month</li>
+            <li><svg class="icon"><use href="#i-check"/></svg>Unlimited projects and replays</li>
+            <li><svg class="icon"><use href="#i-check"/></svg>Nightly runs, browsers and phones</li>
+            <li><svg class="icon"><use href="#i-check"/></svg>AI test drafting and exploring</li>
+            <li><svg class="icon"><use href="#i-check"/></svg>White-label client reports</li>
+            <li><svg class="icon"><use href="#i-check"/></svg>Playwright and Cucumber export</li>
+          </ul>
+          <a class="btn light" href="/pilot/#apply">Start with a pilot</a>
+        </div>
+        <div class="card plan featured">
+          <span class="tag">Recommended</span>
+          <h3>Agency Pro</h3>
+          <div class="price">₹34,999 <small>/ month</small></div>
+          <p class="who">Up to 15 testers</p>
+          <ul>
+            <li><svg class="icon"><use href="#i-check"/></svg>10,000 AI runs a month</li>
+            <li><svg class="icon"><use href="#i-check"/></svg>Everything in Starter</li>
+            <li><svg class="icon"><use href="#i-check"/></svg>Jira and Slack in one click</li>
+            <li><svg class="icon"><use href="#i-check"/></svg>Requirements to test cases to a traceability matrix</li>
+            <li><svg class="icon"><use href="#i-check"/></svg>Support the same business day</li>
+          </ul>
+          <a class="btn" href="/pilot/#apply">Start with a pilot</a>
+        </div>
+        <div class="card plan">
+          <h3>Agency Scale</h3>
+          <div class="price"><span class="from">from</span>₹69,999 <small>/ month</small></div>
+          <p class="who">16 testers or more</p>
+          <ul>
+            <li><svg class="icon"><use href="#i-check"/></svg>AI runs to fit your volume</li>
+            <li><svg class="icon"><use href="#i-check"/></svg>Everything in Pro</li>
+            <li><svg class="icon"><use href="#i-check"/></svg>Your own server, or on-premise</li>
+            <li><svg class="icon"><use href="#i-check"/></svg>A named contact</li>
+            <li><svg class="icon"><use href="#i-check"/></svg>Single sign-on on request</li>
+          </ul>
+          <a class="btn light" href="/pilot/#apply">Talk to us</a>
+        </div>
+      </div>
+      <p class="extras">Extra tester ₹2,999 a month · Extra 1,000 AI runs ₹999 · Pay yearly and get 12 months for the price of 10</p>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <div class="head center">
+        <div class="kicker">Security</div>
+        <h2>Built for client work</h2>
+      </div>
+      <div class="grid4">
+        <div class="card"><div class="badge"><svg class="icon"><use href="#i-key"/></svg></div>
+          <h3>Passwords never reach the AI</h3><p>Test data goes to the model as placeholders. Passwords and keys are write-only secrets.</p></div>
+        <div class="card"><div class="badge"><svg class="icon"><use href="#i-flask"/></svg></div>
+          <h3>Staging, not production</h3><p>Test your client's staging site with their OK. Bot walls are reported as blocked, never as bugs.</p></div>
+        <div class="card"><div class="badge"><svg class="icon"><use href="#i-server"/></svg></div>
+          <h3>Our server or yours</h3><p>Use our hosted app, or run it on your own machine when a client requires it.</p></div>
+        <div class="card"><div class="badge"><svg class="icon"><use href="#i-lock"/></svg></div>
+          <h3>Your work stays yours</h3><p>Tests, reports and saved paths belong to your agency, and leave with you.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="wrap">
+      <div class="head center">
+        <div class="kicker">FAQ</div>
+        <h2>Questions agencies ask</h2>
+      </div>
+      <div class="faq">
+        <details><summary>Do my testers need to code?</summary>
+          <p>No. A test is a form: the steps and what should happen, in plain English. YAML is one click away for those who want it.</p></details>
+        <details><summary>Which websites can it test?</summary>
+          <p>Any website your client lets you test, ideally a staging or test environment. Sites with bot protection, such as large marketplaces, block automated browsers; Nightshift QA reports those as blocked instead of guessing.</p></details>
+        <details><summary>How often is it wrong?</summary>
+          <p>On our benchmark it caught 23 of 23 planted bugs, made no false passes in about 400 runs, and raised a false alarm on 1 in 45 clean runs of an app it was never tuned on. The pilot measures the same numbers on your project.</p></details>
+        <details><summary>Does it test mobile apps?</summary>
+          <p>Mobile websites, yes: iPhone and Android screen sizes, touch and browsers. Native apps from the Play Store or App Store, not yet.</p></details>
+        <details><summary>What does the AI see?</summary>
+          <p>Screenshots and text of the page under test, with your test data replaced by placeholders. Passwords and keys stay on the server and are never sent to the AI.</p></details>
+        <details><summary>What happens after the pilot?</summary>
+          <p>Pick a plan, or leave with your tests as plain text and your passing paths as standard Playwright tests.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section class="last">
+    <div class="wrap">
+      <div class="cta">
+        <h2>Try it on one client project, free for 30 days</h2>
+        <p>We set it up with you, and measure tester hours saved and bugs caught with your own numbers. You keep the tests either way.</p>
+        <div class="ctas">
+          <a class="btn" href="/pilot/#apply">Start a free pilot <svg class="icon"><use href="#i-arrow"/></svg></a>
+          <a class="btn ghost" href="/pilot/">How the pilot works</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div>
+      <a class="logo" href="/"><span class="logo-mark"><svg class="icon"><use href="#i-moon"/></svg></span>Nightshift QA</a>
+      <p>AI regression testing for QA agencies. Plain-English tests, run every night, with proof.</p>
+    </div>
+    <div>
+      <h4>Product</h4>
+      <ul><li><a href="/#how">How it works</a></li><li><a href="/#features">Features</a></li><li><a href="/#pricing">Pricing</a></li><li><a href="__APP_URL__">Log in</a></li></ul>
+    </div>
+    <div>
+      <h4>Company</h4>
+      <ul><li><a href="/pilot/">The 30-day pilot</a></li><li><a href="/pilot/#apply">Contact us</a></li><li><a href="/privacy/">Privacy</a></li></ul>
+    </div>
+    <div class="legal">© 2026 Nightshift QA · Made in India</div>
+  </div>
+</footer>
+</body>
+</html>

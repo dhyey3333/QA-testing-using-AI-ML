@@ -41,4 +41,4 @@ def test_a_clean_run_says_so_and_lists_requirements(run, spec_for, tmp_path):
     html = write_client_report(run_dir, client="Acme", specs={"checkout": spec}).read_text(encoding="utf-8")
     assert "No defects found in this run" in html
     assert "<td>R3</td><td>Customer can place a cash-on-delivery order</td>" in html
-    assert "Prepared with Nightshift." in html  # no brand given
+    assert "Prepared with Nightshift QA." in html  # no brand given

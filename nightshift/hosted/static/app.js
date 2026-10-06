@@ -204,7 +204,7 @@ async function renderSide(active) {
   const nav = [["#/", "grid", "Clients", "projects"], ...(me.admin ? [["#/users", "users", "Team", "users"]] : []),
     ["#/account", "user", "Account", "account"]];
   side.innerHTML = `
-    <a href="#/" class="logo"><span class="logo-mark">${icon("moon")}</span><span class="word">Nightshift</span></a>
+    <a href="#/" class="logo"><span class="logo-mark">${icon("moon")}</span><span class="word">Nightshift QA</span></a>
     <nav class="side-nav">${nav.map(([href, ic, label, key]) => `<a href="${href}" class="${active === key ? "on" : ""}">${icon(ic)}<span class="word">${label}</span></a>`).join("")}</nav>
     <div class="side-label">Clients</div>
     <div class="side-projects">${clients.map((p) => `<a href="#/p/${esc(p.slug)}" class="${active === `p:${p.slug}` ? "on" : ""}">
@@ -227,7 +227,7 @@ function loginPage() {
   view.innerHTML = `
     <div class="auth">
       <div class="auth-brand">
-        <div class="logo"><span class="logo-mark">${icon("moon")}</span>Nightshift</div>
+        <div class="logo"><span class="logo-mark">${icon("moon")}</span>Nightshift QA</div>
         <h1>AI regression testing your clients can trust.</h1>
         <ul class="proof">
           <li>${icon("check")} Plain-English tests, run every night in a real browser</li>
