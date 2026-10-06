@@ -403,3 +403,36 @@ def test_jira_and_slack_use_the_projects_secrets(hosted):
     finally:
         hook.shutdown()
         hook.server_close()
+
+
+# --- found in the bug hunt -----------------------------------------------------------------
+
+def test_behind_an_https_tunnel_changes_work_without_a_public_url(hosted):
+    # A quick tunnel serves https://<host> while the app speaks http: every change used to be refused.
+    admin = client(hosted, ADMIN)
+    host = hosted.base.removeprefix("http://")
+    assert admin.post("/api/projects", json={"client": "Tunnel Co"}, headers={"Origin": f"https://{host}"}).status_code == 201
+    assert admin.post("/api/projects", json={"client": "Evil Co"},
+                      headers={"Origin": "https://evil.example"}).status_code == 403
+
+
+def test_an_oversized_upload_gets_a_clean_413_not_a_dropped_connection(hosted):
+    admin = client(hosted, ADMIN)
+    response = admin.post("/api/projects", content=b"x" * 400_000, headers={"Content-Type": "application/json"})
+    assert response.status_code == 413 and response.json()["error"] == "too large"
+
+
+def test_a_double_click_on_run_now_starts_one_run(hosted):
+    import concurrent.futures
+
+    admin = client(hosted, ADMIN)
+    slug = admin.post("/api/projects", json={"client": "Race Co"}).json()["project"]["slug"]
+    admin.put(f"/api/projects/{slug}/specs/smoke", json={"text": SPEC})
+    cookies = admin.cookies
+
+    def start(_):
+        return httpx.post(f"{hosted.base}/api/projects/{slug}/runs", headers={"X-Nightshift": "1"}, cookies=cookies).status_code
+
+    with concurrent.futures.ThreadPoolExecutor(8) as pool:
+        codes = sorted(pool.map(start, range(8)))
+    assert codes.count(201) == 1 and codes.count(409) == 7, codes

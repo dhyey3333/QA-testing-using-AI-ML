@@ -152,7 +152,8 @@ def spec_report_html(result: RunResult, spec: Spec) -> str:
 
 
 VISUAL_LABEL = {"baseline": "saved as the approved look (the first passing run)", "same": "looks the same as approved",
-                "changed": "looks different, judged an expected change", "visual bug": "visual bug"}
+                "changed": "looks different, judged an expected change", "visual bug": "visual bug",
+                "skipped": "not checked: no approved look yet, and a read-only run (--no-record) doesn't save one"}
 
 
 def visual_html(visual: dict) -> str:

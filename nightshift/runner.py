@@ -228,7 +228,9 @@ def run_spec(
             if options.update_visual:
                 baseline.unlink(missing_ok=True)  # this run's screen becomes the approved one
             with suppress(PlaywrightError):
-                check = check_screen(run.page, context, model, baseline=baseline, out_dir=out_dir,
+                # --no-record is read-only: compare with approved looks that exist, never write new ones.
+                # Found in the bug hunt: a CI-style replay run wrote screenshots into ci/visual/.
+                check = check_screen(run.page, context, model, baseline=baseline, out_dir=out_dir, save_new=options.record,
                                      spec_name=spec.name, expectations=spec.expect)
                 result.visual = check.to_json()
         video = page.video if options.video else None

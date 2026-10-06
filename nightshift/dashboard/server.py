@@ -85,6 +85,7 @@ class Dashboard:
         self.demo_bugs: list[str] = []
         self.command_for = command_for or self._command_for
         self._model_status: tuple[float, dict] | None = None
+        self._model_checking = False
 
     # --- paths ------------------------------------------------------------------
 
@@ -125,9 +126,17 @@ class Dashboard:
                 "project": config.project if config else ""}
 
     def model_status(self) -> dict:
-        """Is the model endpoint answering? Cached for 15 s: the page asks every few seconds."""
-        if self._model_status and time.monotonic() - self._model_status[0] < 15:
-            return self._model_status[1]
+        """Is the model endpoint answering? Checked at most every 15 s, and in the background once
+        known: found by running Nightshift on its own dashboard, a busy model server made status
+        polls wait up to 2 s each, and the page felt stuck."""
+        if self._model_status is None:
+            return self._check_model()  # the first time, there's nothing else to show
+        if time.monotonic() - self._model_status[0] >= 15 and not self._model_checking:
+            self._model_checking = True
+            threading.Thread(target=self._check_model, name="model-status", daemon=True).start()
+        return self._model_status[1]
+
+    def _check_model(self) -> dict:
         config = ModelConfig.from_env()
         status = {"name": config.model, "base_url": config.base_url, "ok": False}
         try:
@@ -139,6 +148,7 @@ class Dashboard:
         except Exception:  # noqa: BLE001 (any failure means "not reachable")
             pass
         self._model_status = (time.monotonic(), status)
+        self._model_checking = False
         return status
 
     def folders(self) -> list[str]:

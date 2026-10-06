@@ -170,6 +170,7 @@ class Store:
     def new_session(self, user_id: int) -> str:
         """A random token for the cookie. Only its hash is stored, so the database alone can't log anyone in."""
         token = secrets.token_urlsafe(32)
+        self._write("DELETE FROM sessions WHERE expires < ?", (time.time(),))  # expired logins don't pile up
         self._write("INSERT INTO sessions (token_hash, user_id, expires) VALUES (?, ?, ?)",
                     (_token_hash(token), user_id, time.time() + SESSION_DAYS * 86400))
         return token

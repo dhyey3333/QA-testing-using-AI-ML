@@ -147,7 +147,7 @@ async function projectPage(slug, tab, extra) {
 }
 
 const VISUAL = { baseline: "saved as the approved look", same: "looks as approved", changed: "looks different (judged harmless)",
-  "visual bug": "visual bug" };
+  "visual bug": "visual bug", skipped: "not checked (no approved look yet)" };
 
 // One run: every test with its result, why it failed, and its visual check; and what to do next.
 async function runDetail(section, slug, id) {

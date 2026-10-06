@@ -166,12 +166,14 @@ def compare(context: BrowserContext, before: bytes, after: bytes) -> dict:
 
 
 def check_screen(page: Page, context: BrowserContext, model, *, baseline: Path, out_dir: Path,
-                 spec_name: str, expectations: tuple[str, ...]) -> VisualCheck:
-    """Compare the page as it looks now with its baseline (or make this the baseline)."""
+                 spec_name: str, expectations: tuple[str, ...], save_new: bool = True) -> VisualCheck:
+    """Compare the page as it looks now with its baseline (or, with save_new, make this the baseline)."""
     current = page.screenshot(type="png")
     (out_dir / "visual-current.png").write_bytes(current)
     files = {"current": "visual-current.png"}
     if not baseline.exists():
+        if not save_new:
+            return VisualCheck("skipped", files=files)  # read-only run (--no-record): nothing to compare with
         baseline.parent.mkdir(parents=True, exist_ok=True)
         baseline.write_bytes(current)
         return VisualCheck("baseline", files=files)

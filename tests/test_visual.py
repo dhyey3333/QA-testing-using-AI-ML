@@ -109,3 +109,10 @@ def test_an_unreachable_site_is_said_plainly():
     down = failed(verdict="error", category="ENV_ISSUE", reason="environment: browser error: Page.goto: Timeout 30000ms exceeded.")
     assert probable_cause(down) == ("Not the app: the site didn't load within 30 seconds. Nothing was tested; "
                                     "run it again when the site is reachable.")
+
+
+def test_a_read_only_run_compares_but_never_writes_a_new_approved_look(browser, base_url, tmp_path):
+    # Found in the bug hunt: a --no-record replay (how CI runs) wrote screenshots into ci/visual/.
+    result = run(browser, lab(base_url, "approved"), ScriptedModel(evidence=["Masala Chai"]), tmp_path, "ro", record=False)
+    assert result.verdict == "pass" and result.visual["status"] == "skipped"
+    assert not (tmp_path / "visual").exists()
