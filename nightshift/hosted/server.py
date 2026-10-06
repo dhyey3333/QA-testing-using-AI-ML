@@ -146,8 +146,8 @@ class App:
             return 200, self._project_view(project, files)
         if rest == "PUT ":
             _admin(user)
-            self.store.update_project(project["slug"], **{k: str(body[k]) for k in ("client", "base_url", "brand", "nightly")
-                                                          if k in body})
+            self.store.update_project(project["slug"], **{k: str(body[k]) for k in ("client", "base_url", "brand", "nightly",
+                                                                                   "targets") if k in body})
             return 200, self._project_view(self.store.project(project["slug"]), files)
         if m := re.fullmatch(r"(GET|PUT|DELETE) /specs/([a-z0-9-]+)", rest):
             if m[1] == "GET":

@@ -18,6 +18,7 @@ import itertools
 import json
 import re
 import shutil
+import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
@@ -86,15 +87,82 @@ def open_browser(headed: bool = False, browser: str = "chromium") -> Iterator[Br
             instance.close()
 
 
+@contextmanager
+def browser_pool(headed: bool = False) -> Iterator[Callable[[str], Browser]]:
+    """get(name) -> a launched browser of that kind, opened on first use and closed at the end.
+    One per thread: Playwright's sync API wants its own instance in every thread."""
+    with sync_playwright() as playwright:
+        opened: dict[str, Browser] = {}
+
+        def get(name: str) -> Browser:
+            if name not in opened:
+                opened[name] = getattr(playwright, name).launch(headless=not headed)
+            return opened[name]
+
+        try:
+            yield get
+        finally:
+            for browser in opened.values():
+                browser.close()
+
+
+# Where a test can run, in the words a QA team uses: a browser engine, and a phone to emulate.
+TARGETS = {
+    "chrome": ("chromium", None),
+    "firefox": ("firefox", None),
+    "safari": ("webkit", None),  # WebKit, Safari's engine
+    "iphone": ("webkit", "iPhone 13"),
+    "android": ("chromium", "Pixel 7"),
+}
+
+
+def expand_targets(specs: list[Spec], targets: list[str]) -> tuple[list[Spec], dict[str, tuple[str, dict]]]:
+    """Each spec once per target: (the variants, {variant name: (browser, context options)}).
+
+    The chrome variant keeps the spec's own name, so saved paths and approved looks made before
+    still match; the others are named spec@target. A spec that starts logged in from another
+    starts from that spec's variant on the same target.
+    """
+    unknown = [t for t in targets if t not in TARGETS]
+    if unknown:
+        raise ValueError(f"unknown target {unknown[0]!r}; choose from {', '.join(TARGETS)}")
+    contexts = {t: device_options(TARGETS[t][1]) if TARGETS[t][1] else {} for t in dict.fromkeys(targets)}
+    variants, plan = [], {}
+    for target in dict.fromkeys(targets):
+        suffix = "" if target == "chrome" else f"@{target}"
+        for spec in specs:
+            variant = replace(spec, name=spec.name + suffix,
+                              session_from=spec.session_from + suffix if spec.session_from else "")
+            variants.append(variant)
+            plan[variant.name] = (TARGETS[target][0], contexts[target])
+    return variants, plan
+
+
+_DEVICES: dict = {}
+
+
+def _devices() -> dict:
+    """Playwright's named devices, read once in a thread of their own: a second sync Playwright
+    in a thread that already runs one is an error, and the caller may be inside a run."""
+    if not _DEVICES:
+        def read() -> None:
+            with sync_playwright() as playwright:
+                _DEVICES.update(playwright.devices)
+
+        reader = threading.Thread(target=read, name="read-devices")
+        reader.start()
+        reader.join()
+    return _DEVICES
+
+
 def device_options(name: str) -> dict:
     """Viewport, user agent and touch settings for a named device, e.g. "iPhone 13" or "Pixel 7"."""
-    with sync_playwright() as playwright:
-        devices = playwright.devices
-        if name not in devices:
-            close = difflib.get_close_matches(name, list(devices), n=5, cutoff=0.4)
-            hint = f"; did you mean: {', '.join(close)}" if close else ""
-            raise ValueError(f"unknown device {name!r}{hint}")
-        options = dict(devices[name])
+    devices = _devices()
+    if name not in devices:
+        close = difflib.get_close_matches(name, list(devices), n=5, cutoff=0.4)
+        hint = f"; did you mean: {', '.join(close)}" if close else ""
+        raise ValueError(f"unknown device {name!r}{hint}")
+    options = dict(devices[name])
     options.pop("default_browser_type", None)
     return options
 

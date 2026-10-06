@@ -486,3 +486,17 @@ def test_with_a_public_url_the_laptop_itself_can_still_make_changes(tmp_path):
         server.shutdown()
         server.server_close()
         store.close()
+
+
+def test_a_project_can_run_its_tests_on_several_browsers_and_phones(hosted):
+    admin = client(hosted, ADMIN)
+    slug = admin.post("/api/projects", json={"client": "Acme"}).json()["project"]["slug"]
+    saved = admin.put(f"/api/projects/{slug}", json={"targets": "iphone,chrome,firefox"}).json()["project"]
+    assert saved["targets"] == "chrome,firefox,iphone"  # one order, whatever order they came in
+    project = hosted.store.project(slug)
+    files = ProjectFiles(hosted.data, slug)
+    command = hosted.runner.command(project, files, files.run_folder(1))
+    assert command[command.index("--on") + 1] == "chrome,firefox,iphone"
+    assert admin.put(f"/api/projects/{slug}", json={"targets": "netscape"}).status_code == 400
+    assert admin.put(f"/api/projects/{slug}", json={"targets": ""}).status_code == 400
+

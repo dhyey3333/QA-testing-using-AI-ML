@@ -251,6 +251,8 @@ class Runner:
             command += ["--brand", project["brand"]]
         if project["base_url"]:
             command += ["--base-url", project["base_url"]]
+        if project.get("targets", "chrome") != "chrome":
+            command += ["--on", project["targets"]]  # every test on each browser and phone chosen
         return command
 
 

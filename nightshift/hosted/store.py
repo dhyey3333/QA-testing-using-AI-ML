@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS projects (
     brand TEXT NOT NULL DEFAULT '',
     nightly TEXT NOT NULL DEFAULT '',      -- "HH:MM" in the server's time zone, or '' for no schedule
     last_nightly TEXT NOT NULL DEFAULT '', -- the date of the last nightly run, so it runs once a day
-    created TEXT NOT NULL
+    created TEXT NOT NULL,
+    targets TEXT NOT NULL DEFAULT 'chrome' -- where its tests run: chrome, firefox, safari, iphone, android
 );
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY,
@@ -96,6 +97,17 @@ def slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:40] or "project"
 
 
+TARGET_NAMES = ("chrome", "firefox", "safari", "iphone", "android")
+
+
+def check_targets(value: str) -> str:
+    chosen = [t.strip().lower() for t in str(value).split(",") if t.strip()]
+    unknown = [t for t in chosen if t not in TARGET_NAMES]
+    if unknown or not chosen:
+        raise StoreError(f"pick where the tests run from: {', '.join(TARGET_NAMES)}")
+    return ",".join(t for t in TARGET_NAMES if t in chosen)  # one order, whatever order they came in
+
+
 def check_nightly(value: str) -> str:
     value = (value or "").strip()
     if value and not _NIGHTLY_RE.fullmatch(value):
@@ -117,6 +129,8 @@ class Store:
             columns = [row[1] for row in self._db.execute("PRAGMA table_info(runs)")]
             if "params" not in columns:
                 self._db.execute("ALTER TABLE runs ADD COLUMN params TEXT NOT NULL DEFAULT ''")
+            if "targets" not in [row[1] for row in self._db.execute("PRAGMA table_info(projects)")]:
+                self._db.execute("ALTER TABLE projects ADD COLUMN targets TEXT NOT NULL DEFAULT 'chrome'")
 
     def close(self) -> None:
         with self._lock:
@@ -211,7 +225,7 @@ class Store:
         return self._one("SELECT * FROM projects WHERE id = ?", (project_id,))
 
     def update_project(self, slug: str, *, client: str | None = None, base_url: str | None = None,
-                       brand: str | None = None, nightly: str | None = None) -> dict:
+                       brand: str | None = None, nightly: str | None = None, targets: str | None = None) -> dict:
         project = self.project(slug)
         if project is None:
             raise StoreError("no such project")
@@ -224,6 +238,8 @@ class Store:
             fields["base_url"] = _check_url(base_url)
         if brand is not None:
             fields["brand"] = brand.strip()
+        if targets is not None:
+            fields["targets"] = check_targets(targets)
         if nightly is not None and check_nightly(nightly) != project["nightly"]:
             fields["nightly"] = check_nightly(nightly)
             fields["last_nightly"] = _skip_today(fields["nightly"])

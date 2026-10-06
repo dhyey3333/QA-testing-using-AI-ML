@@ -276,3 +276,44 @@ def test_fields_in_a_closed_details_section_are_not_listed_until_it_opens(page):
     page.click("summary")
     assert any("Step limit" in e.label for e in observe(page).elements)
 
+
+
+# --- browsers and phones ---------------------------------------------------------------
+
+def test_each_target_gets_its_own_variant_name_and_session():
+    from nightshift.runner import expand_targets
+
+    login = Spec(name="login", url="https://x.test/", steps=("log in",), expect=("logged in",))
+    cart = Spec(name="cart", url="https://x.test/", steps=("open the cart",), expect=("cart",), session_from="login")
+    variants, plan = expand_targets([login, cart], ["chrome", "iphone"])
+    assert [v.name for v in variants] == ["login", "cart", "login@iphone", "cart@iphone"]
+    assert variants[3].session_from == "login@iphone"
+    assert plan["login"] == ("chromium", {}) and plan["cart@iphone"][0] == "webkit"
+    assert plan["cart@iphone"][1]["is_mobile"] is True
+    with pytest.raises(ValueError, match="unknown target"):
+        expand_targets([login], ["netscape"])
+
+
+def test_the_shop_login_passes_in_firefox_safari_and_on_phones(shop, spec_for, tmp_path):
+    import threading as _threading
+
+    from nightshift.runner import browser_pool, expand_targets
+
+    variants, plan = expand_targets([spec_for("login")], ["firefox", "safari", "iphone", "android"])
+    outcomes = {}
+
+    def go():  # its own thread: the session's Chromium already holds this thread's Playwright
+        with browser_pool() as get:
+            for variant in variants:
+                browser_name, context = plan[variant.name]
+                result = run_spec(get(browser_name), variant, ScriptedModel(LOGIN, evidence=["Hi, Test Shopper"]),
+                                  out_dir=tmp_path / variant.name, options=RunOptions(context=context))
+                outcomes[variant.name] = (result.verdict, result.browser, result.viewport, result.reason)
+
+    thread = _threading.Thread(target=go)
+    thread.start()
+    thread.join()
+    assert {name: o[0] for name, o in outcomes.items()} == {
+        "login@firefox": "pass", "login@safari": "pass", "login@iphone": "pass", "login@android": "pass"}, outcomes
+    assert outcomes["login@firefox"][1] == "firefox" and outcomes["login@iphone"][1] == "webkit"
+    assert outcomes["login@iphone"][2] != "1280x800"  # the phone's own screen

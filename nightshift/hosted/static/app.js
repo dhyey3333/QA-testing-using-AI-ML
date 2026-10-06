@@ -121,6 +121,7 @@ async function projectPage(slug, tab, extra) {
     <div class="row spread">
       <div><h1>${esc(p.client)}</h1>
         <div class="muted">${p.nightly ? `Runs nightly at ${esc(p.nightly)}` : "No nightly schedule"} · ${data.parallel} tests at a time
+        · on ${esc((p.targets || "chrome").split(",").map((t) => (TARGET_LABELS.find(([k]) => k === t) || [t, t])[1]).join(", "))}
         ${p.base_url ? ` · <span class="mono">${esc(p.base_url)}</span>` : ""}</div></div>
       <div class="row">
         ${active ? `<span class="badge ${esc(active.status)}">${esc(active.status)}</span>
@@ -378,6 +379,9 @@ async function testsTab(section, slug, data, editing) {
   }));
 }
 
+const TARGET_LABELS = [["chrome", "Chrome"], ["firefox", "Firefox"], ["safari", "Safari (WebKit)"],
+  ["iphone", "iPhone"], ["android", "Android phone"]];
+
 function settingsTab(section, slug, data) {
   const p = data.project;
   const secrets = data.secrets.map((name) => `
@@ -390,6 +394,10 @@ function settingsTab(section, slug, data) {
         <input name="base_url" value="${esc(p.base_url)}" placeholder="https://staging.acme.example"></label>
       <label>Report prepared by <input name="brand" value="${esc(p.brand)}"></label>
       <label>Nightly run at (24-hour, server time; empty for none) <input name="nightly" value="${esc(p.nightly)}" placeholder="02:30"></label>
+      <fieldset class="targets"><legend>Run every test on</legend>
+        ${TARGET_LABELS.map(([key, label]) => `<label class="inline"><input type="checkbox" name="target" value="${key}"
+          ${(p.targets || "chrome").split(",").includes(key) ? "checked" : ""}> ${label}</label>`).join("")}
+      </fieldset>
       <p class="error" role="alert"></p>
       <div><button type="submit">Save settings</button></div>
     </form>
@@ -402,7 +410,12 @@ function settingsTab(section, slug, data) {
       <button type="submit">Set secret</button>
       <p class="error" role="alert"></p>
     </form>`;
-  onSubmit(document.getElementById("settings"), async (fields) => { await api("PUT", `/api/projects/${slug}`, fields); route(); });
+  onSubmit(document.getElementById("settings"), async (fields) => {
+    const targets = [...document.querySelectorAll("#settings input[name=target]:checked")].map((box) => box.value).join(",");
+    delete fields.target;
+    await api("PUT", `/api/projects/${slug}`, { ...fields, targets });
+    route();
+  });
   onSubmit(document.getElementById("secret"), async (fields) => {
     await api("PUT", `/api/projects/${slug}/secrets/${fields.name}`, { value: fields.value });
     route();

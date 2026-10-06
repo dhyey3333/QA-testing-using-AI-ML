@@ -41,7 +41,7 @@ from .notify import append_github_summary, github_run_url, post_slack, slack_pay
 from .recording import RecordingStore
 from .report import pr_comment, write_history, write_junit, write_run_index
 from .result import RunResult
-from .runner import RunOptions, device_options, open_browser, run_with_retries
+from .runner import RunOptions, browser_pool, device_options, expand_targets, open_browser, run_with_retries
 from .sessions import Sessions
 from .spec import Spec, SpecError, goal_spec_yaml, load_spec, load_specs
 from .traceability import build_matrix, write_test_cases, write_traceability
@@ -210,6 +210,9 @@ def _run_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--file-jira", action="store_true",
                         help="file each defect in Jira (JIRA_URL, JIRA_PROJECT, JIRA_EMAIL + JIRA_API_TOKEN or JIRA_TOKEN)")
     parser.add_argument("--pr-comment", type=Path, help="also write a pull-request comment (Markdown) here, for CI")
+    parser.add_argument("--on", default="", metavar="TARGETS",
+                        help="run every spec on each of these: chrome, firefox, safari, iphone, android "
+                             "(comma-separated; default: chrome, or --browser/--device)")
     parser.add_argument("--parallel", type=int, default=1, metavar="N",
                         help="run N specs at a time, each in its own browser (default 1)")
     parser.add_argument("--visual", choices=["off", "warn", "fail"], default="warn",
@@ -316,6 +319,10 @@ def _execute(specs: list[Spec], args: argparse.Namespace, model: HttpModel) -> t
         specs = [replace(spec, max_steps=args.max_steps) for spec in specs]
 
     store = RecordingStore(args.recordings) if not (args.no_replay and args.no_record) else None
+    targets = [t.strip().lower() for t in (getattr(args, "on", "") or "").split(",") if t.strip()]
+    plan: dict[str, tuple[str, dict]] = {}
+    if targets:
+        specs, plan = expand_targets(specs, targets)
     sessions = Sessions(specs, base_url=args.base_url or "")
     specs = sessions.first(specs)  # a spec others start logged in from runs before them
     options = _options(args, judge=not args.no_judge, retries=max(0, args.retries), recordings=store,
@@ -325,7 +332,7 @@ def _execute(specs: list[Spec], args: argparse.Namespace, model: HttpModel) -> t
     run_dir = args.out / datetime.now().strftime("%Y%m%d-%H%M%S")
 
     try:
-        results = _run_specs(specs, args, model, options, run_dir)
+        results = _run_specs(specs, args, model, options, run_dir, plan)
     finally:
         model.close()
 
@@ -374,7 +381,7 @@ def _execute(specs: list[Spec], args: argparse.Namespace, model: HttpModel) -> t
 
 
 def _run_specs(specs: list[Spec], args: argparse.Namespace, model: HttpModel, options: RunOptions,
-               run_dir: Path) -> list[RunResult]:
+               run_dir: Path, plan: dict[str, tuple[str, dict]] | None = None) -> list[RunResult]:
     """Run the specs one after another, or with --parallel N, N at a time.
 
     Each parallel worker has its own browser (Playwright's sync API wants one per thread) and its
@@ -387,11 +394,17 @@ def _run_specs(specs: list[Spec], args: argparse.Namespace, model: HttpModel, op
     results: dict[str, RunResult] = {}
     lock = threading.Lock()
 
-    def one(browser, spec: Spec, spec_model: HttpModel) -> None:
+    plan = plan or {}
+
+    def one(get, spec: Spec, spec_model: HttpModel) -> None:
         if parallel == 1:
             print(f"\n> {spec.name}  {spec.url}", flush=True)
         log = _log(args, prefix=f"[{spec.name}] " if parallel > 1 else "")
-        result = run_with_retries(browser, spec, spec_model, out_dir=run_dir / spec.name, options=options, log=log)
+        # With --on, each variant has its own browser and phone; otherwise --browser and --device.
+        browser_name, context = plan.get(spec.name, (args.browser, None))
+        spec_options = options if context is None else replace(options, context=context)
+        result = run_with_retries(get(browser_name), spec, spec_model, out_dir=run_dir / spec.name,
+                                  options=spec_options, log=log)
         with lock:
             if parallel > 1:
                 print(f"\n> {spec.name}  {spec.url}", flush=True)
@@ -402,22 +415,22 @@ def _run_specs(specs: list[Spec], args: argparse.Namespace, model: HttpModel, op
     first = specs if parallel == 1 else [s for s in specs if sessions is not None and sessions.wants(s.name)]
     rest = [] if parallel == 1 else [s for s in specs if s.name not in {f.name for f in first}]
     if first:
-        with open_browser(headed=args.headed, browser=args.browser) as browser:
+        with browser_pool(headed=args.headed) as get:
             for spec in first:
-                one(browser, spec, model)
+                one(get, spec, model)
 
     queue, failures = list(rest), []
 
     def worker() -> None:
         own = _model(announce=False)
         try:
-            with open_browser(headed=args.headed, browser=args.browser) as browser:
+            with browser_pool(headed=args.headed) as get:
                 while True:
                     with lock:
                         if not queue:
                             return
                         spec = queue.pop(0)
-                    one(browser, spec, own)
+                    one(get, spec, own)
         except BaseException as exc:  # surfaced below: a dead worker must not look like a finished run
             failures.append(exc)
         finally:
