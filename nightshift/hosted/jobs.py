@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -26,6 +27,7 @@ from .files import ProjectFiles
 from .store import Store, StoreError
 
 SCHEDULE_EVERY_S = 30
+PRUNED = "files removed to save space (only the newest runs keep theirs)"
 
 
 class Busy(StoreError):
@@ -34,7 +36,11 @@ class Busy(StoreError):
 
 class Runner:
     def __init__(self, store: Store, data: Path, *, max_runs: int = 2, parallel: int = 2, command=None,
-                 explore_command=None) -> None:
+                 explore_command=None, keep_runs: int = 60) -> None:
+        # Each run keeps screenshots, a trace and reports: a few MB per test. Nightly for months
+        # fills a small server's disk, so only the newest keep_runs finished runs per project keep
+        # their files (0 keeps everything). Their rows stay, so the history still shows them.
+        self.keep_runs = max(0, keep_runs)
         # Absolute: each run starts inside its project's folder, where a relative --data path
         # (`--data hosted-data`) would point nowhere. Found on the first real use.
         self.store, self.data = store, data.resolve()
@@ -52,6 +58,8 @@ class Runner:
 
     def start(self) -> None:
         self.store.interrupted()
+        for project in self.store.projects():
+            self.prune(project)
         for n in range(self.max_runs):
             threading.Thread(target=self._work, name=f"run-worker-{n}", daemon=True).start()
         threading.Thread(target=self._schedule, name="nightly", daemon=True).start()
@@ -132,6 +140,26 @@ class Runner:
                 traceback.print_exc()
                 self.store.update_run(run["id"], status="failed", finished=time.time(),
                                       message=f"the runner failed: {type(exc).__name__}")
+            try:
+                self.prune(self.store.project_by_id(run["project_id"]))
+            except Exception:  # noqa: BLE001 (tidying up must never stop the worker)
+                traceback.print_exc()
+
+    def prune(self, project: dict | None) -> int:
+        """Delete the files of finished runs older than the newest keep_runs. Never a run that is
+        queued or running, and never the saved paths or approved looks (they live outside runs/)."""
+        if project is None or self.keep_runs <= 0:
+            return 0
+        finished = [run for run in self.store.runs(project["id"], limit=1_000_000)
+                    if run["status"] in ("done", "failed", "stopped")]
+        removed = 0
+        for run in finished[self.keep_runs:]:  # runs() is newest first
+            folder = self.files(project).run_folder(run["id"])
+            if folder.exists():
+                shutil.rmtree(folder, ignore_errors=True)
+                self.store.update_run(run["id"], run_dir="", message=PRUNED)
+                removed += 1
+        return removed
 
     def execute(self, run: dict) -> None:
         project = self.store.project_by_id(run["project_id"])

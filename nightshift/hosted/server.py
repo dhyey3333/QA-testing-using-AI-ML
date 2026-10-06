@@ -321,7 +321,7 @@ class App:
                 "drafts": files.drafts_list(),
                 "missing": [{"test": test, "secret": secret} for test, secret in files.missing_secrets()],
                 "runs": [self._run_view(project, files, run) for run in self.store.runs(project["id"])],
-                "parallel": self.runner.parallel}
+                "parallel": self.runner.parallel, "keep_runs": self.runner.keep_runs}
 
     def _run_view(self, project: dict, files: ProjectFiles | None, run: dict) -> dict:
         files = files or self.runner.files(project)

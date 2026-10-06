@@ -337,6 +337,9 @@ Nobody writes YAML:
 
 A run that would stop on a missing secret is refused up front, naming the test and the secret.
 
+Each project keeps the screenshots, traces and reports of its newest 60 runs (`--keep-runs`, 0 keeps
+everything); older runs keep their summary in the history, so the disk doesn't fill up over months.
+
 Each run has a details page: every test, its result, why it failed and its visual check, plus
 **Accept the new look**, **File bugs in Jira** and **Post to Slack**. Jira and Slack read the
 project's secrets: `JIRA_URL`, `JIRA_PROJECT`, `JIRA_EMAIL`, `JIRA_API_TOKEN` and

@@ -173,6 +173,9 @@ def main(argv: list[str] | None = None) -> int:
     h_serve.add_argument("--public-url", default="", help="the address people open, e.g. https://qa.example.com")
     h_serve.add_argument("--max-runs", type=int, default=2, help="runs at once, across projects (default: 2)")
     h_serve.add_argument("--parallel", type=int, default=2, help="tests at a time within a run (default: 2)")
+    h_serve.add_argument("--keep-runs", type=int, default=60,
+                         help="keep the files of this many newest runs per project; older runs keep only "
+                              "their summary (default: 60; 0 keeps everything)")
     h_add.add_argument("--email", required=True)
     h_add.add_argument("--name", default="")
     h_add.add_argument("--admin", action="store_true", help="can manage users, projects and secrets")
@@ -742,7 +745,7 @@ def _hosted(args: argparse.Namespace) -> int:
         print(f"added {args.email}" + (" (admin)" if args.admin else ""))
         return 0
 
-    runner = Runner(store, args.data, max_runs=args.max_runs, parallel=args.parallel)
+    runner = Runner(store, args.data, max_runs=args.max_runs, parallel=args.parallel, keep_runs=args.keep_runs)
     server = serve(App(store, runner, args.public_url), args.host, args.port)
     runner.start()
     if not store.users():

@@ -228,7 +228,8 @@ function runsTab(section, slug, data, busy) {
     </form>
     ${rows
       ? `<table><thead><tr><th>Run</th><th>When</th><th>Status</th><th>Results</th><th>Reports</th></tr></thead><tbody>${rows}</tbody></table>`
-      : '<p class="muted">No runs yet. Add tests and press Run now, or explore a website above.</p>'}`;
+      : '<p class="muted">No runs yet. Add tests and press Run now, or explore a website above.</p>'}
+    ${data.keep_runs ? `<p class="muted">The newest ${data.keep_runs} runs keep their screenshots and reports; older runs keep only their summary.</p>` : ""}`;
   onSubmit(document.getElementById("explore"), async (fields) => {
     await api("POST", `/api/projects/${slug}/explore`, fields);
     route();

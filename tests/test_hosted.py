@@ -436,3 +436,30 @@ def test_a_double_click_on_run_now_starts_one_run(hosted):
     with concurrent.futures.ThreadPoolExecutor(8) as pool:
         codes = sorted(pool.map(start, range(8)))
     assert codes.count(201) == 1 and codes.count(409) == 7, codes
+
+
+def test_only_the_newest_runs_keep_their_files_so_the_disk_never_fills(tmp_path):
+    store = Store(tmp_path / "db.sqlite")
+    runner = Runner(store, tmp_path, keep_runs=2)
+    project = store.add_project("Acme")
+    files = ProjectFiles(tmp_path, project["slug"])
+    ids = []
+    for _ in range(4):
+        run_id = store.add_run(project["id"], "manual")
+        files.run_folder(run_id).mkdir(parents=True)
+        (files.run_folder(run_id) / "output.log").write_text("x", encoding="utf-8")
+        store.update_run(run_id, status="done", run_dir="r")
+        ids.append(run_id)
+    running = store.add_run(project["id"], "manual")  # never touched, however old the others are
+    files.run_folder(running).mkdir(parents=True)
+    store.update_run(running, status="running")
+    (files.recordings / "login.json").write_text("{}", encoding="utf-8")
+
+    assert runner.prune(project) == 2
+    assert [files.run_folder(i).exists() for i in ids] == [False, False, True, True]
+    assert files.run_folder(running).exists() and (files.recordings / "login.json").exists()
+    old = store.run(ids[0])
+    assert old["run_dir"] == "" and "files removed to save space" in old["message"]
+    assert Runner(store, tmp_path, keep_runs=0).prune(project) == 0  # 0 keeps everything
+    store.close()
+

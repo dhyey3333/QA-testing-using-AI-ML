@@ -55,6 +55,7 @@ model calls, so a stable nightly suite costs nothing and finishes fast.
 | Restart | `sudo systemctl restart nightshift` |
 | Update to the latest code | `bash /opt/nightshift/deploy/oracle/update.sh` |
 | Data (database, tests, reports, secrets) | `/var/lib/nightshift` (back it up) |
+| Disk use | Each project keeps the files of its newest 60 runs; change it with `--keep-runs` in `nightshift.service` |
 | Settings (public URL, model) | `/etc/nightshift.env`, then restart |
 | Time zone of nightly runs | `Asia/Kolkata`, in `nightshift.service` |
 
