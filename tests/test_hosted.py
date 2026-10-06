@@ -478,6 +478,10 @@ def test_with_a_public_url_the_laptop_itself_can_still_make_changes(tmp_path):
         for origin in (base, "https://abc.trycloudflare.com"):
             assert admin.post("/api/projects", json={"client": f"Co {origin[-5:]}"}, headers={"Origin": origin}).status_code == 201
         assert admin.post("/api/projects", json={"client": "X"}, headers={"Origin": "https://evil.example"}).status_code == 403
+        # Through the tunnel the browser used HTTPS, so there the cookie is HTTPS-only.
+        tunnel = httpx.post(f"{base}/api/login", json={"email": ADMIN[0], "password": ADMIN[1]},
+                            headers={"X-Nightshift": "1", "X-Forwarded-Proto": "https"})
+        assert "Secure" in tunnel.headers["set-cookie"]
     finally:
         server.shutdown()
         server.server_close()

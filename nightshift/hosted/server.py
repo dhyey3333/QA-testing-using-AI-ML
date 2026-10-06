@@ -87,9 +87,12 @@ class App:
             raise HttpError(401, "wrong email or password")
         return user, self.store.new_session(user["id"])
 
-    def cookie(self, token: str, max_age: int = SESSION_DAYS * 86400) -> str:
+    def cookie(self, token: str, max_age: int = SESSION_DAYS * 86400, secure: bool = False) -> str:
+        """Secure (HTTPS only) when this request came over HTTPS. Not whenever a public URL is set:
+        the same app is also used on the laptop itself at http://127.0.0.1, where a Secure cookie
+        may never come back and the user would be logged out at once."""
         return (f"{COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}"
-                + ("; Secure" if self.secure else ""))
+                + ("; Secure" if secure else ""))
 
     # --- the API ------------------------------------------------------------------
 
@@ -384,10 +387,10 @@ def make_handler(app: App):
                 user = app.store.user_for(token)
                 if path == "/api/login" and method == "POST":
                     user, token = app.login(body, self._ip())
-                    self._json(200, {"user": user}, {"Set-Cookie": app.cookie(token)})
+                    self._json(200, {"user": user}, {"Set-Cookie": app.cookie(token, secure=self._https())})
                 elif path == "/api/logout" and method == "POST":
                     app.store.end_session(token)
-                    self._json(200, {"ok": True}, {"Set-Cookie": app.cookie("", max_age=0)})
+                    self._json(200, {"ok": True}, {"Set-Cookie": app.cookie("", max_age=0, secure=self._https())})
                 elif path.startswith("/api/"):
                     self._json(*app.api(method, path, body, user))
                 elif path.startswith("/files/") and method == "GET":
@@ -418,6 +421,12 @@ def make_handler(app: App):
                 allowed = {f"http://{host}", f"https://{host}", *([app.public_url] if app.public_url else [])}
                 if origin not in allowed:
                     raise HttpError(403, "this request came from another site")
+
+        def _https(self) -> bool:
+            # Caddy and Cloudflare's tunnel say so when the browser used HTTPS; the app itself speaks http.
+            if self.headers.get("X-Forwarded-Proto", "").lower() == "https":
+                return True
+            return app.secure and self.headers.get("Host", "") == urlsplit(app.public_url).netloc
 
         def _token(self) -> str:
             cookie = SimpleCookie()
