@@ -92,6 +92,8 @@ total 349; if the evidence says "Total: 250", "holds" is false.
 6. Lines starting with "[browser says]" are the browser's own validation messages on a \
 form field (the tooltip it shows when it blocks a submit). They are error messages the \
 page shows, and they can be quoted as evidence.
+7. Lines starting with "[field]" show what a form field holds right now, e.g. \
+"[field] Quantity: 2". Quote them as evidence for what a field shows.
 """
 
 EXPLORE_PROMPT = """\

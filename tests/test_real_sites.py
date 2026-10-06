@@ -257,3 +257,12 @@ def test_ad_networks_never_load_in_a_test_browser(browser):
     context.close()
     assert sorted(failed) == ["https://pagead2.googlesyndication.com/pagead/ad.gif",
                               "https://securepubads.g.doubleclick.net/x.gif"]
+
+
+def test_what_a_form_field_holds_can_be_quoted_but_passwords_never(page):
+    # Found on a practice shop: "the quantity field shows 2" was true and could not be proven.
+    page.set_content('<label>Quantity <input value="2"></label><label>Password <input type="password" value="hunter2-x"></label>'
+                     '<select aria-label="Size"><option>S</option><option selected>M</option></select>')
+    text = observe(page).text
+    assert "[field] Quantity: 2" in text and "[field] Size: M" in text
+    assert "hunter2-x" not in text and "Password" not in text.split("[field]", 1)[-1]

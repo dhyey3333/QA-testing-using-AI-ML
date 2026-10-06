@@ -238,7 +238,19 @@ _OBSERVE_JS = r"""
   for (const el of deepAll('input, select, textarea')) {
     if (complaint(el)) text += `\n[browser says] ${labelOf(el) || el.name || 'field'}: ${el.validationMessage}`;
   }
-  return { url: location.href, title: document.title, text: text.slice(0, 20000), scrollY: Math.round(scrollY), elements };
+  // What a form field holds isn't page text either, so "the quantity shows 2" could never be quoted.
+  // Found on a practice shop: the judge saw the 2 and still had to fail the test. Visible fields with
+  // a value become lines it can quote. Passwords never do; typed test data is masked like any text.
+  const NO_VALUE = ['hidden', 'password', 'checkbox', 'radio', 'submit', 'button', 'reset', 'image', 'file'];
+  const fields = [];
+  for (const el of deepAll('input, select, textarea')) {
+    if (NO_VALUE.includes(el.type) || !isVisible(el)) continue;
+    const value = el.tagName === 'SELECT' ? clean(el.selectedOptions[0]?.text) : clean(el.value);
+    if (value) fields.push(`[field] ${labelOf(el) || el.name || 'field'}: ${value.slice(0, 120)}`);
+  }
+  const shown = fields.length ? '\n' + fields.slice(0, 40).join('\n') : '';
+  text = text.slice(0, 20000 - shown.length) + shown;  // the page's text gives way, not the fields
+  return { url: location.href, title: document.title, text, scrollY: Math.round(scrollY), elements };
 }
 """.replace("/*DEEP*/", DEEP_JS)
 
