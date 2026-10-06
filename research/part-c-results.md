@@ -300,3 +300,27 @@ Same model as phase 1 (Gemma 4 31B, Ollama Cloud free plan), same benchmarks, pl
 - **The benchmark after the `[field]` change alone** failed `demoblaze-signup`. The judge read the masked "Welcome {{username}}" literally. That's the reason for D42, and it passes now.
 - **`parabank-login` failed correctly:** on both tries, Parabank's own server answered HTTP 500 with "Error! An internal error has occurred" after logging in. The site was broken; that's a true BUG, not a false alarm.
 - **Unreachable (ENV_ISSUE, not counted):** opencart (bot check) and two of the-internet's pages (timeouts).
+
+## Phase 4: go-to-market
+
+Four documents in `research/go-to-market/`:
+
+- **`pitch.md`:** one page for an agency's owner or delivery head.
+  - Covers the problem, what Nightshift does, the measured numbers and the real bugs it found on platforms' public demos.
+  - Says what it doesn't do yet, and makes the pilot offer.
+- **`outreach.md`:**
+  - A LinkedIn connection note and message, a cold email, a WhatsApp message and two follow-ups.
+  - Answers to six usual objections, and a 15-minute demo script.
+- **`pilot-plan.md`:** a free 30-day pilot on one client's staging site.
+  - Day-by-day roles, and a baseline to record on day 0.
+  - Six success metrics read from the app's run history: hours saved ≥ 50%, at least one real bug, false alarms ≤ 5%, false passes = 0, nightly reliability ≥ 90%, and at least 2 client reports sent.
+  - Decision rule: 4 of the 6 must be met, including zero false passes.
+- **`pricing.md`:** Agency Starter ₹14,999/month (5 testers, 3,000 AI runs), Pro ₹34,999 (15 testers, 10,000 AI runs), and Scale from ₹69,999.
+  - Unlimited projects and replays on every plan.
+  - Includes the measured cost to serve, margins, and a checklist for before charging anyone.
+
+**Every number in them comes from this file's benchmarks.** "Almost 400 runs, zero false passes" is the 394 runs counted across the five benchmark rounds on Gemma.
+
+**Features marked as command-line only, to build into the web app before selling Pro:** Jira and Slack filing, and the traceability matrix. SSO isn't built.
+
+**No product code changed in phase 4,** so the tests (193 pass) and the latest benchmarks (commit c11c768) still stand.
