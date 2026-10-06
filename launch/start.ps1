@@ -140,17 +140,19 @@ if ($PublicUrl) {
     }
 }
 
-# 6. Open the browser once the app answers, and run the app here until the window closes.
+# 6. Open the browser once the app answers, and run the app here until the window closes. With the
+#    fixed link, the browser opens that, the same address clients use, rather than 127.0.0.1.
+$Open = if ($Funnel) { $PublicUrl } else { $Local }
 if (-not $NoBrowser) {
     Start-Job -ScriptBlock {
-        param($url)
+        param($check, $open)
         for ($i = 0; $i -lt 90; $i++) {
-            try { Invoke-WebRequest $url -UseBasicParsing -TimeoutSec 2 | Out-Null; Start-Process $url; break }
+            try { Invoke-WebRequest $check -UseBasicParsing -TimeoutSec 2 | Out-Null; Start-Process $open; break }
             catch { Start-Sleep 1 }
         }
-    } -ArgumentList $Local | Out-Null
+    } -ArgumentList $Local, $Open | Out-Null
 }
-Say "`nNightshift QA: $Local   Close this window (or press Ctrl+C) to stop it.`n" "Cyan"
+Say "`nNightshift QA: $Open   Close this window (or press Ctrl+C) to stop it.`n" "Cyan"
 $serve = @("run", "--quiet", "nightshift", "hosted", "serve", "--data", "$Data", "--port", "$Port")
 if ($PublicUrl) { $serve += @("--public-url", $PublicUrl) }
 try {
