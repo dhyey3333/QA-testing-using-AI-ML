@@ -55,3 +55,8 @@ It rewrites `site/assets/shot-*.jpg`, `og.png` (the picture shown when the link 
   then submit `sitemap.xml`.
 - Bing Webmaster Tools can import the property from Search Console.
 - Keep `sitemap.xml`'s `lastmod` dates current when a page changes.
+
+## Desktop icon
+
+`uv run python deploy/site/make_icon.py` redraws `launch/nightshift.ico` from the logo; then
+`powershell -ExecutionPolicy Bypass -File launch\make-shortcut.ps1` puts "Nightshift QA" on the desktop.

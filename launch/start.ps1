@@ -24,8 +24,8 @@ $Local = "http://127.0.0.1:$Port/"
 function Say([string]$Text, [string]$Color = "Gray") { Write-Host $Text -ForegroundColor $Color }
 function Stop-Here([string]$Text) { Say $Text "Red"; Read-Host "Press Enter to close"; exit 1 }
 
-$Host.UI.RawUI.WindowTitle = "Nightshift (close this window to stop it)"
-Say "Nightshift" "Cyan"
+$Host.UI.RawUI.WindowTitle = "Nightshift QA (close this window to stop it)"
+Say "Nightshift QA" "Cyan"
 
 # 1. uv runs Nightshift.
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
@@ -150,7 +150,7 @@ if (-not $NoBrowser) {
         }
     } -ArgumentList $Local | Out-Null
 }
-Say "`nNightshift: $Local   Close this window (or press Ctrl+C) to stop it.`n" "Cyan"
+Say "`nNightshift QA: $Local   Close this window (or press Ctrl+C) to stop it.`n" "Cyan"
 $serve = @("run", "--quiet", "nightshift", "hosted", "serve", "--data", "$Data", "--port", "$Port")
 if ($PublicUrl) { $serve += @("--public-url", $PublicUrl) }
 try {
