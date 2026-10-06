@@ -21,6 +21,7 @@ from nightshift.hosted.jobs import Runner
 from nightshift.hosted.server import App, serve
 from nightshift.hosted.store import Store, StoreError
 from nightshift.model import HttpModel, ModelConfig
+from nightshift.spec import load_spec
 
 ROOT = Path(__file__).resolve().parent.parent
 ADMIN = ("admin@agency.test", "test-admin-password")  # fake, for these tests only
@@ -259,3 +260,82 @@ def test_a_database_from_before_explore_runs_gets_the_new_column(tmp_path):
     run_id = store.add_run(project["id"], "explore", params={"url": "https://x.test/"})
     assert json.loads(store.run(run_id)["params"]) == {"url": "https://x.test/"}
     store.close()
+
+
+# --- no-YAML tests: the form, and drafts the AI writes ----------------------------------
+
+FORM = {"url": "https://shop.example.test/", "steps": "log in with the test account\n- add the Blue Top to the cart",
+        "expect": "the cart lists the Blue Top", "data": "email = qa@example.test\npassword: ${SHOP_PASSWORD}",
+        "max_steps": "20", "js_errors_warn": True}
+
+
+def test_a_test_written_in_the_form_becomes_a_spec_and_reads_back(hosted):
+    admin = client(hosted, ADMIN)
+    slug = admin.post("/api/projects", json={"client": "Acme"}).json()["project"]["slug"]
+    assert admin.put(f"/api/projects/{slug}/specs/checkout", json={"form": FORM}).status_code == 200
+    spec = load_spec(ProjectFiles(hosted.data, slug).specs / "checkout.yaml", expand_env=False)
+    assert spec.steps == ("log in with the test account", "add the Blue Top to the cart")
+    assert spec.expect == ("the cart lists the Blue Top",) and spec.js_errors == "warn" and spec.max_steps == 20
+    assert spec.data == {"email": "qa@example.test", "password": "${SHOP_PASSWORD}"}
+    form = admin.get(f"/api/projects/{slug}/specs/checkout").json()["form"]
+    assert form["steps"] == "log in with the test account\nadd the Blue Top to the cart"
+    assert form["data"] == "email = qa@example.test\npassword = ${SHOP_PASSWORD}" and form["js_errors_warn"] is True
+
+
+def test_the_form_keeps_what_it_does_not_edit_and_turns_one_sentence_into_a_goal(hosted):
+    admin = client(hosted, ADMIN)
+    slug = admin.post("/api/projects", json={"client": "Acme"}).json()["project"]["slug"]
+    files = ProjectFiles(hosted.data, slug)
+    files.save_spec("signup", SPEC + "session_from: login\n")
+    one_line = {"url": "https://shop.example.test/", "steps": "subscribe to the newsletter", "expect": ""}
+    assert admin.put(f"/api/projects/{slug}/specs/signup", json={"form": one_line}).status_code == 200
+    spec = load_spec(files.specs / "signup.yaml", expand_env=False)
+    assert spec.session_from == "login" and spec.expect == ("the page shows this was done: subscribe to the newsletter",)
+    two_lines = {**one_line, "steps": "open the shop\nsubscribe"}
+    response = admin.put(f"/api/projects/{slug}/specs/signup", json={"form": two_lines})
+    assert response.status_code == 400 and "what should happen" in response.json()["error"]
+    bad_data = {**FORM, "data": "just a sentence"}
+    assert "name = value" in admin.put(f"/api/projects/{slug}/specs/x", json={"form": bad_data}).json()["error"]
+
+
+def test_a_run_that_would_stop_on_a_missing_secret_is_refused_with_the_reason(hosted):
+    admin = client(hosted, ADMIN)
+    slug = admin.post("/api/projects", json={"client": "Acme"}).json()["project"]["slug"]
+    admin.put(f"/api/projects/{slug}/specs/checkout", json={"form": FORM})
+    refused = admin.post(f"/api/projects/{slug}/runs")
+    assert refused.status_code == 400 and "checkout needs SHOP_PASSWORD" in refused.json()["error"]
+    assert admin.get(f"/api/projects/{slug}").json()["missing"] == [{"test": "checkout", "secret": "SHOP_PASSWORD"}]
+    admin.put(f"/api/projects/{slug}/secrets/SHOP_PASSWORD", json={"value": "x"})
+    assert admin.get(f"/api/projects/{slug}").json()["missing"] == []
+
+
+def test_ai_written_tests_wait_as_drafts_until_a_person_accepts_them(hosted):
+    def fake_generate(params, files, out):  # stands in for `nightshift generate`, which needs a model
+        draft = files.drafts / "buy-a-top.yaml"
+        text = "# Review: the price may differ\n" + SPEC.replace("name: smoke", "name: buy-a-top") + \
+            "data:\n  password: ${NS_PASSWORD}\n"
+        return [sys.executable, "-c", f"import pathlib; pathlib.Path(r'{draft}').write_text({text!r})"]
+
+    hosted.runner.generate_command = fake_generate
+    admin = client(hosted, ADMIN)
+    slug = admin.post("/api/projects", json={"client": "Acme"}).json()["project"]["slug"]
+    assert admin.post(f"/api/projects/{slug}/generate", json={"url": "https://x.test/", "steps": 0}).status_code == 400
+    assert admin.post(f"/api/projects/{slug}/generate", json={"url": "https://x.test/", "count": 3}).status_code == 201
+    hosted.runner.start()
+    deadline = time.time() + 60
+    while (run := admin.get(f"/api/projects/{slug}").json()["runs"][0])["status"] in ("queued", "running"):
+        assert time.time() < deadline
+        time.sleep(0.5)
+    assert (run["status"], run["message"]) == ("done", "wrote 1 draft test: review them under Tests"), run
+    view = admin.get(f"/api/projects/{slug}").json()
+    assert view["specs"] == [] and view["drafts"] == [
+        {"name": "buy-a-top", "review": ["the price may differ"], "needs": ["NS_PASSWORD"]}]
+    edited = {"url": "https://x.test/", "steps": "buy a top", "expect": "the order is placed"}
+    assert admin.put(f"/api/projects/{slug}/drafts/buy-a-top", json={"form": edited}).status_code == 200
+    assert admin.post(f"/api/projects/{slug}/drafts/buy-a-top/accept").status_code == 200
+    view = admin.get(f"/api/projects/{slug}").json()
+    assert view["specs"] == ["buy-a-top"] and view["drafts"] == []
+    files = ProjectFiles(hosted.data, slug)
+    files.save_draft("buy-a-top", SPEC.replace("name: smoke", "name: buy-a-top"))
+    clash = admin.post(f"/api/projects/{slug}/drafts/buy-a-top/accept")
+    assert clash.status_code == 400 and "already a test" in clash.json()["error"]

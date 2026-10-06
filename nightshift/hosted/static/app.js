@@ -5,6 +5,10 @@
 const view = document.getElementById("view");
 let me = null;
 let poll = null;
+// Each page load gets a number. A load that finishes after the user moved on (an auto-refresh still in
+// flight, a slow request) is stale and must not paint over the page they are on now.
+let routeToken = 0;
+const stale = (token) => token !== routeToken;
 
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const when = (seconds) => (seconds ? new Date(seconds * 1000).toLocaleString() : "");
@@ -67,7 +71,9 @@ function loginPage() {
 }
 
 async function projectsPage() {
+  const token = routeToken;
   const { projects } = await api("GET", "/api/projects");
+  if (stale(token)) return;
   const cards = projects.map((p) => `
     <div class="card">
       <div class="row spread"><a href="#/p/${esc(p.slug)}"><strong>${esc(p.client)}</strong></a>
@@ -98,13 +104,15 @@ async function projectsPage() {
 }
 
 function counts(run) {
-  if (run.status !== "done" || run.trigger === "explore") return `<span class="muted">${esc(run.message || "")}</span>`;
+  if (run.status !== "done" || ["explore", "generate"].includes(run.trigger)) return `<span class="muted">${esc(run.message || "")}</span>`;
   return `<span class="n-pass">${run.passed} passed</span>` + (run.failed ? `<span class="n-fail">${run.failed} failed</span>` : "")
     + (run.flaky ? `<span class="n-flaky">${run.flaky} flaky</span>` : "") + (run.errors ? `<span class="n-error">${run.errors} errors</span>` : "");
 }
 
 async function projectPage(slug, tab, extra) {
+  const token = routeToken;
   const data = await api("GET", `/api/projects/${slug}`);
+  if (stale(token)) return;
   const p = data.project;
   const active = data.runs.find((r) => ["queued", "running"].includes(r.status));
   const tabs = [["runs", "Runs"], ["tests", `Tests (${data.specs.length})`], ...(me.admin ? [["settings", "Settings"]] : [])]
@@ -170,42 +178,143 @@ function runsTab(section, slug, data, busy) {
   });
 }
 
-const TEMPLATE = `name: login
-url: https://staging.example.com/
-steps:
-  - log in with the test account
-expect:
-  - the dashboard greets the user by name
-data:
-  email: qa@example.com
-  password: \${SHOP_PASSWORD}   # a secret: set it under Settings
-max_steps: 15
-`;
+// Multi-line placeholders: a newline in an attribute is &#10;.
+const lines = (text) => esc(text).replace(/\n/g, "&#10;");
 
 async function testsTab(section, slug, data, editing) {
-  const list = data.specs.map((name) => `
-    <tr><td class="mono">${esc(name)}.yaml</td>
-      <td class="row"><a href="#/p/${esc(slug)}/tests/${esc(name)}">Edit</a>
-      <button type="button" class="link" data-delete="${esc(name)}">Delete</button></td></tr>`).join("");
+  const draft = (editing || "").startsWith("draft:");
+  const name = draft ? editing.slice(6) : editing || "";
+  const missing = data.missing.map((m) => `<li><span class="mono">${esc(m.test)}</span> needs <span class="mono">${esc(m.secret)}</span></li>`).join("");
+  const drafts = data.drafts.map((d) => `
+    <tr><td class="mono">${esc(d.name)}</td>
+      <td>${d.review.map((r) => `<div class="muted">Check: ${esc(r)}</div>`).join("")}
+        ${d.needs.length ? `<div class="n-flaky">Needs secrets: ${d.needs.map(esc).join(", ")}</div>` : ""}</td>
+      <td class="row"><a href="#/p/${esc(slug)}/tests/draft:${esc(d.name)}">Review</a>
+        <button type="button" class="link" data-accept="${esc(d.name)}">Accept</button>
+        <button type="button" class="link" data-drop="${esc(d.name)}">Delete</button></td></tr>`).join("");
+  const tests = data.specs.map((n) => `
+    <tr><td class="mono">${esc(n)}</td>
+      <td class="row"><a href="#/p/${esc(slug)}/tests/${esc(n)}">Edit</a>
+      <button type="button" class="link" data-delete="${esc(n)}">Delete</button></td></tr>`).join("");
   section.innerHTML = `
-    <table><tbody>${list || '<tr><td class="muted">No tests yet.</td></tr>'}</tbody></table>
-    <h2>${editing ? `Edit ${esc(editing)}.yaml` : "New test"}</h2>
-    <form class="card stack" id="spec">
-      <label>File name <input name="name" required pattern="[a-z0-9][a-z0-9-]*" value="${esc(editing || "")}"
-        ${editing ? "readonly" : ""} placeholder="checkout"></label>
-      <label>Test (plain-English steps and expected results, YAML) <textarea name="text" spellcheck="false" required></textarea></label>
+    ${missing ? `<div class="card warn"><strong>Set these secrets before running</strong> (Settings → Secrets):<ul>${missing}</ul></div>` : ""}
+    <form class="card stack" id="generate">
+      <strong>Generate tests with AI</strong>
+      <span class="muted">Give it the website. It explores the site like a new user, then writes tests for you to review
+        below. Takes a few minutes; follow it on the Runs tab. Only sites you own or are allowed to test.</span>
+      <div class="row">
+        <label class="grow">Website <input name="url" type="url" required value="${esc(data.project.base_url)}" placeholder="https://academybugs.com/"></label>
+        <label>Tests <input name="count" type="number" min="1" max="10" value="5"></label>
+        <label>Explore first (actions) <input name="steps" type="number" min="0" max="40" value="20"></label>
+      </div>
+      <label>What is the site for? (optional, but it helps)
+        <textarea name="about" class="short" placeholder="${lines("An online shop: people search for products, add them to a cart and check out.")}"></textarea></label>
       <p class="error" role="alert"></p>
-      <div class="row"><button type="submit">Save</button>${editing ? `<a href="#/p/${esc(slug)}/tests">New test instead</a>` : ""}</div>
+      <div><button type="submit">Generate tests</button></div>
+    </form>
+    ${drafts ? `
+    <h2>Drafts to review (${data.drafts.length})</h2>
+    <p class="muted">Written by the AI from what it saw. Read each one and fix what's wrong before you accept it: a wrong test reports wrong bugs.</p>
+    <table><tbody>${drafts}</tbody></table>
+    <p class="error" id="draft-error" role="alert"></p>
+    <div class="row"><button type="button" class="secondary" id="accept-all">Accept all</button></div>` : ""}
+    <h2>Tests (${data.specs.length})</h2>
+    <table><tbody>${tests || '<tr><td class="muted">No tests yet: generate some above, or write one below.</td></tr>'}</tbody></table>
+    <h2>${draft ? `Review draft: ${esc(name)}` : name ? `Edit test: ${esc(name)}` : "New test"}</h2>
+    <form class="card stack" id="spec">
+      <label>Test name <input name="name" required pattern="[a-z0-9][a-z0-9-]*" ${name ? "readonly" : ""}
+        placeholder="checkout" title="lowercase letters, digits and dashes"></label>
+      <label>Website <input name="url" type="url" required placeholder="https://staging.example.com/"></label>
+      <label>Steps: what a person does, one per line
+        <textarea name="steps" class="short" placeholder="${lines("log in with the test account\nadd the Blue Top to the cart\nopen the cart")}"></textarea></label>
+      <label>What should happen: one expected result per line
+        <textarea name="expect" class="short" placeholder="${lines("the cart lists the Blue Top\nthe total is correct")}"></textarea>
+        <span class="muted">Leave it empty when the test is one sentence (like "subscribe to the newsletter"): the AI then has to prove it was done.</span></label>
+      <label>Test data: one per line, as name = value
+        <textarea name="data" class="short mono" placeholder="${lines("email = qa@example.com\npassword = ${SHOP_PASSWORD}")}"></textarea>
+        <span class="muted">The AI only ever sees the name, never the value. For passwords, add a secret under Settings and write \${NAME} here.</span></label>
+      <details><summary>More options</summary>
+        <div class="stack">
+          <label>Step limit <input name="max_steps" type="number" min="1" max="60" value="30"></label>
+          <label class="inline"><input type="checkbox" name="js_errors_warn" value="1"> Background JavaScript errors are only warnings</label>
+        </div>
+      </details>
+      <p class="error" role="alert"></p>
+      <div class="row">
+        <button type="submit">${draft ? "Save draft" : "Save test"}</button>
+        ${draft ? '<button type="button" id="save-accept">Save and accept</button>' : ""}
+        ${name ? `<a href="#/p/${esc(slug)}/tests">New test instead</a>` : ""}
+        <button type="button" class="link" id="as-yaml">Edit as YAML instead</button>
+      </div>
+    </form>
+    <form class="card stack" id="spec-yaml" hidden>
+      <label>Test name <input name="name" required pattern="[a-z0-9][a-z0-9-]*" ${name ? "readonly" : ""}></label>
+      <label>YAML (advanced) <textarea name="text" spellcheck="false"></textarea></label>
+      <p class="error" role="alert"></p>
+      <div class="row"><button type="submit">Save</button><button type="button" class="link" id="as-form">Back to the form</button></div>
     </form>`;
+
   const form = document.getElementById("spec");
-  form.elements.text.value = editing ? (await api("GET", `/api/projects/${slug}/specs/${editing}`)).text : TEMPLATE;
-  onSubmit(form, async (fields) => {
-    await api("PUT", `/api/projects/${slug}/specs/${fields.name}`, { text: fields.text });
-    location.hash = `#/p/${slug}/tests`;
+  const yamlForm = document.getElementById("spec-yaml");
+  const base = draft ? `/api/projects/${slug}/drafts` : `/api/projects/${slug}/specs`;
+  let loaded = { text: "", form: null };
+  const token = routeToken;
+  if (name) loaded = await api("GET", `${base}/${name}`);
+  if (stale(token)) return;
+  form.elements.name.value = yamlForm.elements.name.value = name;
+  yamlForm.elements.text.value = loaded.text;
+  const f = loaded.form || { url: data.project.base_url || "", max_steps: 30 };
+  if (f.advanced) {  // an API test: only YAML describes it
+    form.hidden = true;
+    yamlForm.hidden = false;
+    document.getElementById("as-form").hidden = true;
+  } else {
+    for (const key of ["url", "steps", "expect", "data", "max_steps"]) form.elements[key].value = f[key] ?? "";
+    form.elements.js_errors_warn.checked = Boolean(f.js_errors_warn);
+  }
+  const fields = () => ({
+    url: form.elements.url.value, steps: form.elements.steps.value, expect: form.elements.expect.value,
+    data: form.elements.data.value, max_steps: form.elements.max_steps.value, js_errors_warn: form.elements.js_errors_warn.checked,
+  });
+  const done = () => { location.hash = `#/p/${slug}/tests`; route(); };
+  onSubmit(form, async () => { await api("PUT", `${base}/${form.elements.name.value}`, { form: fields() }); done(); });
+  onSubmit(yamlForm, async (values) => { await api("PUT", `${base}/${values.name}`, { text: values.text }); done(); });
+  document.getElementById("save-accept")?.addEventListener("click", async () => {
+    const error = form.querySelector(".error");
+    try {
+      await api("PUT", `${base}/${name}`, { form: fields() });
+      await api("POST", `/api/projects/${slug}/drafts/${name}/accept`);
+      done();
+    } catch (exc) { error.textContent = exc.message; }
+  });
+  document.getElementById("as-yaml").addEventListener("click", () => {
+    yamlForm.elements.name.value = form.elements.name.value;
+    form.hidden = true;
+    yamlForm.hidden = false;
+  });
+  document.getElementById("as-form").addEventListener("click", () => { yamlForm.hidden = true; form.hidden = false; });
+
+  onSubmit(document.getElementById("generate"), async (values) => {
+    await api("POST", `/api/projects/${slug}/generate`, values);
+    location.hash = `#/p/${slug}/runs`;
+  });
+  const draftError = document.getElementById("draft-error");
+  section.querySelectorAll("[data-accept]").forEach((button) => button.addEventListener("click", async () => {
+    try { await api("POST", `/api/projects/${slug}/drafts/${button.dataset.accept}/accept`); route(); }
+    catch (exc) { draftError.textContent = exc.message; }
+  }));
+  section.querySelectorAll("[data-drop]").forEach((button) => button.addEventListener("click", async () => {
+    if (!confirm(`Delete the draft ${button.dataset.drop}?`)) return;
+    await api("DELETE", `/api/projects/${slug}/drafts/${button.dataset.drop}`);
     route();
+  }));
+  document.getElementById("accept-all")?.addEventListener("click", async () => {
+    const result = await api("POST", `/api/projects/${slug}/drafts/accept-all`);
+    if (result.problems.length) draftError.textContent = result.problems.join(" · ");
+    else route();
   });
   section.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", async () => {
-    if (!confirm(`Delete ${button.dataset.delete}.yaml?`)) return;
+    if (!confirm(`Delete the test ${button.dataset.delete}?`)) return;
     await api("DELETE", `/api/projects/${slug}/specs/${button.dataset.delete}`);
     route();
   }));
@@ -248,7 +357,9 @@ function settingsTab(section, slug, data) {
 }
 
 async function usersPage() {
+  const token = routeToken;
   const { users } = await api("GET", "/api/users");
+  if (stale(token)) return;
   const rows = users.map((u) => `
     <tr><td>${esc(u.email)}</td><td>${esc(u.name)}</td><td>${u.admin ? "admin" : "staff"}</td>
       <td>${u.id === me.id ? "" : `<button type="button" class="link" data-user="${u.id}">Delete</button>`}</td></tr>`).join("");
@@ -295,6 +406,7 @@ function accountPage() {
 // --- routing ---------------------------------------------------------------------------
 
 async function route() {
+  routeToken += 1;
   clearTimeout(poll);
   const parts = location.hash.replace(/^#\/?/, "").split("/");
   if (parts[0] === "login") return loginPage();

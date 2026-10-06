@@ -41,6 +41,7 @@ class Runner:
         self.max_runs, self.parallel = max(1, max_runs), max(1, parallel)
         self.command = command or self._command
         self.explore_command = explore_command or self._explore_command
+        self.generate_command = self._generate_command
         self._wake = threading.Condition()
         self._procs: dict[int, subprocess.Popen] = {}
         self._closing = False
@@ -64,8 +65,14 @@ class Runner:
     def enqueue(self, project: dict, trigger: str, user_id: int | None = None, params: dict | None = None) -> int:
         if self.store.active_run(project["id"]):
             raise Busy("a run of this project is already queued or running")
-        if trigger != "explore" and not self.files(project).spec_names():
-            raise StoreError("this project has no tests yet")
+        files = self.files(project)
+        if trigger in ("manual", "nightly"):
+            if not files.spec_names():
+                raise StoreError("this project has no tests yet")
+            if missing := files.missing_secrets():
+                # `nightshift run` stops on the first ${SECRET} it can't fill, so say which before starting.
+                listed = ", ".join(f"{test} needs {secret}" for test, secret in missing[:5])
+                raise StoreError(f"set these secrets under Settings first: {listed}")
         run_id = self.store.add_run(project["id"], trigger, user_id, params)
         with self._wake:
             self._wake.notify()
@@ -125,9 +132,15 @@ class Runner:
         out = files.run_folder(run["id"])
         out.mkdir(parents=True, exist_ok=True)
         env = {**os.environ, **files.secrets(), "PYTHONIOENCODING": "utf-8"}
-        exploring = run["trigger"] == "explore"
-        command = (self.explore_command(json.loads(run["params"] or "{}"), out) if exploring
-                   else self.command(project, files, out))
+        exploring, generating = run["trigger"] == "explore", run["trigger"] == "generate"
+        params = json.loads(run["params"] or "{}")
+        drafts_before = {path.name for path in files.drafts.glob("*.yaml")}
+        if exploring:
+            command = self.explore_command(params, out)
+        elif generating:
+            command = self.generate_command(params, files, out)
+        else:
+            command = self.command(project, files, out)
         with open(out / "output.log", "w", encoding="utf-8") as log:
             process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT,
                                        env=env, cwd=files.root, start_new_session=os.name != "nt")
@@ -141,6 +154,18 @@ class Runner:
             return
         if exploring:
             self._finish_exploration(run, out, process.returncode)
+            return
+        if generating:
+            written = len({path.name for path in files.drafts.glob("*.yaml")} - drafts_before)
+            explored = sorted(out.glob("explore-*/report.html"))
+            if process.returncode == 0 and written:
+                self.store.update_run(run["id"], status="done", finished=time.time(),
+                                      run_dir=explored[-1].parent.relative_to(out).as_posix() if explored else "",
+                                      message=f"wrote {_n(written, 'draft test')}: review them under Tests")
+            else:
+                tail = (out / "output.log").read_text(encoding="utf-8", errors="replace").strip().splitlines()[-3:]
+                self.store.update_run(run["id"], status="failed", finished=time.time(),
+                                      message=" / ".join(tail)[-500:] or "no tests were written")
             return
         folder = _run_folder(out)
         if folder is None:
@@ -172,6 +197,15 @@ class Runner:
                    "--out", str(out), "--quiet"]
         if params.get("focus"):
             command += ["--focus", str(params["focus"])]
+        return command
+
+    def _generate_command(self, params: dict, files: ProjectFiles, out: Path) -> list[str]:
+        """Explore the site to learn it, then draft tests into the project's drafts folder."""
+        command = [sys.executable, "-m", "nightshift", "generate", "--url", str(params["url"]),
+                   "--explore-steps", str(params["steps"]), "--count", str(params["count"]),
+                   "--specs-out", str(files.drafts), "--out", str(out), "--quiet"]
+        if params.get("about"):
+            command += ["--story", str(params["about"])]
         return command
 
     def _command(self, project: dict, files: ProjectFiles, out: Path) -> list[str]:

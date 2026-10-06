@@ -141,12 +141,57 @@ class App:
             return 200, self._project_view(self.store.project(project["slug"]), files)
         if m := re.fullmatch(r"(GET|PUT|DELETE) /specs/([a-z0-9-]+)", rest):
             if m[1] == "GET":
-                return 200, {"name": m[2], "text": files.read_spec(m[2]) if m[2] in files.spec_names() else ""}
+                text = files.read_spec(m[2]) if m[2] in files.spec_names() else ""
+                return 200, {"name": m[2], "text": text, "form": files.form_of(text) if text else None}
             if m[1] == "PUT":
-                files.save_spec(m[2], str(body.get("text", "")))
+                existing = files.read_spec(m[2]) if m[2] in files.spec_names() else ""
+                text = files.yaml_of(m[2], body["form"], existing) if isinstance(body.get("form"), dict) \
+                    else str(body.get("text", ""))
+                files.save_spec(m[2], text)
             else:
                 files.delete_spec(m[2])
             return 200, {"specs": files.spec_names()}
+        if m := re.fullmatch(r"(GET|PUT|DELETE) /drafts/([a-z0-9-]+)", rest):
+            if m[2] not in {d["name"] for d in files.drafts_list()}:
+                raise HttpError(404, "no such draft")
+            if m[1] == "GET":
+                text = files.read_draft(m[2])
+                return 200, {"name": m[2], "text": text, "form": files.form_of(text)}
+            if m[1] == "PUT":
+                text = files.yaml_of(m[2], body["form"], files.read_draft(m[2])) if isinstance(body.get("form"), dict) \
+                    else str(body.get("text", ""))
+                files.save_draft(m[2], text)
+            else:
+                files.delete_draft(m[2])
+            return 200, self._project_view(project, files)
+        if m := re.fullmatch(r"POST /drafts/([a-z0-9-]+)/accept", rest):
+            files.accept_draft(m[1])
+            return 200, self._project_view(project, files)
+        if rest == "POST /drafts/accept-all":
+            problems = []
+            for draft in files.drafts_list():
+                try:
+                    files.accept_draft(draft["name"])
+                except StoreError as exc:
+                    problems.append(f"{draft['name']}: {exc}")
+            return 200, {**self._project_view(project, files), "problems": problems}
+        if rest == "POST /generate":
+            url = str(body.get("url", "")).strip()
+            if not re.fullmatch(r"https?://[^\s/]+(/\S*)?", url):
+                raise HttpError(400, "give the address of the site, starting with http:// or https://")
+            try:
+                # 0 explore actions is a real answer (write from the description alone), not "use the default".
+                count = int(body["count"] if body.get("count") not in (None, "") else 5)
+                steps = int(body["steps"] if body.get("steps") not in (None, "") else 20)
+            except ValueError:
+                raise HttpError(400, "the numbers must be numbers") from None
+            if not (1 <= count <= 10 and 0 <= steps <= 40):
+                raise HttpError(400, "write 1 to 10 tests, after exploring 0 to 40 actions")
+            if steps == 0 and not str(body.get("about", "")).strip():
+                raise HttpError(400, "say what the site is for, or let it explore the site first")
+            params = {"url": url, "count": count, "steps": steps, "about": str(body.get("about", "")).strip()[:2000]}
+            run_id = self.runner.enqueue(project, "generate", user["id"], params)
+            return 201, {"run": self._run_view(project, files, self.store.run(run_id))}
         if m := re.fullmatch(r"(PUT|DELETE) /secrets/([A-Za-z0-9_]+)", rest):
             _admin(user)
             if m[1] == "PUT":
@@ -200,6 +245,8 @@ class App:
 
     def _project_view(self, project: dict, files: ProjectFiles) -> dict:
         return {"project": project, "specs": files.spec_names(), "secrets": sorted(files.secrets()),
+                "drafts": files.drafts_list(),
+                "missing": [{"test": test, "secret": secret} for test, secret in files.missing_secrets()],
                 "runs": [self._run_view(project, files, run) for run in self.store.runs(project["id"])],
                 "parallel": self.runner.parallel}
 

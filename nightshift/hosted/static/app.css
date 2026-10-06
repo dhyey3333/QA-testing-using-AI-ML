@@ -1,3 +1,4 @@
+[hidden] { display: none !important; }  /* the hidden attribute wins over display rules like .stack below */
 :root {
   --ink: #1d2433; --muted: #5d6677; --line: #dde2ea; --bg: #f6f7f9; --card: #fff;
   --accent: #3a4fd8; --pass: #16794a; --fail: #b42318; --flaky: #9a6700; --error: #6b4fbb;
@@ -45,3 +46,10 @@ th { font-size: 0.85rem; color: var(--muted); font-weight: 600; }
 .grid .card { margin: 0; }
 .mono { font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; }
 @media (max-width: 640px) { header { flex-direction: column; align-items: flex-start; } td, th { padding: 6px; } }
+textarea.short { min-height: 90px; font-family: inherit; font-size: inherit; }
+textarea.short.mono { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.card.warn { border-color: #e9c46a; background: #fffaf0; }
+.card.warn ul { margin: 6px 0 0; }
+label.grow { flex: 1 1 320px; }
+details summary { cursor: pointer; color: var(--muted); }
+details .stack { margin-top: 10px; }
