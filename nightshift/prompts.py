@@ -51,7 +51,8 @@ Reply with exactly one JSON object and nothing else. One of:
 Rules:
 1. Use only ids from the current ELEMENTS list. They change from turn to turn.
 2. To enter test data, type its placeholder exactly, e.g. {{email}}. The real value \
-is filled in for you. Never make up values.
+is filled in for you. Never make up values. Where the page shows a test data value, you \
+see its placeholder instead: "Welcome {{username}}" means the page shows the real username.
 3. Do the steps in order. Do nothing the test does not ask for.
 4. You are testing, not helping. Never work around a problem: if the app shows an \
 error the test does not expect, shows wrong data, or an action has no effect, reply \
@@ -94,6 +95,8 @@ form field (the tooltip it shows when it blocks a submit). They are error messag
 page shows, and they can be quoted as evidence.
 7. Lines starting with "[field]" show what a form field holds right now, e.g. \
 "[field] Quantity: 2". Quote them as evidence for what a field shows.
+8. A {{name}} in VISIBLE TEXT is test data the page really shows, hidden from you on \
+purpose. "Welcome {{username}}" welcomes the user by their real username: quote it as is.
 """
 
 EXPLORE_PROMPT = """\

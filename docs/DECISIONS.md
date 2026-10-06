@@ -404,3 +404,10 @@ never be proven: on AcademyBugs the judge saw the 2 and had to fail an AI-writte
 Visible fields with a value now add "[field] <label>: <value>" lines, the way the browser's own
 validation messages already did ("[browser says]"). Password fields never do, and typed test data
 is masked like any other text before a model sees it.
+
+## D42. The models are told that {{placeholders}} on the page are real values
+Test data is shown to the models as its placeholder, never its value (D13), and that includes the
+page: a site that greets "Welcome ns20261006" reaches the judge as "Welcome {{username}}". Found in
+a benchmark run: the judge read that literally ("the page shows a placeholder, not a username")
+and failed a working sign-up. Both prompts now say a {{name}} on the page is the real value, hidden
+on purpose. The values themselves stay out of every prompt.
