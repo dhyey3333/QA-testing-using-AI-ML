@@ -271,6 +271,17 @@ async function testsTab(section, slug, data, editing) {
       <p class="error" role="alert"></p>
       <div><button type="submit">Generate tests</button></div>
     </form>
+    <details class="card"><summary>Import Cucumber tests (.feature)</summary>
+      <form class="stack" id="gherkin">
+        <span class="muted">Paste a .feature file. Each Scenario becomes a draft test: Given and When lines are its steps,
+          Then lines are what should happen. No step definitions needed.</span>
+        <label>Website (if the feature doesn't say) <input name="url" type="url" value="${esc(data.project.base_url)}"
+          placeholder="https://staging.example.com/"></label>
+        <label>Feature <textarea name="text" spellcheck="false" placeholder="${lines("Feature: Checkout\n  Scenario: Pay by card\n    Given I am on the shop\n    When I add a T-shirt to the cart\n    Then the cart shows 1 item")}"></textarea></label>
+        <p class="error" role="alert"></p>
+        <div><button type="submit">Import as drafts</button></div>
+      </form>
+    </details>
     ${drafts ? `
     <h2>Drafts to review (${data.drafts.length})</h2>
     <p class="muted">Written by the AI from what it saw. Read each one and fix what's wrong before you accept it: a wrong test reports wrong bugs.</p>
@@ -353,6 +364,10 @@ async function testsTab(section, slug, data, editing) {
   });
   document.getElementById("as-form").addEventListener("click", () => { yamlForm.hidden = true; form.hidden = false; });
 
+  onSubmit(document.getElementById("gherkin"), async (values) => {
+    await api("POST", `/api/projects/${slug}/import-gherkin`, values);
+    route();
+  });
   onSubmit(document.getElementById("generate"), async (values) => {
     await api("POST", `/api/projects/${slug}/generate`, values);
     location.hash = `#/p/${slug}/runs`;

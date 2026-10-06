@@ -161,6 +161,16 @@ def main(argv: list[str] | None = None) -> int:
     srv.add_argument("--out", type=Path, default=Path("runs"), help="where runs are kept (default: runs/)")
     srv.add_argument("--no-open", action="store_true", help="don't open the browser")
 
+    gh = commands.add_parser("gherkin", help="Cucumber .feature files in and out")
+    gh_commands = gh.add_subparsers(dest="gherkin_command", required=True)
+    gh_import = gh_commands.add_parser("import", help="turn .feature files into draft specs")
+    gh_import.add_argument("features", nargs="+", type=Path)
+    gh_import.add_argument("--url", default="", help="the site to test, when the features don't name one")
+    gh_import.add_argument("--to", type=Path, default=Path("specs/imported"), help="(default: specs/imported)")
+    gh_export = gh_commands.add_parser("export", help="write specs as .feature files")
+    gh_export.add_argument("specs", nargs="+", type=Path)
+    gh_export.add_argument("--to", type=Path, default=Path("features"), help="(default: features)")
+
     hosted = commands.add_parser("hosted", help="the hosted web app for a QA agency: logins, a project per client")
     hosted_commands = hosted.add_subparsers(dest="hosted_command", required=True)
     h_serve = hosted_commands.add_parser("serve", help="run the web app (behind Caddy for HTTPS: see deploy/oracle)")
@@ -184,7 +194,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     handler = {"run": _run, "explore": _explore, "generate": _generate, "export": _export, "report": _report,
                "init": _init, "validate": _validate, "cases": _cases, "triage": _triage,
-               "serve": _serve, "edge-cases": _edge_cases, "client-report": _client_report, "hosted": _hosted}
+               "serve": _serve, "edge-cases": _edge_cases, "client-report": _client_report, "hosted": _hosted,
+               "gherkin": _gherkin}
     try:
         return handler[args.command](args)
     except (SpecError, ValueError) as exc:
@@ -738,6 +749,24 @@ def _serve(args: argparse.Namespace) -> int:
         dashboard.close()
         server.server_close()
     return 0
+
+
+def _gherkin(args: argparse.Namespace) -> int:
+    from .gherkin import parse_feature, write_features
+
+    if args.gherkin_command == "export":
+        paths = write_features(load_specs(args.specs), args.to)
+        print(f"wrote {len(paths)} feature file(s) to {args.to}")
+        return 0
+    written = []
+    for feature in args.features:
+        specs = parse_feature(feature.read_text(encoding="utf-8"), url=args.url)
+        written += write_specs(specs, args.to, url=args.url or "https://example.com/",
+                               source=f"the Cucumber feature {feature.name}")
+    for path in written:
+        print(f"wrote {path}")
+    print(f"{len(written)} draft spec(s). Read them before trusting a result: then  nightshift run {args.to}")
+    return 0 if written else 2
 
 
 def _hosted(args: argparse.Namespace) -> int:

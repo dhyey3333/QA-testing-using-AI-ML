@@ -500,3 +500,14 @@ def test_a_project_can_run_its_tests_on_several_browsers_and_phones(hosted):
     assert admin.put(f"/api/projects/{slug}", json={"targets": "netscape"}).status_code == 400
     assert admin.put(f"/api/projects/{slug}", json={"targets": ""}).status_code == 400
 
+
+
+def test_a_pasted_cucumber_feature_becomes_drafts_to_review(hosted):
+    admin = client(hosted, ADMIN)
+    slug = admin.post("/api/projects", json={"client": "Acme"}).json()["project"]["slug"]
+    feature = "Feature: Search\n  Scenario: Find coffee\n    When I search for coffee\n    Then Filter Coffee is listed\n"
+    made = admin.post(f"/api/projects/{slug}/import-gherkin", json={"text": feature, "url": "https://shop.example.test/"})
+    assert made.status_code == 201 and made.json()["imported"] == 1
+    assert [d["name"] for d in made.json()["drafts"]] == ["find-coffee"]
+    assert admin.post(f"/api/projects/{slug}/import-gherkin", json={"text": "hello"}).status_code == 400
+    assert admin.post(f"/api/projects/{slug}/drafts/find-coffee/accept").status_code == 200

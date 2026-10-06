@@ -27,6 +27,8 @@ from urllib.parse import unquote, urlsplit
 import httpx
 
 from ..defects import analyse, load_results, record_issue
+from ..generate import write_specs
+from ..gherkin import GherkinError, parse_feature
 from ..jira import JiraConfig, JiraError, file_jira_issues
 from ..notify import post_slack, slack_payload
 from ..visual import Baselines
@@ -185,6 +187,19 @@ class App:
                 except StoreError as exc:
                     problems.append(f"{draft['name']}: {exc}")
             return 200, {**self._project_view(project, files), "problems": problems}
+        if rest == "POST /import-gherkin":
+            text = str(body.get("text", ""))
+            if not text.strip():
+                raise HttpError(400, "paste the contents of a .feature file")
+            url = str(body.get("url", "")).strip()
+            if url and not re.fullmatch(r"https?://[^\s/]+(/\S*)?", url):
+                raise HttpError(400, "the website must start with http:// or https://")
+            try:
+                specs = parse_feature(text, url=url)
+            except GherkinError as exc:
+                raise HttpError(400, str(exc)) from None
+            written = write_specs(specs, files.drafts, url=url or "https://example.com/", source="a Cucumber feature")
+            return 201, {**self._project_view(project, files), "imported": len(written)}
         if rest == "POST /generate":
             url = str(body.get("url", "")).strip()
             if not re.fullmatch(r"https?://[^\s/]+(/\S*)?", url):
