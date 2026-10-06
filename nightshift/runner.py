@@ -744,7 +744,8 @@ _UNFINISHED_FORM_JS = r"""
   if (!form) return [];
   const nameOf = (el) => clean([...(el.labels || [])].map((l) => l.innerText).join(' '))
     || clean(el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.name);
-  const shown = (el) => el.getBoundingClientRect().width > 0 && getComputedStyle(el).visibility !== 'hidden';
+  const shown = (el) => (!el.checkVisibility || el.checkVisibility()) && el.getBoundingClientRect().width > 0
+    && getComputedStyle(el).visibility !== 'hidden';
   const gaps = [];
   for (const el of form.querySelectorAll('input, textarea')) {
     if (!shown(el) && !(el.type === 'checkbox' && el.labels && el.labels.length)) continue;

@@ -167,7 +167,8 @@ async function runDetail(section, slug, id) {
       <td>${[["report", "Report"], ["bug", "Bug report"]].filter(([k]) => t.links[k])
         .map(([k, label]) => `<a href="${esc(t.links[k])}" target="_blank" rel="noopener">${label}</a>`).join(" · ")}</td>
     </tr>`).join("");
-  const reports = [["client_report", "Client report"], ["report", "Full report"], ["log", "Log"]].filter(([k]) => r.links[k])
+  const reports = [["client_report", "Client report"], ["report", "Full report"], ["findings", "Findings"], ["log", "Log"]]
+    .filter(([k]) => r.links[k])
     .map(([k, label]) => `<a href="${esc(r.links[k])}" target="_blank" rel="noopener">${label}</a>`).join(" · ");
   section.innerHTML = `
     <p><a href="#/p/${esc(slug)}/runs">← All runs</a></p>
@@ -183,7 +184,11 @@ async function runDetail(section, slug, id) {
     ${d.issues.length ? `<p>Filed: ${d.issues.map((i) => `<a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.key)}</a>`).join(", ")}</p>` : ""}
     <p class="error" id="run-error" role="alert"></p>
     <table><thead><tr><th>Test</th><th>Result</th><th>What happened</th><th>Reports</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="4" class="muted">No test results: the run did not finish.</td></tr>'}</tbody></table>`;
+      <tbody>${rows || `<tr><td colspan="4" class="muted">${
+        r.trigger === "explore" ? "An exploration has findings, not test results: open Findings or the Full report above."
+        : r.trigger === "generate" ? "Generating writes draft tests: review them on the Tests tab."
+        : ["queued", "running"].includes(r.status) ? "Still running…"
+        : esc(r.message || "No test results: the run did not finish.")}</td></tr>`}</tbody></table>`;
   const error = document.getElementById("run-error");
   const act = (buttonId, path, done) => document.getElementById(buttonId)?.addEventListener("click", async (event) => {
     event.target.disabled = true;

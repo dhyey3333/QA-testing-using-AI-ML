@@ -77,6 +77,10 @@ _OBSERVE_JS = r"""
 
   const isVisible = (el) => {
     if (el.type === 'hidden') return false;
+    // Content inside a closed <details> (an accordion, "More options") still has a size in Chrome,
+    // because it is hidden with content-visibility. checkVisibility() knows. Found by running
+    // Nightshift on its own web app: fields in a collapsed section were listed as clickable.
+    if (el.checkVisibility && !el.checkVisibility()) return false;
     const r = el.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) return false;
     const s = getComputedStyle(el);

@@ -22,6 +22,7 @@ _PAGE_CHECKS_JS = r"""
 () => {
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
   const visible = (el) => {
+    if (el.checkVisibility && !el.checkVisibility()) return false;  // inside a closed <details>, say
     const r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
   };

@@ -266,3 +266,13 @@ def test_what_a_form_field_holds_can_be_quoted_but_passwords_never(page):
     text = observe(page).text
     assert "[field] Quantity: 2" in text and "[field] Size: M" in text
     assert "hunter2-x" not in text and "Password" not in text.split("[field]", 1)[-1]
+
+
+def test_fields_in_a_closed_details_section_are_not_listed_until_it_opens(page):
+    # Found by running Nightshift on its own web app: Chrome gives a collapsed <details>'s
+    # contents a size, so they looked clickable and drew false "no label" warnings.
+    page.set_content('<details><summary>More options</summary><label>Step limit <input name="limit"></label></details>')
+    assert not any("Step limit" in e.label for e in observe(page).elements)
+    page.click("summary")
+    assert any("Step limit" in e.label for e in observe(page).elements)
+

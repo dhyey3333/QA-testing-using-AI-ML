@@ -45,6 +45,7 @@ class Runner:
         self._wake = threading.Condition()
         self._procs: dict[int, subprocess.Popen] = {}
         self._closing = False
+        self._enqueue_lock = threading.Lock()
 
     def files(self, project: dict) -> ProjectFiles:
         return ProjectFiles(self.data, project["slug"])
@@ -63,6 +64,12 @@ class Runner:
             self.stop(run_id)
 
     def enqueue(self, project: dict, trigger: str, user_id: int | None = None, params: dict | None = None) -> int:
+        # One check-and-add at a time: a double-click on Run now (two requests at once) must not
+        # slip two runs of one project past the "already running" check.
+        with self._enqueue_lock:
+            return self._enqueue(project, trigger, user_id, params)
+
+    def _enqueue(self, project: dict, trigger: str, user_id: int | None, params: dict | None) -> int:
         if self.store.active_run(project["id"]):
             raise Busy("a run of this project is already queued or running")
         files = self.files(project)

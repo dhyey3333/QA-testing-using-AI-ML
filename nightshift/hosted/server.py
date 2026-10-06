@@ -39,6 +39,7 @@ COOKIE = "ns_session"
 LOGIN_LIMIT = 5
 LOGIN_WINDOW_S = 15 * 60
 MAX_BODY = 300_000
+DRAIN_LIMIT = 5_000_000  # an oversized body up to this size is read and dropped, to answer 413 cleanly
 
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
                  ".css": "text/css; charset=utf-8", ".json": "application/json", ".jpg": "image/jpeg",
@@ -407,10 +408,14 @@ def make_handler(app: App):
         def _check_change(self) -> None:
             if self.headers.get("X-Nightshift") != "1":
                 raise HttpError(403, "missing the X-Nightshift header")
-            origin = self.headers.get("Origin")
+            origin = (self.headers.get("Origin") or "").rstrip("/")
             if origin:
-                expected = app.public_url or f"http://{self.headers.get('Host', '')}"
-                if origin.rstrip("/") != expected:
+                host = self.headers.get("Host", "")
+                # With no --public-url, this site is whatever host the browser asked for, over http or
+                # https: behind an HTTPS tunnel the browser says https://<tunnel host> while the app
+                # itself speaks plain http. Found on first use of a quick tunnel: every change was refused.
+                allowed = {app.public_url} if app.public_url else {f"http://{host}", f"https://{host}"}
+                if origin not in allowed:
                     raise HttpError(403, "this request came from another site")
 
         def _token(self) -> str:
@@ -430,8 +435,17 @@ def make_handler(app: App):
             return peer
 
         def _body(self) -> dict:
-            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                raise HttpError(400, "bad Content-Length") from None
             if length > MAX_BODY:
+                # Read (and drop) a moderately oversized body so the client gets the 413 instead of a
+                # reset connection; past DRAIN_LIMIT, just close: nobody legitimately sends that much.
+                self.close_connection = True
+                if length <= DRAIN_LIMIT:
+                    while length > 0:
+                        length -= len(self.rfile.read(min(length, 65_536)) or b"x" * length)
                 raise HttpError(413, "too large")
             raw = self.rfile.read(length) if length else b"{}"
             try:
