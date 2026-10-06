@@ -373,3 +373,36 @@ Chosen by the user from the comparison with BlinqIO, testers.ai, Mabl, Katalon, 
 | False passes | 0 | 0 |
 
 **Tests:** 201 pass, plus 1 new for the plainer wording when a site is unreachable.
+
+## Bug hunt
+
+Two passes, three ways of looking (D45). **Ten bugs found and fixed,** each with a test (commits 2f95ab9 and fe6e51b, 207 tests pass).
+
+| Found by | Bug |
+|---|---|
+| Nightshift exploring its own web app | Fields in a closed `<details>` counted as visible (Chrome gives them a size), so the agent could pick hidden controls and the a11y check warned falsely |
+| Nightshift exploring its own dashboard | Status polls stalled up to 2 s while the model server was busy |
+| API probe script | Behind an HTTPS tunnel without `--public-url`, every change was refused |
+| API probe script | An oversized upload reset the connection instead of answering 413 |
+| Reading the code | A double-click on Run now could queue two runs of one project |
+| Reading the code | An explore or generate run's details page said the run hadn't finished |
+| Reading the code | Expired login sessions were never deleted |
+| `git status` after the tests | A read-only (`--no-record`) run wrote visual baselines into the repo |
+| Earlier, during real use | A relative `--data` folder, a refused request seen as a dropped connection, a bot firewall's block page reported as a bug |
+
+**Checked and fine:**
+- Raw path tricks on `/static/`, `/files/` and the API are refused.
+- Junk and non-object JSON bodies get clean 400s.
+- Logged-out sessions can't be reused.
+- Bad nightly times and duplicate test names are refused.
+- Hindi, blank, 300-character and `<script>` client names are handled.
+
+**Benchmarks after the fixes:**
+
+| | Result |
+|---|---|
+| Shop: bugs / false alarms | 23 / 23, 0 / 13 |
+| Clinic (holdout) | 8 / 8, 1 / 5 (the same `cancel-appointment`) |
+| Public sites | **28 / 28** reachable sites passed (Parabank's server had recovered); 3 unreachable (ENV_ISSUE) |
+| False passes | 0 (every pass has quoted proof) |
+| Median run time, public | 15 s |

@@ -430,3 +430,16 @@ uncaught error, the covering element, the judge's finding, the agent's own bug t
 app's refused API calls, now recorded as warnings. When the agent described the bug itself
 ("Adding Clay Kulhad to the cart does nothing"), its words lead, because they are sharper than
 "the cart doesn't list it".
+
+## D45. Bug hunts: probe the API, read the risky paths, and let Nightshift test itself
+Two passes found ten bugs that 200 tests didn't. Three ways of looking each found different ones:
+- **A probe script** (races, junk and oversized bodies, path tricks, an HTTPS tunnel) found the
+  tunnel-origin refusal and the reset connection on oversized uploads.
+- **Reading the risky paths** found a double-click race on Run now, an explore run's details page
+  claiming it hadn't finished, expired sessions never deleted, and a read-only CI run writing
+  visual baselines into the repo (noticed from an untracked folder in git status).
+- **`nightshift explore` on its own web app and dashboard** found fields in a closed <details>
+  counted as visible (Chrome gives them a size), and a dashboard that stalled while the model
+  server was busy.
+Each fix has a test, so the bug stays found. Running Nightshift on itself is now part of looking
+for bugs: it uses the product the way a customer does.
