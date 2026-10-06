@@ -24,6 +24,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
+import httpx
+
+from ..defects import analyse, load_results, record_issue
+from ..jira import JiraConfig, JiraError, file_jira_issues
+from ..notify import post_slack, slack_payload
+from ..visual import Baselines
 from .files import ProjectFiles
 from .jobs import Busy, Runner
 from .store import SESSION_DAYS, Store, StoreError
@@ -215,6 +221,11 @@ class App:
         if rest == "POST /runs":
             run_id = self.runner.enqueue(project, "manual", user["id"])
             return 201, {"run": self._run_view(project, files, self.store.run(run_id))}
+        if m := re.fullmatch(r"(GET|POST) /runs/(\d+)(/accept-visual|/jira|/slack)?", rest):
+            run = self.store.run(int(m[2]))
+            if run is None or run["project_id"] != project["id"]:
+                raise HttpError(404, "no such run")
+            return self._run_detail(project, files, run, m[1], m[3] or "", user)
         if m := re.fullmatch(r"POST /runs/(\d+)/stop", rest):
             run = self.store.run(int(m[1]))
             if run is None or run["project_id"] != project["id"]:
@@ -222,6 +233,67 @@ class App:
             self.runner.stop(run["id"])
             return 200, {"run": self._run_view(project, files, self.store.run(run["id"]))}
         raise HttpError(404, "not found")
+
+    def _run_detail(self, project: dict, files: ProjectFiles, run: dict, method: str, action: str,
+                    user: dict) -> tuple[int, object]:
+        """A run's tests: result, probable cause, visual check; and what can be done with them."""
+        folder = files.run_folder(run["id"]) / run["run_dir"] if run["run_dir"] else None
+        has_results = folder is not None and (folder / "summary.json").exists()
+        results = load_results(folder) if has_results else []
+        secrets = files.secrets()
+        jira = JiraConfig.from_mapping(secrets)
+        if method == "POST" and action == "/accept-visual":
+            baselines = Baselines(files.root / "visual")
+            accepted = 0
+            for result in results:
+                if result.visual.get("status") in ("changed", "visual bug"):
+                    current = Path(result.out_dir) / result.visual["files"]["current"]
+                    baselines.accept(current, result.spec, result.browser, result.viewport)
+                    accepted += 1
+            return 200, {"accepted": accepted}
+        if method == "POST" and action == "/jira":
+            if jira is None:
+                raise HttpError(400, "set JIRA_URL, JIRA_PROJECT, JIRA_EMAIL and JIRA_API_TOKEN under Settings → Secrets first")
+            defects = analyse(results, files.runs)
+            if not defects:
+                return 200, {"filed": []}
+            try:
+                filed = file_jira_issues(defects, folder, jira)
+            except (JiraError, httpx.HTTPError) as exc:
+                raise HttpError(502, f"Jira refused it: {exc}") from None
+            for defect_id, _, key in filed:
+                record_issue(folder, defect_id, "jira", key, f"{jira.url}/browse/{key}")
+            return 200, {"filed": [{"defect": d, "action": a, "key": k, "url": f"{jira.url}/browse/{k}"} for d, a, k in filed]}
+        if method == "POST" and action == "/slack":
+            webhook = secrets.get("SLACK_WEBHOOK_URL", "")
+            if not webhook:
+                raise HttpError(400, "set SLACK_WEBHOOK_URL under Settings → Secrets first")
+            link = f"{self.public_url}/#/p/{project['slug']}/run/{run['id']}" if self.public_url else ""
+            try:
+                post_slack(webhook, slack_payload(results, folder, link))
+            except httpx.HTTPError as exc:
+                raise HttpError(502, f"Slack refused it ({type(exc).__name__})") from None
+            return 200, {"posted": True}
+        if method != "GET" or action:
+            raise HttpError(404, "not found")
+        base = f"/files/{project['slug']}/{run['id']}/{run['run_dir']}"
+        issues = _issues(folder) if folder else {}
+        tests = []
+        for result in results:
+            spec_dir = Path(result.out_dir).relative_to(folder).as_posix() if has_results else ""
+            links = {"report": f"{base}/{spec_dir}/report.html"}
+            if (Path(result.out_dir) / "bug.md").exists():
+                links["bug"] = f"{base}/{spec_dir}/bug.md"
+            visual = {k: result.visual.get(k) for k in ("status", "what", "changed")} if result.visual else {}
+            if result.visual.get("files", {}).get("sides"):
+                visual["picture"] = f"{base}/{spec_dir}/{result.visual['files']['sides']}"
+            tests.append({"spec": result.spec, "verdict": result.verdict, "category": result.category,
+                          "reason": result.reason, "cause": result.cause, "mode": result.mode,
+                          "duration_s": result.duration_s, "visual": visual, "links": links})
+        order = {"fail": 0, "error": 1, "flaky": 2, "pass": 3}
+        tests.sort(key=lambda t: (order.get(t["verdict"], 4), t["spec"]))
+        return 200, {"run": self._run_view(project, files, run), "tests": tests, "issues": list(issues.values()),
+                     "jira": jira is not None, "slack": bool(secrets.get("SLACK_WEBHOOK_URL"))}
 
     def file(self, path: str, user: dict | None) -> Path:
         """/files/<project>/<run id>/<path inside that run's folder>"""
@@ -265,6 +337,13 @@ class App:
         keep = ("id", "trigger", "status", "queued", "started", "finished", "passed", "failed", "flaky", "errors", "message")
         target = json.loads(run["params"]).get("url", "") if run.get("params") else ""
         return {**{key: run[key] for key in keep}, "links": links, "target": target}
+
+
+def _issues(folder: Path) -> dict:
+    try:
+        return json.loads((folder / "issues.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
 
 
 def _admin(user: dict) -> None:

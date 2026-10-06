@@ -44,12 +44,17 @@ class JiraConfig:
 
     @classmethod
     def from_env(cls) -> JiraConfig | None:
-        url, project = site_url(os.getenv("JIRA_URL", "")), _clean(os.getenv("JIRA_PROJECT", ""))
-        token = _clean(os.getenv("JIRA_API_TOKEN") or os.getenv("JIRA_TOKEN") or "")
+        return cls.from_mapping(os.environ)
+
+    @classmethod
+    def from_mapping(cls, values) -> JiraConfig | None:
+        """From JIRA_* settings: the environment, or a hosted project's secrets."""
+        url, project = site_url(values.get("JIRA_URL", "")), _clean(values.get("JIRA_PROJECT", ""))
+        token = _clean(values.get("JIRA_API_TOKEN") or values.get("JIRA_TOKEN") or "")
         if not (url and project and token):
             return None
-        return cls(url=url, project=project, email=_clean(os.getenv("JIRA_EMAIL", "")), token=token,
-                   issue_type=(os.getenv("JIRA_ISSUE_TYPE") or "Bug").strip())
+        return cls(url=url, project=project, email=_clean(values.get("JIRA_EMAIL", "")), token=token,
+                   issue_type=(values.get("JIRA_ISSUE_TYPE") or "Bug").strip())
 
     def client(self) -> httpx.Client:
         # Cloud: basic auth with email + API token. Data Center: a bearer personal access token.

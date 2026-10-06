@@ -116,7 +116,7 @@ async function projectPage(slug, tab, extra) {
   const p = data.project;
   const active = data.runs.find((r) => ["queued", "running"].includes(r.status));
   const tabs = [["runs", "Runs"], ["tests", `Tests (${data.specs.length})`], ...(me.admin ? [["settings", "Settings"]] : [])]
-    .map(([key, label]) => `<a href="#/p/${esc(slug)}/${key}" class="${tab === key ? "on" : ""}">${label}</a>`).join("");
+    .map(([key, label]) => `<a href="#/p/${esc(slug)}/${key}" class="${tab === key || (tab === "run" && key === "runs") ? "on" : ""}">${label}</a>`).join("");
   view.innerHTML = `
     <div class="row spread">
       <div><h1>${esc(p.client)}</h1>
@@ -139,16 +139,68 @@ async function projectPage(slug, tab, extra) {
     try { await api("POST", `/api/projects/${slug}/runs/${event.target.dataset.run}/stop`); route(); } catch (exc) { error.textContent = exc.message; }
   });
   const section = document.getElementById("tab");
+  if (tab === "run") return runDetail(section, slug, extra);
   if (tab === "tests") return testsTab(section, slug, data, extra);
   if (tab === "settings" && me.admin) return settingsTab(section, slug, data);
   runsTab(section, slug, data, Boolean(active));
   if (active) poll = setTimeout(route, 4000);  // follow the run until it finishes
 }
 
+const VISUAL = { baseline: "saved as the approved look", same: "looks as approved", changed: "looks different (judged harmless)",
+  "visual bug": "visual bug" };
+
+// One run: every test with its result, why it failed, and its visual check; and what to do next.
+async function runDetail(section, slug, id) {
+  const token = routeToken;
+  const d = await api("GET", `/api/projects/${slug}/runs/${id}`);
+  if (stale(token)) return;
+  const r = d.run;
+  const changes = d.tests.filter((t) => ["changed", "visual bug"].includes(t.visual.status)).length;
+  const rows = d.tests.map((t) => `
+    <tr>
+      <td class="mono">${esc(t.spec)}${t.mode === "replay" ? '<div class="muted">replayed, no AI</div>' : ""}</td>
+      <td><span class="badge ${t.verdict === "pass" ? "done" : "failed"}">${esc(t.verdict)}</span>
+        ${t.category ? `<div class="muted">${esc(t.category)}</div>` : ""}</td>
+      <td>${t.cause ? esc(t.cause) : t.verdict === "pass" ? '<span class="muted">Every expected result was proven on the page.</span>' : esc(t.reason)}
+        ${t.visual.status ? `<div class="muted">Visual check: ${esc(VISUAL[t.visual.status] || t.visual.status)}${t.visual.what ? `: ${esc(t.visual.what)}` : ""}
+          ${t.visual.picture ? ` · <a href="${esc(t.visual.picture)}" target="_blank" rel="noopener">compare</a>` : ""}</div>` : ""}</td>
+      <td>${[["report", "Report"], ["bug", "Bug report"]].filter(([k]) => t.links[k])
+        .map(([k, label]) => `<a href="${esc(t.links[k])}" target="_blank" rel="noopener">${label}</a>`).join(" · ")}</td>
+    </tr>`).join("");
+  const reports = [["client_report", "Client report"], ["report", "Full report"], ["log", "Log"]].filter(([k]) => r.links[k])
+    .map(([k, label]) => `<a href="${esc(r.links[k])}" target="_blank" rel="noopener">${label}</a>`).join(" · ");
+  section.innerHTML = `
+    <p><a href="#/p/${esc(slug)}/runs">← All runs</a></p>
+    <h2>Run #${r.id} · ${esc(r.trigger)} · ${esc(when(r.queued))}</h2>
+    <div class="row spread"><div class="counts">${counts(r)}</div><div>${reports}</div></div>
+    <div class="row">
+      ${changes ? `<button type="button" class="secondary" id="accept-visual">Accept the new look (${changes})</button>` : ""}
+      <button type="button" class="secondary" id="jira" ${d.jira ? "" : "disabled"}>File bugs in Jira</button>
+      <button type="button" class="secondary" id="slack" ${d.slack ? "" : "disabled"}>Post to Slack</button>
+    </div>
+    ${d.jira && d.slack ? "" : `<p class="muted">To file in Jira or post to Slack, add these under Settings → Secrets:
+      ${d.jira ? "" : "JIRA_URL, JIRA_PROJECT, JIRA_EMAIL and JIRA_API_TOKEN"}${!d.jira && !d.slack ? "; " : ""}${d.slack ? "" : "SLACK_WEBHOOK_URL"}.</p>`}
+    ${d.issues.length ? `<p>Filed: ${d.issues.map((i) => `<a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.key)}</a>`).join(", ")}</p>` : ""}
+    <p class="error" id="run-error" role="alert"></p>
+    <table><thead><tr><th>Test</th><th>Result</th><th>What happened</th><th>Reports</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4" class="muted">No test results: the run did not finish.</td></tr>'}</tbody></table>`;
+  const error = document.getElementById("run-error");
+  const act = (buttonId, path, done) => document.getElementById(buttonId)?.addEventListener("click", async (event) => {
+    event.target.disabled = true;
+    error.textContent = "";
+    try { done(await api("POST", `/api/projects/${slug}/runs/${id}/${path}`)); }
+    catch (exc) { error.textContent = exc.message; event.target.disabled = false; }
+  });
+  act("accept-visual", "accept-visual", (res) => { error.textContent = ""; alert(`${res.accepted} new look(s) approved. Later runs compare against them.`); route(); });
+  act("jira", "jira", (res) => { alert(res.filed.length ? `Filed: ${res.filed.map((f) => f.key).join(", ")}` : "No bugs to file in this run."); route(); });
+  act("slack", "slack", () => alert("Posted to Slack."));
+  if (["queued", "running"].includes(r.status)) poll = setTimeout(route, 4000);
+}
+
 function runsTab(section, slug, data, busy) {
   const rows = data.runs.map((run) => `
     <tr>
-      <td>#${run.id}</td>
+      <td><a href="#/p/${esc(slug)}/run/${run.id}">#${run.id}</a></td>
       <td>${esc(when(run.queued))}<div class="muted">${esc(run.trigger)} · ${esc(took(run))}</div>
         ${run.target ? `<div class="muted mono">${esc(run.target)}</div>` : ""}</td>
       <td><span class="badge ${esc(run.status)}">${esc(run.status)}</span></td>

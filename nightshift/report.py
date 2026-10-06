@@ -48,6 +48,7 @@ ol.steps { list-style:none; padding:0; margin:0; display:grid; gap:10px; }
 ol.steps li { display:grid; grid-template-columns:minmax(0,240px) minmax(0,1fr); gap:14px; background:var(--panel);
   border:1px solid var(--line); border-radius:10px; padding:10px; }
 ol.steps img { width:100%; border-radius:6px; border:1px solid var(--line); display:block; }
+.shots { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:12px; } .shots figure { margin:0; } .shots img { width:100%; border-radius:6px; border:1px solid var(--line); display:block; } .shots figcaption { color:var(--muted); font-size:.85rem; }
 .desc { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:13px; overflow-wrap:anywhere; margin:0 0 4px; }
 .thought { color:var(--muted); margin:0 0 6px; }
 .chip { display:inline-block; font-size:12px; padding:1px 8px; border-radius:6px; border:1px solid var(--line); color:var(--muted); }
@@ -101,6 +102,7 @@ def spec_report_html(result: RunResult, spec: Spec) -> str:
         '<p><a href="../index.html">All specs in this run</a></p>',
         f"<h1>{pill(result.verdict)} {escape(result.spec)}</h1>",
         f'<p class="reason">{escape(result.reason)}</p>',
+        *([f'<p class="panel"><strong>Probable cause:</strong> {escape(result.cause)}</p>'] if result.cause else []),
         '<dl class="meta panel">' + "".join(f"<div><dt>{k}</dt><dd>{v}</dd></div>" for k, v in meta) + "</dl>",
     ]
 
@@ -125,6 +127,8 @@ def spec_report_html(result: RunResult, spec: Spec) -> str:
         body.append("<h2>Expected results</h2><ul class=\"plain panel\">"
                     + "".join(f"<li>{escape(e)}</li>" for e in spec.expect) + "</ul>")
 
+    if result.visual:
+        body.append(visual_html(result.visual))
     if result.app_errors:
         body.append('<h2>Errors the browser saw</h2><ul class="plain panel">'
                     + "".join(f"<li>{escape(e)}</li>" for e in result.app_errors) + "</ul>")
@@ -145,6 +149,23 @@ def spec_report_html(result: RunResult, spec: Spec) -> str:
     body.append(f'<h2>The spec</h2><div class="panel"><ol>{steps}</ol>'
                 f'<p class="muted">{escape(str(spec.path or ""))}</p></div>')
     return page_html(f"{result.spec}: {VERDICT_LABEL.get(result.verdict, result.verdict)}", "\n".join(body))
+
+
+VISUAL_LABEL = {"baseline": "saved as the approved look (the first passing run)", "same": "looks the same as approved",
+                "changed": "looks different, judged an expected change", "visual bug": "visual bug"}
+
+
+def visual_html(visual: dict) -> str:
+    files = visual.get("files") or {}
+    pictures = "".join(f'<figure><a href="{escape(files[key])}"><img src="{escape(files[key])}" alt="{label}"></a>'
+                       f"<figcaption>{label}</figcaption></figure>"
+                       for key, label in (("sides", "Approved (left) and today (right), changes boxed"),
+                                          ("diff", "Today, changed pixels in red"), ("current", "Today"))
+                       if key in files and (key != "current" or "sides" not in files))
+    what = f"<p>{escape(visual['what'])}</p>" if visual.get("what") else ""
+    share = f" ({visual['changed']:.1%} of pixels changed)" if visual.get("changed") else ""
+    return (f'<h2>Visual check</h2><div class="panel"><p><strong>{escape(VISUAL_LABEL.get(visual["status"], visual["status"]))}'
+            f"</strong>{share}</p>{what}<div class=\"shots\">{pictures}</div></div>")
 
 
 def _evidence_cell(check: Check) -> str:
@@ -246,6 +267,8 @@ def bug_report(result: RunResult, spec: Spec) -> str:
         ("Severity (suggested)", severity(result)),
     ]
     lines += ["| | |", "|---|---|", *[f"| {k} | {v} |" for k, v in rows], ""]
+    if result.cause:
+        lines += ["## Probable cause", "", result.cause, ""]
 
     lines += ["## Steps to reproduce", ""]
     lines += [f"{n}. {text}" for n, text in enumerate(reproduction(result), 1)]

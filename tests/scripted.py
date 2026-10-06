@@ -17,7 +17,10 @@ class ScriptedModel:
 
     name = "scripted"
 
-    def __init__(self, script=(), evidence=(), holds: bool | None = None, forbid_agent: bool = False):
+    def __init__(self, script=(), evidence=(), holds: bool | None = None, forbid_agent: bool = False,
+                 visual: dict | None = None):
+        self.visual = visual  # the answer to a visual check; None: this model can't look at pictures
+        self.looks = 0
         self.script = list(script)
         self.evidence = list(evidence)
         self.holds = holds
@@ -58,6 +61,12 @@ class ScriptedModel:
 
     def ask(self, system, user, max_tokens=1500):
         raise NotImplementedError
+
+    def look(self, system, user, image, max_tokens=300):
+        if self.visual is None:
+            raise AttributeError("this scripted model has no visual answer")
+        self.looks += 1
+        return self.visual
 
 
 def find(observation: Observation, target: str) -> Element | None:

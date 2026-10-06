@@ -92,6 +92,9 @@ def listen(page: Page, url: str, sink: Sink, js_errors: str = "fail") -> None:
             sink.app_errors.append(f"HTTP {response.status} on {response.request.method} {path}")
         elif response.status in (404, 410):
             warn(sink, f"broken link: HTTP {response.status} on {response.request.method} {path}")
+        elif response.status >= 400 and response.request.resource_type in ("xhr", "fetch"):
+            # The app's own API refusing a call (a 401, a 422) is often why a flow went wrong later.
+            warn(sink, f"api error: HTTP {response.status} on {response.request.method} {path}")
 
     def on_request_finished(request) -> None:
         try:

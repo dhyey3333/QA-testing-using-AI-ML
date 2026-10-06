@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 
 from nightshift import cli
@@ -339,3 +340,66 @@ def test_ai_written_tests_wait_as_drafts_until_a_person_accepts_them(hosted):
     files.save_draft("buy-a-top", SPEC.replace("name: smoke", "name: buy-a-top"))
     clash = admin.post(f"/api/projects/{slug}/drafts/buy-a-top/accept")
     assert clash.status_code == 400 and "already a test" in clash.json()["error"]
+
+
+# --- a run's details: why each test failed, the visual check, Jira and Slack ----------------
+
+def _fake_run(hosted, slug, visual_status="changed"):
+    """A finished run on disk with one passing test whose screen changed."""
+    project = hosted.store.project(slug)
+    files = ProjectFiles(hosted.data, slug)
+    run_id = hosted.store.add_run(project["id"], "manual")
+    folder = files.run_folder(run_id) / "20310105-020000"
+    test_dir = folder / "checkout"
+    test_dir.mkdir(parents=True)
+    (test_dir / "visual-current.png").write_bytes(b"\x89PNG today")
+    result = {"spec": "checkout", "url": "https://shop.test/", "model": "m", "verdict": "pass", "out_dir": str(test_dir),
+              "browser": "chromium", "viewport": "1280x800", "steps": [], "checks": [],
+              "visual": {"status": visual_status, "what": "the prices are missing", "changed": 0.01,
+                         "files": {"current": "visual-current.png", "sides": "visual-sides.jpg"}}}
+    (test_dir / "result.json").write_text(json.dumps(result), encoding="utf-8")
+    (folder / "summary.json").write_text(json.dumps([{"spec": "checkout", "verdict": "pass", "out_dir": str(test_dir)}]),
+                                         encoding="utf-8")
+    hosted.store.update_run(run_id, status="done", run_dir="20310105-020000", passed=1)
+    return run_id, files
+
+
+def test_a_runs_page_lists_each_test_with_its_visual_check_and_a_new_look_can_be_approved(hosted):
+    admin = client(hosted, ADMIN)
+    slug = admin.post("/api/projects", json={"client": "Acme"}).json()["project"]["slug"]
+    run_id, files = _fake_run(hosted, slug, "visual bug")
+    detail = admin.get(f"/api/projects/{slug}/runs/{run_id}").json()
+    test = detail["tests"][0]
+    assert (test["spec"], test["verdict"], test["visual"]["status"]) == ("checkout", "pass", "visual bug")
+    assert test["visual"]["picture"].endswith("/checkout/visual-sides.jpg") and detail["jira"] is False
+    assert admin.post(f"/api/projects/{slug}/runs/{run_id}/accept-visual").json() == {"accepted": 1}
+    assert (files.root / "visual" / "checkout@chromium-1280x800.png").read_bytes() == b"\x89PNG today"
+
+
+def test_jira_and_slack_use_the_projects_secrets(hosted):
+    received = []
+
+    class Webhook(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802 (http.server's name)
+            received.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    hook = ThreadingHTTPServer(("127.0.0.1", 0), Webhook)
+    threading.Thread(target=hook.serve_forever, daemon=True).start()
+    try:
+        admin = client(hosted, ADMIN)
+        slug = admin.post("/api/projects", json={"client": "Acme"}).json()["project"]["slug"]
+        run_id, _ = _fake_run(hosted, slug)
+        refused = admin.post(f"/api/projects/{slug}/runs/{run_id}/jira")
+        assert refused.status_code == 400 and "JIRA_URL" in refused.json()["error"]
+        assert admin.post(f"/api/projects/{slug}/runs/{run_id}/slack").status_code == 400
+        admin.put(f"/api/projects/{slug}/secrets/SLACK_WEBHOOK_URL", json={"value": f"http://127.0.0.1:{hook.server_port}/hook"})
+        assert admin.post(f"/api/projects/{slug}/runs/{run_id}/slack").status_code == 200
+        assert received and "1 pass" in received[0]["text"]
+    finally:
+        hook.shutdown()
+        hook.server_close()

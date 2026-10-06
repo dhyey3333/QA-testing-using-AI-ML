@@ -37,6 +37,7 @@ from .judge import is_on_page, judge_page, normalize
 from .locators import describe_target, resolve
 from .model import Model, ModelError, usage_snapshot
 from .observe import DEEP_JS, JPEG_QUALITY, Observation, block_ads, observe, screenshot, watch_form_validation
+from .cause import probable_cause
 from .outcome import categorize, environment_problem
 from .prompts import Context, mask, typed_placeholders
 from .recording import Recording, RecordingStore
@@ -45,6 +46,7 @@ from .result import PENDING, Check, RunResult, Step
 from .sessions import Sessions
 from .spec import Spec
 from .totp import SECRET_KEY, totp
+from .visual import Baselines, check_screen
 
 VIEWPORT = {"width": 1280, "height": 800}
 STUCK_REPEATS = 3  # the same action with no effect this many times in a row is a bug
@@ -69,6 +71,8 @@ class RunOptions:
     context: dict = field(default_factory=dict)  # extra browser-context options, e.g. a device profile
     js_errors: str = "fail"  # "warn": uncaught JS errors are warnings, not failures (a spec's js_errors wins)
     block_ads: bool = True  # ad networks' requests never load (observe.block_ads)
+    visual: str = "warn"  # the visual check with saved paths: off | warn | fail (a spec's visual wins)
+    update_visual: bool = False  # make this run's final screens the approved ones
     sessions: Sessions | None = None  # login sessions shared between the specs of one run (sessions.py)
 
 
@@ -121,6 +125,7 @@ def run_with_retries(
                 "duration_s": a.duration_s, "out_dir": a.out_dir} for a in attempts]
     final = _combine(attempts)
     final.category = categorize(final)
+    final.cause = probable_cause(final)
     final.attempts = history
     final.model_calls = sum(a.model_calls for a in attempts)
     final.prompt_tokens = sum(a.prompt_tokens for a in attempts)
@@ -214,6 +219,18 @@ def run_spec(
         with suppress(PlaywrightError):
             final = observe(run.page)
             result.final_url, result.final_text = final.url, mask(final.text, spec.data)[:6_000]
+        visual_mode = spec.visual or options.visual
+        if visual_mode != "off" and options.recordings is not None and result.verdict == "pass" \
+                and not result.app_errors:
+            # Baselines live beside the saved paths (.nightshift/visual, ci/visual, a project's visual/).
+            baselines = Baselines(options.recordings.root.parent / "visual")
+            baseline = baselines.path(spec.name, result.browser, result.viewport)
+            if options.update_visual:
+                baseline.unlink(missing_ok=True)  # this run's screen becomes the approved one
+            with suppress(PlaywrightError):
+                check = check_screen(run.page, context, model, baseline=baseline, out_dir=out_dir,
+                                     spec_name=spec.name, expectations=spec.expect)
+                result.visual = check.to_json()
         video = page.video if options.video else None
         if options.sessions is not None and options.sessions.wants(spec.name):
             if result.verdict == "pass" and not result.app_errors:
@@ -231,10 +248,21 @@ def run_spec(
     # A crash the user never saw is still a bug.
     if result.verdict == "pass" and result.app_errors:
         result.verdict, result.reason = "fail", result.app_errors[0]
+    if result.visual.get("status") == "visual bug":
+        message = f"visual bug: {result.visual['what']}"
+        if (spec.visual or options.visual) == "fail" and result.verdict == "pass":
+            result.verdict, result.reason = "fail", message
+        else:
+            result.warnings.insert(0, f"{message} (compare the screens in visual-sides.jpg)")
+    elif result.visual.get("status") == "changed":
+        result.warnings.insert(0, f"the final screen looks different from the approved one "
+                                  f"({result.visual['changed']:.1%} of pixels): {result.visual['what']}. "
+                                  "If that's intended, accept it as the new look")
     # A site that was down, or a bot check in the way, tested nothing: not a failure of the app.
     if result.verdict in ("fail", "error") and (problem := environment_problem(result)):
         result.verdict, result.reason = "error", f"environment: {problem}"
     result.category = categorize(result)
+    result.cause = probable_cause(result)
 
     usage_after = usage_snapshot(model)
     result.model_calls = usage_after.get("calls", 0) - usage_before.get("calls", 0)

@@ -62,6 +62,8 @@ class Spec:
     js_errors: str = ""
     # Start already logged in: the browser session (cookies, storage) the named spec ends with.
     session_from: str = ""
+    # The visual check of the final screen: "off", "warn" (a visual bug is a warning) or "fail".
+    visual: str = ""
 
     def with_base_url(self, base_url: str) -> Spec:
         """Point the spec at another deployment (staging, a CI preview), keeping its path.
@@ -151,6 +153,9 @@ def load_spec(path: Path, expand_env: bool = True) -> Spec:
     if js_errors not in ("", "fail", "warn"):
         raise SpecError(f"{path}: js_errors must be fail or warn")
     session_from = str(raw.get("session_from") or "")
+    visual = str(raw.get("visual") or "").lower()
+    if visual not in ("", "off", "warn", "fail"):
+        raise SpecError(f"{path}: visual must be off, warn or fail")
 
     return Spec(
         name=str(raw.get("name") or path.stem),
@@ -171,6 +176,7 @@ def load_spec(path: Path, expand_env: bool = True) -> Spec:
         sms_inbox=sms_inbox,
         js_errors=js_errors,
         session_from=session_from,
+        visual=visual,
     )
 
 

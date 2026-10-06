@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Visual holdout | Kulhad &amp; Co.</title>
+<style>
+  body { margin: 0; font: 15px/1.5 Georgia, serif; color: #1f2a37; background: #eef3f7; }
+  .top { height: 56px; background: #1f2a37; color: #fff; display: flex; align-items: center; padding: 0 28px; font-weight: 700; }
+  .wrap { display: flex; gap: 28px; max-width: 980px; margin: 32px auto; padding: 0 20px; }
+  .panel { flex: 1; background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+  h1 { margin: 0 0 6px; font-size: 24px; } .sub { color: #5b6b7c; margin: 0 0 18px; }
+  label { display: block; margin: 12px 0 4px; font-weight: 700; }
+  input { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #b7c4d1; border-radius: 6px; font: inherit; }
+  .go { margin-top: 18px; width: 100%; padding: 12px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; font: inherit; font-weight: 700; }
+  .summary div { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #d5dde5; }
+  .total { font-weight: 700; font-size: 18px; } .note { color: #5b6b7c; font-size: 13px; margin-top: 14px; }
+  /* Held-out visual bugs: never used while tuning the visual check. */
+  body.cut .panel:first-child h1 { white-space: nowrap; width: 120px; overflow: hidden; }
+  body.ghost-button .go { background: #fff; color: #fff; }
+  body.stacked-fields input { margin-top: -38px; }
+  body.squashed .wrap { flex-direction: column; width: 260px; }
+</style>
+</head>
+<body>
+<div class="top">Kulhad &amp; Co. · Checkout</div>
+<div class="wrap">
+  <div class="panel">
+    <h1>Delivery details</h1><p class="sub" id="who">Signed in as Test Shopper</p>
+    <label>Full name</label><input value="Test Shopper">
+    <label>Address</label><input value="12 Example Lane">
+    <label>City</label><input value="Pune">
+    <label>Pincode</label><input value="411001">
+    <button class="go" type="button">Place order</button>
+  </div>
+  <div class="panel summary">
+    <h1>Your order</h1><p class="sub" id="when">Delivery by Friday, 9 October</p>
+    <div><span>Filter Coffee (200 g) × 1</span><span>₹240</span></div>
+    <div><span>Shipping</span><span>Free</span></div>
+    <div class="total"><span>Total</span><span>₹240</span></div>
+    <p class="note" id="note">Pay by UPI, card or cash on delivery.</p>
+  </div>
+</div>
+<script>
+const look = new URLSearchParams(location.search).get("look") || "approved";
+document.body.className = look;
+if (look === "other-day") {  // legitimate: another day, another shopper
+  document.getElementById("who").textContent = "Signed in as Priya Raman";
+  document.getElementById("when").textContent = "Delivery by Tuesday, 13 October";
+  document.getElementById("note").textContent = "New: pay in 3 instalments with no cost EMI.";
+}
+</script>
+</body>
+</html>

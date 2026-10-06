@@ -71,6 +71,8 @@ class RunResult:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     attempts: list[dict] = field(default_factory=list)  # every try, when the run was retried
+    visual: dict = field(default_factory=dict)  # the visual check of the final screen (visual.py), when one ran
+    cause: str = ""  # why it failed, in one sentence, from what the browser recorded (cause.py)
     # The page the run ended on (test data masked). Defect analysis diffs it against the
     # last run of the same spec that passed: "Total: ₹600" became "Total: ₹180".
     final_url: str = ""

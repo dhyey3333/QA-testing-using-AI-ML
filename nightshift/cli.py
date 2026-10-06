@@ -208,6 +208,10 @@ def _run_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--pr-comment", type=Path, help="also write a pull-request comment (Markdown) here, for CI")
     parser.add_argument("--parallel", type=int, default=1, metavar="N",
                         help="run N specs at a time, each in its own browser (default 1)")
+    parser.add_argument("--visual", choices=["off", "warn", "fail"], default="warn",
+                        help="compare each passing test's final screen with its approved look (default: warn on a visual bug)")
+    parser.add_argument("--update-visual", action="store_true",
+                        help="make this run's final screens the approved looks")
     parser.add_argument("--js-errors", choices=["fail", "warn"], default="fail",
                         help="uncaught JS errors fail a test (default), or are only warnings; a spec's js_errors wins")
     parser.add_argument("--client", default="", help="also write client-report.html for this client")
@@ -312,7 +316,8 @@ def _execute(specs: list[Spec], args: argparse.Namespace, model: HttpModel) -> t
     specs = sessions.first(specs)  # a spec others start logged in from runs before them
     options = _options(args, judge=not args.no_judge, retries=max(0, args.retries), recordings=store,
                        replay=not args.no_replay, record=not args.no_record,
-                       js_errors=getattr(args, "js_errors", "fail"), sessions=sessions)
+                       js_errors=getattr(args, "js_errors", "fail"), sessions=sessions,
+                       visual=getattr(args, "visual", "warn"), update_visual=getattr(args, "update_visual", False))
     run_dir = args.out / datetime.now().strftime("%Y%m%d-%H%M%S")
 
     try:

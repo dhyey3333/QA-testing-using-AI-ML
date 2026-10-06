@@ -78,6 +78,10 @@ class Model(Protocol):
         """Any other JSON task (writing specs). Raise ModelError or InvalidAction."""
         ...
 
+    def look(self, system: str, user: str, image: bytes, max_tokens: int = 300) -> dict:
+        """A JSON answer about a picture (the visual check). Raise ModelError or InvalidAction."""
+        ...
+
 
 class HttpModel:
     def __init__(self, config: ModelConfig, judge_config: ModelConfig | None = None) -> None:
@@ -108,6 +112,9 @@ class HttpModel:
 
     def ask(self, system: str, user: str, max_tokens: int = 1500) -> dict:
         return self._ask(self.judge_config, system, user, None, max_tokens=max_tokens)
+
+    def look(self, system: str, user: str, image: bytes, max_tokens: int = 300) -> dict:
+        return self._ask(self.judge_config, system, user, image, max_tokens=max_tokens)
 
     def _ask(self, config: ModelConfig, system: str, text: str, image: bytes | None, max_tokens: int) -> dict:
         content: list[dict] = [{"type": "text", "text": text}]
