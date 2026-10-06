@@ -1,15 +1,17 @@
 <#
-  Nightshift, one click. Checks the model, starts the web app, opens a free public link (a fixed
+  Nightshift QA, one click. Checks the model, starts the web app, opens a free public link (a fixed
   one with Tailscale Funnel, else a Cloudflare quick tunnel), and opens the browser.
-  Close this window, or press Ctrl+C, to stop everything.
 
   Works in Windows PowerShell 5.1 (every Windows 10/11) and PowerShell 7.
+    -Background      no window (the desktop icon uses this): messages go to runs\nightshift.log, and
+                     starting it again while it runs asks Open / Stop instead
     -Port 8080       where the app listens
     -NoTunnel        no public link: only this computer can open the app
     -NoBrowser       don't open the browser
     -Data <folder>   the app's data (default: hosted-data next to this folder)
+  Without -Background it runs in this window: close the window, or press Ctrl+C, to stop it.
 #>
-param([int]$Port = 8080, [switch]$NoTunnel, [switch]$NoBrowser, [string]$Data = "")
+param([int]$Port = 8080, [switch]$NoTunnel, [switch]$NoBrowser, [switch]$Background, [string]$Data = "")
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
@@ -20,11 +22,56 @@ New-Item -ItemType Directory -Force $Runs | Out-Null
 $TunnelLog = Join-Path $Runs "tunnel.log"
 $PidFile = Join-Path $Runs "tunnel.pid"
 $Local = "http://127.0.0.1:$Port/"
+$LogFile = Join-Path $Runs "nightshift.log"
+$UrlFile = Join-Path $Runs "nightshift.url"  # the address to open, for "Open" while it runs
 
-function Say([string]$Text, [string]$Color = "Gray") { Write-Host $Text -ForegroundColor $Color }
-function Stop-Here([string]$Text) { Say $Text "Red"; Read-Host "Press Enter to close"; exit 1 }
+# With no window, messages go to the log, and anything the person must see is a small dialog.
+function Say([string]$Text, [string]$Color = "Gray") {
+    if ($Background) { Add-Content $LogFile $Text } else { Write-Host $Text -ForegroundColor $Color }
+}
+function Show-Message([string]$Text) {
+    Add-Type -AssemblyName System.Windows.Forms
+    [void][System.Windows.Forms.MessageBox]::Show($Text, "Nightshift QA", "OK", "Warning")
+}
+function Stop-Here([string]$Text) {
+    Say $Text "Red"
+    if ($Background) { Show-Message $Text } else { Read-Host "Press Enter to close" }
+    exit 1
+}
+# "Nightshift QA is running at <link>": Open, Stop or Cancel. Returns "open", "stop" or "".
+function Show-Running([string]$Url) {
+    Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Nightshift QA"; $form.StartPosition = "CenterScreen"; $form.FormBorderStyle = "FixedDialog"
+    $form.MaximizeBox = $false; $form.MinimizeBox = $false; $form.TopMost = $true
+    $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $form.ClientSize = New-Object System.Drawing.Size(392, 132)
+    $icon = Join-Path $PSScriptRoot "nightshift.ico"
+    if (Test-Path $icon) { $form.Icon = New-Object System.Drawing.Icon($icon) }
+    $label = New-Object System.Windows.Forms.Label
+    $label.Text = "Nightshift QA is running at`n$Url"
+    $label.Location = New-Object System.Drawing.Point(18, 16); $label.Size = New-Object System.Drawing.Size(360, 48)
+    $form.Controls.Add($label)
+    $buttons = @(("Open", [System.Windows.Forms.DialogResult]::Yes), ("Stop", [System.Windows.Forms.DialogResult]::No),
+                 ("Cancel", [System.Windows.Forms.DialogResult]::Cancel))
+    $x = 18
+    foreach ($b in $buttons) {
+        $button = New-Object System.Windows.Forms.Button
+        $button.Text = $b[0]; $button.DialogResult = $b[1]
+        $button.Location = New-Object System.Drawing.Point($x, 80); $button.Size = New-Object System.Drawing.Size(112, 34)
+        $form.Controls.Add($button); $x += 124
+        if ($b[0] -eq "Open") { $form.AcceptButton = $button }
+        if ($b[0] -eq "Cancel") { $form.CancelButton = $button }
+    }
+    switch ($form.ShowDialog()) { "Yes" { "open" } "No" { "stop" } default { "" } }
+}
 
-$Host.UI.RawUI.WindowTitle = "Nightshift QA (close this window to stop it)"
+if ($Background) {
+    "--- Nightshift QA started $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Set-Content $LogFile
+} else {
+    $Host.UI.RawUI.WindowTitle = "Nightshift QA (close this window to stop it)"
+}
 Say "Nightshift QA" "Cyan"
 
 # 1. uv runs Nightshift.
@@ -32,10 +79,19 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     Stop-Here "uv isn't installed. Install it from https://docs.astral.sh/uv/ and try again."
 }
 
-# 2. Already running? Then just open it.
-if (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue) {
-    Say "Nightshift is already running: opening $Local" "Yellow"
-    if (-not $NoBrowser) { Start-Process $Local }
+# 2. Already running? Open it, or (from the icon) offer Open / Stop. Stopping ends the server; the
+#    copy of this script that started it then switches the public link off and exits.
+$running = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+if ($running) {
+    $url = if (Test-Path $UrlFile) { (Get-Content $UrlFile -Raw).Trim() } else { $Local }
+    if ($Background) {
+        $choice = Show-Running $url
+        if ($choice -eq "open") { Start-Process $url }
+        if ($choice -eq "stop") { $running | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue } }
+        exit 0
+    }
+    Say "Nightshift QA is already running: opening $url" "Yellow"
+    if (-not $NoBrowser) { Start-Process $url }
     Start-Sleep 2
     exit 0
 }
@@ -66,6 +122,11 @@ if ($env:MODEL_BASE_URL) {
 # 4. The first time: create the admin login, here in this window.
 $users = & uv run --quiet nightshift hosted users --data "$Data"
 if (-not $users) {
+    if ($Background) {
+        # Creating the first login needs typing, so this one time it opens in a window.
+        Start-Process powershell -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", "-Port", "$Port"
+        exit 0
+    }
     Say "`nFirst start: create your admin login." "Cyan"
     $email = Read-Host "Your email"
     & uv run --quiet nightshift hosted add-user --data "$Data" --email $email --admin
@@ -92,7 +153,17 @@ if ($tailscale -and -not $NoTunnel) {
     try { $status = (& $tailscale.Source status --json 2>$null | Out-String) | ConvertFrom-Json } catch { }
     if ($status -and $status.BackendState -eq "Running" -and $status.Self.DNSName) {
         Say "Opening your fixed link with Tailscale Funnel (the first time, it may ask you to allow Funnel in the browser)..."
-        & $tailscale.Source funnel --bg --https=443 "http://127.0.0.1:$Port"
+        if ($Background) {
+            # With no window nobody could follow an "allow Funnel" link, so give it 25 s and move on.
+            $job = Start-Job { param($ts, $port) & $ts funnel --bg --https=443 "http://127.0.0.1:$port" 2>&1 | Out-String; $LASTEXITCODE } `
+                -ArgumentList $tailscale.Source, $Port
+            $ok = $false
+            if (Wait-Job $job -Timeout 25) { $out = @(Receive-Job $job); Say ($out[0]); $ok = ($out[-1] -eq 0) } else { Stop-Job $job }
+            Remove-Job $job -Force
+            $global:LASTEXITCODE = if ($ok) { 0 } else { 1 }
+        } else {
+            & $tailscale.Source funnel --bg --https=443 "http://127.0.0.1:$Port"
+        }
         if ($LASTEXITCODE -eq 0) {
             $PublicUrl = "https://" + $status.Self.DNSName.TrimEnd(".")
             $Funnel = $tailscale
@@ -152,12 +223,19 @@ if (-not $NoBrowser) {
         }
     } -ArgumentList $Local, $Open | Out-Null
 }
-Say "`nNightshift QA: $Open   Close this window (or press Ctrl+C) to stop it.`n" "Cyan"
+if ($Background) { Say "Nightshift QA: $Open" } else { Say "`nNightshift QA: $Open   Close this window (or press Ctrl+C) to stop it.`n" "Cyan" }
+$Open | Set-Content $UrlFile
 $serve = @("run", "--quiet", "nightshift", "hosted", "serve", "--data", "$Data", "--port", "$Port")
 if ($PublicUrl) { $serve += @("--public-url", $PublicUrl) }
 try {
-    & uv @serve
+    if ($Background) {
+        $ErrorActionPreference = "Continue"  # the server's own messages go to the log, not to a stopping error
+        & uv @serve *>> $LogFile
+    } else {
+        & uv @serve
+    }
 } finally {
+    Remove-Item $UrlFile -ErrorAction SilentlyContinue
     if ($Tunnel) {
         Stop-Process -Id $Tunnel.Id -ErrorAction SilentlyContinue
         Remove-Item $PidFile -ErrorAction SilentlyContinue

@@ -321,8 +321,10 @@ also notes any API call the app refused. It's in each report, in `bug.md` and in
 
 ## One click on Windows
 
-Double-click `launch\Start Nightshift.bat`, or the desktop icon `launch\make-shortcut.ps1` puts there.
-It does the rest:
+The desktop icon (`launch\make-shortcut.ps1` puts it there) starts Nightshift QA with no window and
+opens it in the browser; double-click it again while it runs to **Open** or **Stop** it. Messages go to
+`runs
+ightshift.log`. `launch\Start Nightshift.bat` does the same in a visible window. Either way it:
 - checks Ollama and uses the free cloud model;
 - on first start, creates your admin login in its window;
 - starts the app and opens your browser;
@@ -330,9 +332,9 @@ It does the rest:
   Tailscale Funnel: the same https address every time, so it can go on the website;
 - otherwise, with `cloudflared` installed (`winget install Cloudflare.cloudflared`), opens a free
   public link that changes on every start;
-- copies the link to the clipboard, to paste to anyone.
+- copies the link to the clipboard, to paste to anyone, and opens it.
 
-Close the window to stop it all.
+Stop it with the icon's **Stop** (or, for the .bat, by closing its window).
 
 The public website is in `site/`; see `deploy/site/README.md` to preview and publish it.
 
