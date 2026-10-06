@@ -411,10 +411,11 @@ def make_handler(app: App):
             origin = (self.headers.get("Origin") or "").rstrip("/")
             if origin:
                 host = self.headers.get("Host", "")
-                # With no --public-url, this site is whatever host the browser asked for, over http or
-                # https: behind an HTTPS tunnel the browser says https://<tunnel host> while the app
-                # itself speaks plain http. Found on first use of a quick tunnel: every change was refused.
-                allowed = {app.public_url} if app.public_url else {f"http://{host}", f"https://{host}"}
+                # This site is whatever host the browser asked for, over http or https (behind an HTTPS
+                # tunnel the browser says https://<tunnel host> while the app speaks plain http), and
+                # the public URL. Both found in use: with a tunnel every change was refused, and with
+                # --public-url set, so was every change made on the laptop itself at 127.0.0.1.
+                allowed = {f"http://{host}", f"https://{host}", *([app.public_url] if app.public_url else [])}
                 if origin not in allowed:
                     raise HttpError(403, "this request came from another site")
 

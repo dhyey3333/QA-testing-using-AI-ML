@@ -1,0 +1,136 @@
+<#
+  Nightshift, one click. Checks the model, starts the web app, opens a free public link
+  (a Cloudflare quick tunnel) when cloudflared is installed, and opens the browser.
+  Close this window, or press Ctrl+C, to stop everything.
+
+  Works in Windows PowerShell 5.1 (every Windows 10/11) and PowerShell 7.
+    -Port 8080       where the app listens
+    -NoTunnel        no public link: only this computer can open the app
+    -NoBrowser       don't open the browser
+    -Data <folder>   the app's data (default: hosted-data next to this folder)
+#>
+param([int]$Port = 8080, [switch]$NoTunnel, [switch]$NoBrowser, [string]$Data = "")
+
+$ErrorActionPreference = "Stop"
+$Root = Split-Path -Parent $PSScriptRoot
+Set-Location $Root
+if (-not $Data) { $Data = Join-Path $Root "hosted-data" }
+$Runs = Join-Path $Root "runs"
+New-Item -ItemType Directory -Force $Runs | Out-Null
+$TunnelLog = Join-Path $Runs "tunnel.log"
+$PidFile = Join-Path $Runs "tunnel.pid"
+$Local = "http://127.0.0.1:$Port/"
+
+function Say([string]$Text, [string]$Color = "Gray") { Write-Host $Text -ForegroundColor $Color }
+function Stop-Here([string]$Text) { Say $Text "Red"; Read-Host "Press Enter to close"; exit 1 }
+
+$Host.UI.RawUI.WindowTitle = "Nightshift (close this window to stop it)"
+Say "Nightshift" "Cyan"
+
+# 1. uv runs Nightshift.
+if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+    Stop-Here "uv isn't installed. Install it from https://docs.astral.sh/uv/ and try again."
+}
+
+# 2. Already running? Then just open it.
+if (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue) {
+    Say "Nightshift is already running: opening $Local" "Yellow"
+    if (-not $NoBrowser) { Start-Process $Local }
+    Start-Sleep 2
+    exit 0
+}
+
+# 3. The model. The free cloud model through the Ollama app, unless MODEL_NAME says otherwise.
+if (-not $env:MODEL_NAME) { $env:MODEL_NAME = "gemma4:31b-cloud" }
+if (-not $env:MODEL_TIMEOUT) { $env:MODEL_TIMEOUT = "120" }
+$env:PYTHONIOENCODING = "utf-8"
+function Test-Ollama {
+    try { Invoke-WebRequest "http://localhost:11434/api/tags" -UseBasicParsing -TimeoutSec 3 | Out-Null; return $true }
+    catch { return $false }
+}
+if ($env:MODEL_BASE_URL) {
+    Say "Model: $env:MODEL_NAME at $env:MODEL_BASE_URL" "Green"
+} else {
+    if (-not (Test-Ollama)) {
+        $ollama = Get-Command ollama -ErrorAction SilentlyContinue
+        if ($ollama) {
+            Say "Starting Ollama..."
+            Start-Process $ollama.Source -ArgumentList "serve" -WindowStyle Hidden
+            for ($i = 0; $i -lt 20 -and -not (Test-Ollama); $i++) { Start-Sleep 1 }
+        }
+    }
+    if (Test-Ollama) { Say "Model: $env:MODEL_NAME (through Ollama)" "Green" }
+    else { Say "Ollama isn't running. Open the Ollama app for AI runs; saved replays work without it." "Yellow" }
+}
+
+# 4. The first time: create the admin login, here in this window.
+$users = & uv run --quiet nightshift hosted users --data "$Data"
+if (-not $users) {
+    Say "`nFirst start: create your admin login." "Cyan"
+    $email = Read-Host "Your email"
+    & uv run --quiet nightshift hosted add-user --data "$Data" --email $email --admin
+    if ($LASTEXITCODE -ne 0) { Stop-Here "The login wasn't created. Run this again to retry." }
+}
+
+# 5. A public link, when cloudflared is installed. A tunnel left over from a window closed last
+#    time is stopped first (closing the window can't always stop it).
+if (Test-Path $PidFile) {
+    $old = Get-Content $PidFile -ErrorAction SilentlyContinue
+    if ($old) { Stop-Process -Id ([int]$old) -ErrorAction SilentlyContinue }
+    Remove-Item $PidFile -ErrorAction SilentlyContinue
+}
+$PublicUrl = ""
+$Tunnel = $null
+$cloudflared = Get-Command cloudflared -ErrorAction SilentlyContinue
+if (-not $cloudflared) {
+    $candidates = @("$env:ProgramFiles\cloudflared\cloudflared.exe", "${env:ProgramFiles(x86)}\cloudflared\cloudflared.exe",
+                    "$env:LOCALAPPDATA\Microsoft\WinGet\Links\cloudflared.exe")
+    $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($found) { $cloudflared = Get-Command $found }
+}
+if ($NoTunnel) {
+    Say "No public link (-NoTunnel): only this computer can open the app."
+} elseif (-not $cloudflared) {
+    Say "No public link: install cloudflared once with  winget install Cloudflare.cloudflared" "Yellow"
+} else {
+    Remove-Item $TunnelLog -ErrorAction SilentlyContinue
+    $Tunnel = Start-Process $cloudflared.Source -ArgumentList "tunnel", "--no-autoupdate", "--url", $Local.TrimEnd("/") `
+        -RedirectStandardError $TunnelLog -NoNewWindow -PassThru
+    $Tunnel.Id | Set-Content $PidFile
+    Say "Opening a public link..."
+    for ($i = 0; $i -lt 40 -and -not $PublicUrl; $i++) {
+        Start-Sleep 1
+        if (Test-Path $TunnelLog) {
+            $match = Select-String -Path $TunnelLog -Pattern "https://[a-z0-9-]+\.trycloudflare\.com" | Select-Object -First 1
+            if ($match) { $PublicUrl = $match.Matches[0].Value }
+        }
+    }
+    if ($PublicUrl) {
+        Set-Clipboard -Value $PublicUrl
+        Say "Public link (copied, paste it to anyone): $PublicUrl" "Green"
+    } else {
+        Say "The tunnel gave no link within 40 s; only this computer can open the app." "Yellow"
+    }
+}
+
+# 6. Open the browser once the app answers, and run the app here until the window closes.
+if (-not $NoBrowser) {
+    Start-Job -ScriptBlock {
+        param($url)
+        for ($i = 0; $i -lt 90; $i++) {
+            try { Invoke-WebRequest $url -UseBasicParsing -TimeoutSec 2 | Out-Null; Start-Process $url; break }
+            catch { Start-Sleep 1 }
+        }
+    } -ArgumentList $Local | Out-Null
+}
+Say "`nNightshift: $Local   Close this window (or press Ctrl+C) to stop it.`n" "Cyan"
+$serve = @("run", "--quiet", "nightshift", "hosted", "serve", "--data", "$Data", "--port", "$Port")
+if ($PublicUrl) { $serve += @("--public-url", $PublicUrl) }
+try {
+    & uv @serve
+} finally {
+    if ($Tunnel) {
+        Stop-Process -Id $Tunnel.Id -ErrorAction SilentlyContinue
+        Remove-Item $PidFile -ErrorAction SilentlyContinue
+    }
+}

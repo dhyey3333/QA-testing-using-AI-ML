@@ -463,3 +463,22 @@ def test_only_the_newest_runs_keep_their_files_so_the_disk_never_fills(tmp_path)
     assert Runner(store, tmp_path, keep_runs=0).prune(project) == 0  # 0 keeps everything
     store.close()
 
+
+
+def test_with_a_public_url_the_laptop_itself_can_still_make_changes(tmp_path):
+    # The one-click start sets --public-url to the tunnel; the browser on the laptop uses 127.0.0.1.
+    store = Store(tmp_path / "db.sqlite")
+    store.add_user(*ADMIN[:1], "Admin", ADMIN[1], admin=True)
+    server = serve(App(store, Runner(store, tmp_path), public_url="https://abc.trycloudflare.com"), port=0)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        base = f"http://127.0.0.1:{server.server_port}"
+        admin = httpx.Client(base_url=base, headers={"X-Nightshift": "1"})
+        admin.post("/api/login", json={"email": ADMIN[0], "password": ADMIN[1]})
+        for origin in (base, "https://abc.trycloudflare.com"):
+            assert admin.post("/api/projects", json={"client": f"Co {origin[-5:]}"}, headers={"Origin": origin}).status_code == 201
+        assert admin.post("/api/projects", json={"client": "X"}, headers={"Origin": "https://evil.example"}).status_code == 403
+    finally:
+        server.shutdown()
+        server.server_close()
+        store.close()

@@ -165,7 +165,8 @@ def main(argv: list[str] | None = None) -> int:
     hosted_commands = hosted.add_subparsers(dest="hosted_command", required=True)
     h_serve = hosted_commands.add_parser("serve", help="run the web app (behind Caddy for HTTPS: see deploy/oracle)")
     h_add = hosted_commands.add_parser("add-user", help="add a user; asks for their first password")
-    for sub in (h_serve, h_add):
+    h_users = hosted_commands.add_parser("users", help="list the users (no output: none yet)")
+    for sub in (h_serve, h_add, h_users):
         sub.add_argument("--data", type=Path, default=Path("hosted-data"),
                          help="where the database, projects and runs live (default: hosted-data/)")
     h_serve.add_argument("--host", default="127.0.0.1", help="(default: 127.0.0.1; Caddy forwards to it)")
@@ -732,6 +733,11 @@ def _hosted(args: argparse.Namespace) -> int:
     from .hosted.store import Store, StoreError
 
     store = Store(args.data / "nightshift.db")
+    if args.hosted_command == "users":
+        for user in store.users():
+            print(f"{user['email']}" + (" (admin)" if user["admin"] else ""))
+        store.close()
+        return 0
     if args.hosted_command == "add-user":
         import getpass
 
