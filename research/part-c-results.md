@@ -271,3 +271,32 @@ Same model as phase 1 (Gemma 4 31B, Ollama Cloud free plan), same benchmarks, pl
   - **Not rerun:** the other 28 specs. Nothing else in them touches ads.
 - **Unreachable this run (ENV_ISSUE, not counted):** opencart (bot check) and the-internet's three pages (Heroku timed out).
 - **False alarms over all clean runs:** 1 / 45 (2.2%) with the ad fix, the holdout one. The under-2% target is still just missed.
+
+## Product: tests without YAML
+
+**What changed (commits 4644353 to 194beee, 193 tests pass):**
+- **Tests are a form in the hosted app:** website, steps, what should happen, and test data. YAML is one click away.
+- **"Generate tests with AI":** it explores a site, then writes draft tests. A person reviews, edits and accepts them.
+- **A run that would stop on a missing secret is refused first,** with the test and the secret named.
+- **The judge can quote form fields:** what a field holds is added as `[field] <label>: <value>` lines (D41).
+- **Both models are told** that a `{{placeholder}}` on the page is the real value, hidden on purpose (D42).
+
+**End to end on AcademyBugs, a practice store with planted bugs:**
+- "Generate tests" explored the site for 15 actions and wrote 3 sensible drafts in 95 s: quantity update, checkout, and sorting.
+- I reviewed and accepted them in the UI, then ran them:
+  - **First run:** 2 passed and 1 failed. The failure was "the quantity field shows 2", which the judge saw but couldn't quote.
+  - **After the `[field]` lines:** 3 of 3 passed. Two of them replayed their saved paths with no model calls.
+
+**Benchmarks after both changes (the judge's prompt changed twice, so all three were rerun):**
+
+| | Before (phase 3) | After |
+|---|---|---|
+| Shop: bugs caught / false alarms | 23 / 23, 0 / 13 | 23 / 23, 0 / 13 |
+| Clinic (holdout): bugs / false alarms | 8 / 8, 1 / 5 | 8 / 8, 1 / 5 (the same `cancel-appointment`) |
+| Public sites: correct on reachable sites | 27 / 27 | **28 / 28** |
+| False passes | 0 | 0 (every pass has quoted proof, checked in code) |
+| Median run time: public / shop / clinic | 21 s / 13 s / 17 s | 17 s / 14 s / 16 s |
+
+- **The benchmark after the `[field]` change alone** failed `demoblaze-signup`. The judge read the masked "Welcome {{username}}" literally. That's the reason for D42, and it passes now.
+- **`parabank-login` failed correctly:** on both tries, Parabank's own server answered HTTP 500 with "Error! An internal error has occurred" after logging in. The site was broken; that's a true BUG, not a false alarm.
+- **Unreachable (ENV_ISSUE, not counted):** opencart (bot check) and two of the-internet's pages (timeouts).
