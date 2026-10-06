@@ -14,8 +14,8 @@ python -m http.server 8095 --directory site
 
 Two links are placeholders until they exist:
 
-- `__FORM_URL__`: the Google Form for pilot applications.
-- `__APP_URL__`: the app's fixed link from Tailscale Funnel (`launch/start.ps1` prints it).
+- `__FORM_URL__`: the Google Form for pilot applications (set: "Nightshift QA: pilot applications", email alerts on).
+- `__APP_URL__`: the app's fixed link from Tailscale Funnel (set: https://nightshift.taile6ca67.ts.net/).
 
 Fill them in, then check none are left:
 
