@@ -487,3 +487,16 @@ tunnel's new random one on every start. The brand becomes "Nightshift QA" so sea
 from Apple's Night Shift. The site claims only measured numbers, names no third-party sites whose
 bugs it found, and shows no testimonials or customer logos until there are real ones. Contact goes
 through a Google Form so no personal email is published.
+
+## D51. A workspace per agency, and accounts only through invite links
+With one shared workspace, two pilot agencies would each see the other's clients, tests and
+reports. Each agency now has its own workspace: its people and its clients, and nothing else.
+Every project is looked up through the user's workspace, and another workspace's project, run or
+file answers "not found", so a guessed name doesn't even confirm it exists. The owner (the first
+user, who runs the deployment) makes a workspace per agency and sees only names and sizes. Nobody
+can sign themselves up: open sign-up would let strangers spend the laptop and the free model's
+limits, and test sites they don't own. An account comes from an invite link instead: random, single
+use, a week long, stored only as a hash (so it is shown once, like a secret), and spent in the same
+step it is checked, so a link opened twice makes one account. The login page points new people to the
+pilot form. Databases from before workspaces move everything into the first workspace, and its first
+admin becomes the owner.

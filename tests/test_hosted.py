@@ -525,3 +525,99 @@ def test_a_pasted_cucumber_feature_becomes_drafts_to_review(hosted):
     assert [d["name"] for d in made.json()["drafts"]] == ["find-coffee"]
     assert admin.post(f"/api/projects/{slug}/import-gherkin", json={"text": "hello"}).status_code == 400
     assert admin.post(f"/api/projects/{slug}/drafts/find-coffee/accept").status_code == 200
+
+
+# --- workspaces: one per agency, joined only through invite links -----------------------
+
+def _join(hosted, token: str, email: str, name: str = "New Person", password: str = "join-password-1") -> httpx.Client:
+    session = client(hosted)
+    response = session.post(f"/api/join/{token}", json={"email": email, "name": name, "password": password})
+    assert response.status_code == 201, response.text
+    return session
+
+
+def test_one_agency_never_sees_another_agencys_clients(hosted):
+    owner = client(hosted, ADMIN)  # the first user: owns the deployment, admin of the first workspace
+    assert owner.get("/api/me").json()["user"]["owner"] is True
+    acme = owner.post("/api/projects", json={"client": "Acme Retail"}).json()["project"]["slug"]
+    owner.put(f"/api/projects/{acme}/specs/smoke", json={"text": SPEC})
+    run_id = hosted.store.add_run(hosted.store.project(acme)["id"], "manual")
+    log = hosted.runner.files(hosted.store.project(acme)).run_folder(run_id) / "output.log"
+    log.parent.mkdir(parents=True)
+    log.write_text("Acme's run", encoding="utf-8")
+
+    made = owner.post("/api/workspaces", json={"name": "Other QA", "note": "their lead"}).json()
+    assert made["workspace"]["name"] == "Other QA" and made["path"] == f"/#/join/{made['token']}"
+    other = _join(hosted, made["token"], "lead@otherqa.test")
+    me = other.get("/api/me").json()
+    assert me["workspace"]["name"] == "Other QA" and me["user"]["admin"] and not me["user"]["owner"]
+
+    # Nothing of Acme's, by list, by name, by run, by file, or by changing it.
+    assert other.get("/api/projects").json()["projects"] == []
+    assert other.get(f"/api/projects/{acme}").status_code == 404
+    assert other.get(f"/api/projects/{acme}/runs/{run_id}").status_code == 404
+    assert other.post(f"/api/projects/{acme}/runs").status_code == 404
+    assert other.put(f"/api/projects/{acme}/secrets/X", json={"value": "y"}).status_code == 404
+    assert other.get(f"/files/{acme}/{run_id}/output.log").status_code == 404
+    assert [u["email"] for u in other.get("/api/users").json()["users"]] == ["lead@otherqa.test"]
+    assert other.delete(f"/api/users/{hosted.store.users()[0]['id']}").status_code == 400  # not theirs to remove
+
+    # And the other way round: their clients are theirs, with their name on the reports.
+    theirs = other.post("/api/projects", json={"client": "Bharat Mart"}).json()["project"]
+    assert theirs["brand"] == "Other QA"
+    assert [p["slug"] for p in owner.get("/api/projects").json()["projects"]] == [acme]
+    assert owner.get(f"/api/projects/{theirs['slug']}").status_code == 404
+    workspaces = owner.get("/api/workspaces").json()["workspaces"]
+    assert [(w["name"], w["members"], w["clients"]) for w in workspaces] == [("My agency", 2, 1), ("Other QA", 1, 1)]
+
+
+def test_an_invite_link_works_once_and_only_until_it_expires(hosted):
+    admin, staff = client(hosted, ADMIN), client(hosted, STAFF)
+    assert staff.post("/api/invites", json={"note": "x"}).status_code == 403  # staff don't invite
+    made = admin.post("/api/invites", json={"note": "Ravi, tester", "admin": False}).json()
+    assert [i["note"] for i in made["invites"]] == ["Ravi, tester"]
+
+    anonymous = client(hosted)
+    assert anonymous.get(f"/api/join/{made['token']}").json() == {"workspace": "My agency", "admin": False}
+    no_header = httpx.post(f"{hosted.base}/api/join/{made['token']}", json={"email": "r@a.test", "password": "join-password-1"})
+    assert no_header.status_code == 403  # like every change, it needs the header
+    assert anonymous.post(f"/api/join/{made['token']}", json={"email": "ravi@agency.test", "password": "short"}).status_code == 400
+    ravi = _join(hosted, made["token"], "ravi@agency.test", "Ravi")
+    me = ravi.get("/api/me").json()["user"]
+    assert me["email"] == "ravi@agency.test" and not me["admin"] and me["workspace_id"] == 1
+
+    again = client(hosted).post(f"/api/join/{made['token']}", json={"email": "two@agency.test", "password": "join-password-1"})
+    assert again.status_code == 404  # spent
+    assert admin.get("/api/invites").json()["invites"] == []
+
+    expired = hosted.store.new_invite(1, days=-1)
+    assert client(hosted).get(f"/api/join/{expired}").status_code == 404
+    revoked = admin.post("/api/invites", json={"note": "gone"}).json()
+    admin.delete(f"/api/invites/{revoked['invites'][0]['id']}")
+    assert client(hosted).get(f"/api/join/{revoked['token']}").status_code == 404
+
+    # Only the owner makes workspaces; an agency's admin can't make more of them.
+    other = _join(hosted, client(hosted, ADMIN).post("/api/workspaces", json={"name": "B QA"}).json()["token"], "b@bqa.test")
+    assert other.post("/api/workspaces", json={"name": "C QA"}).status_code == 403
+    assert other.get("/api/workspaces").status_code == 403
+
+
+def test_a_database_from_before_workspaces_moves_into_the_first_one(tmp_path):
+    old = sqlite3.connect(tmp_path / "old.db")
+    old.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, name TEXT NOT NULL DEFAULT '',"
+                " password_hash TEXT NOT NULL, admin INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL)")
+    old.execute("CREATE TABLE projects (id INTEGER PRIMARY KEY, slug TEXT UNIQUE NOT NULL, client TEXT NOT NULL,"
+                " base_url TEXT NOT NULL DEFAULT '', brand TEXT NOT NULL DEFAULT '', nightly TEXT NOT NULL DEFAULT '',"
+                " last_nightly TEXT NOT NULL DEFAULT '', created TEXT NOT NULL)")
+    old.execute("INSERT INTO users (email, name, password_hash, admin, created) VALUES ('staff@a.test', 'S', 'x', 0, 'then')")
+    old.execute("INSERT INTO users (email, name, password_hash, admin, created) VALUES ('boss@a.test', 'B', 'x', 1, 'then')")
+    old.execute("INSERT INTO projects (slug, client, created) VALUES ('acme', 'Acme', 'then')")
+    old.commit()
+    old.close()
+    store = Store(tmp_path / "old.db")
+    users = {u["email"]: u for u in store.users()}
+    assert users["boss@a.test"]["owner"] and not users["staff@a.test"]["owner"]
+    assert {u["workspace_id"] for u in users.values()} == {1}
+    assert store.project("acme")["workspace_id"] == 1 and store.projects(1)[0]["slug"] == "acme"
+    assert store.workspace(1)["name"] == "My agency"
+    store.close()

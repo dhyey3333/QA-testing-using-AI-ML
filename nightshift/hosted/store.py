@@ -1,7 +1,10 @@
-"""The hosted app's records, in one SQLite file: users, login sessions, projects and runs.
+"""The hosted app's records, in one SQLite file: workspaces, users, login sessions, invites,
+projects and runs.
 
-One deployment serves one QA agency. Its staff log in; each client of the agency is a
-project with its own tests, saved paths, secrets, schedule and run history. Files (specs,
+Each QA agency has a workspace of its own: its staff, and its clients as projects, each with
+its own tests, saved paths, secrets, schedule and run history. Nobody sees another workspace's
+projects. The owner (the first user) runs the deployment, makes a workspace for each agency and
+invites its first admin; each workspace's admins invite their own staff. Files (specs,
 recordings, reports) live on disk under the data folder; this file only indexes them.
 """
 
@@ -19,16 +22,34 @@ from datetime import datetime
 from pathlib import Path
 
 SESSION_DAYS = 14
+INVITE_DAYS = 7
 MIN_PASSWORD = 10
+FIRST_WORKSPACE = 1  # the owner's own; everything made before workspaces existed belongs to it
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS workspaces (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    created TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL DEFAULT '',
     password_hash TEXT NOT NULL,
+    admin INTEGER NOT NULL DEFAULT 0,      -- manages its workspace: clients, team, secrets
+    created TEXT NOT NULL,
+    workspace_id INTEGER NOT NULL DEFAULT 1,
+    owner INTEGER NOT NULL DEFAULT 0       -- runs the deployment: makes workspaces for agencies
+);
+CREATE TABLE IF NOT EXISTS invites (
+    id INTEGER PRIMARY KEY,
+    token_hash TEXT UNIQUE NOT NULL,       -- like sessions, only the hash: the link is shown once
+    workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     admin INTEGER NOT NULL DEFAULT 0,
-    created TEXT NOT NULL
+    note TEXT NOT NULL DEFAULT '',         -- who it is for, as its maker wrote it
+    created_by INTEGER,
+    expires REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT PRIMARY KEY,
@@ -44,7 +65,8 @@ CREATE TABLE IF NOT EXISTS projects (
     nightly TEXT NOT NULL DEFAULT '',      -- "HH:MM" in the server's time zone, or '' for no schedule
     last_nightly TEXT NOT NULL DEFAULT '', -- the date of the last nightly run, so it runs once a day
     created TEXT NOT NULL,
-    targets TEXT NOT NULL DEFAULT 'chrome' -- where its tests run: chrome, firefox, safari, iphone, android
+    targets TEXT NOT NULL DEFAULT 'chrome', -- where its tests run: chrome, firefox, safari, iphone, android
+    workspace_id INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY,
@@ -131,6 +153,20 @@ class Store:
                 self._db.execute("ALTER TABLE runs ADD COLUMN params TEXT NOT NULL DEFAULT ''")
             if "targets" not in [row[1] for row in self._db.execute("PRAGMA table_info(projects)")]:
                 self._db.execute("ALTER TABLE projects ADD COLUMN targets TEXT NOT NULL DEFAULT 'chrome'")
+            # Databases made before workspaces: everyone and everything joins the first workspace, and
+            # the first admin becomes the owner.
+            if "workspace_id" not in [row[1] for row in self._db.execute("PRAGMA table_info(projects)")]:
+                self._db.execute("ALTER TABLE projects ADD COLUMN workspace_id INTEGER NOT NULL DEFAULT 1")
+            user_columns = [row[1] for row in self._db.execute("PRAGMA table_info(users)")]
+            if "workspace_id" not in user_columns:
+                self._db.execute("ALTER TABLE users ADD COLUMN workspace_id INTEGER NOT NULL DEFAULT 1")
+            if "owner" not in user_columns:
+                self._db.execute("ALTER TABLE users ADD COLUMN owner INTEGER NOT NULL DEFAULT 0")
+            if not self._db.execute("SELECT id FROM workspaces WHERE id = ?", (FIRST_WORKSPACE,)).fetchone():
+                self._db.execute("INSERT INTO workspaces (id, name, created) VALUES (?, 'My agency', ?)",
+                                 (FIRST_WORKSPACE, _now()))
+            if not self._db.execute("SELECT id FROM users WHERE owner = 1").fetchone():
+                self._db.execute("UPDATE users SET owner = 1 WHERE id = (SELECT MIN(id) FROM users WHERE admin = 1)")
 
     def close(self) -> None:
         with self._lock:
@@ -150,16 +186,17 @@ class Store:
 
     # --- users and sessions -------------------------------------------------------
 
-    def add_user(self, email: str, name: str, password: str, admin: bool = False) -> int:
-        email = email.strip().lower()
-        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
-            raise StoreError("that is not an email address")
-        if len(password) < MIN_PASSWORD:
-            raise StoreError(f"the password must be at least {MIN_PASSWORD} characters")
-        if self._one("SELECT id FROM users WHERE email = ?", (email,)):
-            raise StoreError("a user with that email already exists")
-        return self._write("INSERT INTO users (email, name, password_hash, admin, created) VALUES (?, ?, ?, ?, ?)",
-                           (email, name.strip(), hash_password(password), int(admin), _now()))
+    def add_user(self, email: str, name: str, password: str, admin: bool = False,
+                 workspace_id: int = FIRST_WORKSPACE) -> int:
+        email = _check_new_user(self, email, password)
+        # The very first user sets the deployment up, so they own it and administer the first workspace.
+        first = self._one("SELECT id FROM users LIMIT 1") is None
+        try:
+            return self._write("INSERT INTO users (email, name, password_hash, admin, created, workspace_id, owner) "
+                               "VALUES (?, ?, ?, ?, ?, ?, ?)", (email, name.strip(), hash_password(password),
+                                                                int(admin or first), _now(), workspace_id, int(first)))
+        except sqlite3.IntegrityError:  # the same email, added a moment ago by another request
+            raise StoreError("a user with that email already exists") from None
 
     def check_login(self, email: str, password: str) -> dict | None:
         user = self._one("SELECT * FROM users WHERE email = ?", (email.strip().lower(),))
@@ -172,14 +209,87 @@ class Store:
         self._write("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(password), user_id))
         self._write("DELETE FROM sessions WHERE user_id = ?", (user_id,))  # log out everywhere else
 
-    def users(self) -> list[dict]:
-        return [_public_user(u) for u in self._rows("SELECT * FROM users ORDER BY email")]
+    def users(self, workspace_id: int | None = None) -> list[dict]:
+        if workspace_id is None:
+            return [_public_user(u) for u in self._rows("SELECT * FROM users ORDER BY email")]
+        return [_public_user(u) for u in self._rows("SELECT * FROM users WHERE workspace_id = ? ORDER BY email",
+                                                    (workspace_id,))]
 
-    def delete_user(self, user_id: int) -> None:
-        admins = self._rows("SELECT id FROM users WHERE admin = 1")
+    def delete_user(self, user_id: int, workspace_id: int | None = None) -> None:
+        user = self._one("SELECT * FROM users WHERE id = ?", (user_id,))
+        if user is None or (workspace_id is not None and user["workspace_id"] != workspace_id):
+            raise StoreError("no such user")
+        if user["owner"]:
+            raise StoreError("the owner can't be removed")
+        admins = self._rows("SELECT id FROM users WHERE admin = 1 AND workspace_id = ?", (user["workspace_id"],))
         if [a["id"] for a in admins] == [user_id]:
             raise StoreError("that is the only admin; make someone else an admin first")
         self._write("DELETE FROM users WHERE id = ?", (user_id,))
+
+    # --- workspaces and invites -----------------------------------------------------
+
+    def add_workspace(self, name: str) -> dict:
+        name = name.strip()
+        if not name:
+            raise StoreError("give the agency's name")
+        workspace_id = self._write("INSERT INTO workspaces (name, created) VALUES (?, ?)", (name[:80], _now()))
+        return self.workspace(workspace_id)
+
+    def workspace(self, workspace_id: int) -> dict | None:
+        return self._one("SELECT * FROM workspaces WHERE id = ?", (workspace_id,))
+
+    def workspaces(self) -> list[dict]:
+        """Every workspace with how big it is. Names and counts only: the owner doesn't see inside."""
+        return self._rows("SELECT workspaces.*, "
+                          "(SELECT COUNT(*) FROM users WHERE users.workspace_id = workspaces.id) AS members, "
+                          "(SELECT COUNT(*) FROM projects WHERE projects.workspace_id = workspaces.id) AS clients, "
+                          "(SELECT COUNT(*) FROM invites WHERE invites.workspace_id = workspaces.id AND invites.expires > ?) "
+                          "AS pending FROM workspaces ORDER BY id", (time.time(),))
+
+    def rename_workspace(self, workspace_id: int, name: str) -> dict:
+        if not name.strip():
+            raise StoreError("give the workspace a name")
+        self._write("UPDATE workspaces SET name = ? WHERE id = ?", (name.strip()[:80], workspace_id))
+        return self.workspace(workspace_id)
+
+    def new_invite(self, workspace_id: int, admin: bool = False, note: str = "", created_by: int | None = None,
+                   days: float = INVITE_DAYS) -> str:
+        """A link token for joining a workspace: random, single use, gone in a week. Only its hash is
+        kept, so the link can be copied when it is made and never again."""
+        if self.workspace(workspace_id) is None:
+            raise StoreError("no such workspace")
+        token = secrets.token_urlsafe(32)
+        self._write("DELETE FROM invites WHERE expires < ?", (time.time(),))
+        self._write("INSERT INTO invites (token_hash, workspace_id, admin, note, created_by, expires) VALUES (?, ?, ?, ?, ?, ?)",
+                    (_token_hash(token), workspace_id, int(admin), note.strip()[:120], created_by,
+                     time.time() + days * 86400))
+        return token
+
+    def invite(self, token: str) -> dict | None:
+        """The live invite behind a link, with its workspace's name; None if unknown, used or expired."""
+        if not token:
+            return None
+        return self._one("SELECT invites.id, invites.workspace_id, invites.admin, invites.note, invites.expires, "
+                         "workspaces.name AS workspace FROM invites JOIN workspaces ON workspaces.id = invites.workspace_id "
+                         "WHERE invites.token_hash = ? AND invites.expires > ?", (_token_hash(token), time.time()))
+
+    def invites(self, workspace_id: int) -> list[dict]:
+        return self._rows("SELECT id, admin, note, expires FROM invites WHERE workspace_id = ? AND expires > ? ORDER BY id",
+                          (workspace_id, time.time()))
+
+    def revoke_invite(self, invite_id: int, workspace_id: int) -> None:
+        self._write("DELETE FROM invites WHERE id = ? AND workspace_id = ?", (invite_id, workspace_id))
+
+    def accept_invite(self, token: str, email: str, name: str, password: str) -> int:
+        """Join with an invite: the account goes in the invite's workspace, and the invite is spent."""
+        email = _check_new_user(self, email, password)
+        with self._lock:
+            # Taken and deleted in one step, so a link opened twice at once makes one account.
+            row = self._db.execute("SELECT * FROM invites WHERE token_hash = ? AND expires > ?",
+                                   (_token_hash(token), time.time())).fetchone()
+            if row is None or self._db.execute("DELETE FROM invites WHERE id = ?", (row["id"],)).rowcount != 1:
+                raise StoreError("this invite link has expired or was already used; ask for a new one")
+        return self.add_user(email, name, password, admin=bool(row["admin"]), workspace_id=row["workspace_id"])
 
     def new_session(self, user_id: int) -> str:
         """A random token for the cookie. Only its hash is stored, so the database alone can't log anyone in."""
@@ -201,7 +311,8 @@ class Store:
 
     # --- projects -----------------------------------------------------------------
 
-    def add_project(self, client: str, base_url: str = "", brand: str = "", nightly: str = "") -> dict:
+    def add_project(self, client: str, base_url: str = "", brand: str = "", nightly: str = "",
+                    workspace_id: int = FIRST_WORKSPACE) -> dict:
         client = client.strip()
         if not client:
             raise StoreError("give the client's name")
@@ -210,13 +321,16 @@ class Store:
         slug, n = slugify(client), 2
         while self._one("SELECT id FROM projects WHERE slug = ?", (slug,)):
             slug, n = f"{slugify(client)}-{n}", n + 1
-        self._write("INSERT INTO projects (slug, client, base_url, brand, nightly, last_nightly, created) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)", (slug, client, base_url, brand.strip(), nightly,
-                                                     _skip_today(nightly), _now()))
+        self._write("INSERT INTO projects (slug, client, base_url, brand, nightly, last_nightly, created, workspace_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (slug, client, base_url, brand.strip(), nightly,
+                                                        _skip_today(nightly), _now(), workspace_id))
         return self.project(slug)
 
-    def projects(self) -> list[dict]:
-        return self._rows("SELECT * FROM projects ORDER BY client")
+    def projects(self, workspace_id: int | None = None) -> list[dict]:
+        """One workspace's projects; all of them for the scheduler, which runs everyone's nightly tests."""
+        if workspace_id is None:
+            return self._rows("SELECT * FROM projects ORDER BY client")
+        return self._rows("SELECT * FROM projects WHERE workspace_id = ? ORDER BY client", (workspace_id,))
 
     def project(self, slug: str) -> dict | None:
         return self._one("SELECT * FROM projects WHERE slug = ?", (slug,))
@@ -292,7 +406,19 @@ class Store:
 
 def _public_user(row: dict | None) -> dict | None:
     return None if row is None else {"id": row["id"], "email": row["email"], "name": row["name"],
-                                     "admin": bool(row["admin"])}
+                                     "admin": bool(row["admin"]), "owner": bool(row["owner"]),
+                                     "workspace_id": row["workspace_id"]}
+
+
+def _check_new_user(store: Store, email: str, password: str) -> str:
+    email = email.strip().lower()
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise StoreError("that is not an email address")
+    if len(password) < MIN_PASSWORD:
+        raise StoreError(f"the password must be at least {MIN_PASSWORD} characters")
+    if store._one("SELECT id FROM users WHERE email = ?", (email,)):
+        raise StoreError("a user with that email already exists")
+    return email
 
 
 def _token_hash(token: str) -> str:

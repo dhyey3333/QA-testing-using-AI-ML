@@ -5,6 +5,9 @@ a nightly schedule, and every run's client report. On the server it listens on 1
 behind Caddy, which adds HTTPS (deploy/oracle/).
 
 Guards, since it is on the internet and starts browsers:
+  - each agency has its own workspace and sees only its own projects, people and run files: every
+    project is looked up through the user's workspace, and another workspace's is "not found";
+  - accounts are made only from an invite link: random, single use, a week long, stored hashed;
   - a login cookie: HttpOnly, SameSite=Lax, Secure behind HTTPS; only its hash is stored;
   - every change must carry the header X-Nightshift: 1 (a form on another site can't send
     one) and, when the browser says where it comes from, this site's Origin;
@@ -104,43 +107,76 @@ class App:
         route = f"{method} {path}"
 
         if route == "GET /api/me":
-            return 200, {"user": user}
+            # public_url, so links made here (invites) point where people can open them, even when the
+            # person making one uses the app at 127.0.0.1 on the laptop itself.
+            return 200, {"user": user, "workspace": self.store.workspace(user["workspace_id"]),
+                         "public_url": self.public_url}
         if route == "PUT /api/me/password":
             if self.store.check_login(user["email"], str(body.get("current", ""))) is None:
                 raise HttpError(400, "the current password is wrong")
             self.store.set_password(user["id"], str(body.get("new", "")))
             return 200, {"ok": True}
 
+        workspace_id = user["workspace_id"]
         if route == "GET /api/users":
             _admin(user)
-            return 200, {"users": self.store.users()}
+            return 200, {"users": self.store.users(workspace_id)}
         if route == "POST /api/users":
             _admin(user)
             self.store.add_user(str(body.get("email", "")), str(body.get("name", "")), str(body.get("password", "")),
-                                admin=bool(body.get("admin")))
-            return 201, {"users": self.store.users()}
+                                admin=bool(body.get("admin")), workspace_id=workspace_id)
+            return 201, {"users": self.store.users(workspace_id)}
         if match := re.fullmatch(r"DELETE /api/users/(\d+)", route):
             _admin(user)
             if int(match[1]) == user["id"]:
                 raise HttpError(400, "you can't delete yourself")
-            self.store.delete_user(int(match[1]))
-            return 200, {"users": self.store.users()}
+            self.store.delete_user(int(match[1]), workspace_id)
+            return 200, {"users": self.store.users(workspace_id)}
+
+        # The workspace's own name, and invite links into it.
+        if route == "PUT /api/workspace":
+            _admin(user)
+            return 200, {"workspace": self.store.rename_workspace(workspace_id, str(body.get("name", "")))}
+        if route == "GET /api/invites":
+            _admin(user)
+            return 200, {"invites": self.store.invites(workspace_id)}
+        if route == "POST /api/invites":
+            _admin(user)
+            token = self.store.new_invite(workspace_id, admin=bool(body.get("admin")), note=str(body.get("note", "")),
+                                          created_by=user["id"])
+            return 201, self._invite_made(token, workspace_id)
+        if match := re.fullmatch(r"DELETE /api/invites/(\d+)", route):
+            _admin(user)
+            self.store.revoke_invite(int(match[1]), workspace_id)
+            return 200, {"invites": self.store.invites(workspace_id)}
+
+        # The owner makes a workspace for each agency, and the invite for its first admin.
+        if route == "GET /api/workspaces":
+            _owner(user)
+            return 200, {"workspaces": self.store.workspaces()}
+        if route == "POST /api/workspaces":
+            _owner(user)
+            workspace = self.store.add_workspace(str(body.get("name", "")))
+            token = self.store.new_invite(workspace["id"], admin=True, note=str(body.get("note", "")),
+                                          created_by=user["id"])
+            return 201, {**self._invite_made(token, workspace["id"]), "workspace": workspace,
+                         "workspaces": self.store.workspaces()}
 
         if route == "GET /api/projects":
-            return 200, {"projects": [self._project_card(p) for p in self.store.projects()]}
+            return 200, {"projects": [self._project_card(p) for p in self.store.projects(workspace_id)]}
         if route == "POST /api/projects":
             _admin(user)
+            # Reports say "prepared by" the agency unless told otherwise: that's whose name the client knows.
+            brand = str(body.get("brand", "")).strip() or self.store.workspace(workspace_id)["name"]
             project = self.store.add_project(str(body.get("client", "")), str(body.get("base_url", "")),
-                                             str(body.get("brand", "")), str(body.get("nightly", "")))
+                                             brand, str(body.get("nightly", "")), workspace_id=workspace_id)
             ProjectFiles(self.runner.data, project["slug"])
             return 201, {"project": project}
 
         match = re.fullmatch(r"(GET|PUT|POST|DELETE) /api/projects/([a-z0-9-]+)(/.*)?", route)
         if not match:
             raise HttpError(404, "not found")
-        project = self.store.project(match[2])
-        if project is None:
-            raise HttpError(404, "no such project")
+        project = self._project(match[2], user)
         files = self.runner.files(project)
         rest = f"{method} {match[3] or ''}"
 
@@ -319,7 +355,7 @@ class App:
         if user is None:
             raise HttpError(401, "log in first")
         match = re.fullmatch(r"/files/([a-z0-9-]+)/(\d+)/(.+)", path)
-        project = self.store.project(match[1]) if match else None
+        project = self._project(match[1], user) if match else None
         run = self.store.run(int(match[2])) if match else None
         if project is None or run is None or run["project_id"] != project["id"]:
             raise HttpError(404, "not found")
@@ -327,6 +363,32 @@ class App:
             return self.runner.files(project).run_file(run["id"], match[3])
         except StoreError:
             raise HttpError(404, "not found") from None
+
+    def _project(self, slug: str, user: dict) -> dict:
+        """A project, if it is in the user's workspace. Another workspace's is "no such project", not
+        "forbidden": a guessed name shouldn't even confirm that it exists."""
+        project = self.store.project(slug)
+        if project is None or project["workspace_id"] != user["workspace_id"]:
+            raise HttpError(404, "no such project")
+        return project
+
+    def _invite_made(self, token: str, workspace_id: int) -> dict:
+        """A new invite: its link (shown once; only the token's hash is kept) and the open invites."""
+        path = f"/#/join/{token}"
+        return {"token": token, "link": f"{self.public_url}{path}" if self.public_url else "", "path": path,
+                "invites": self.store.invites(workspace_id)}
+
+    def join(self, token: str, method: str, body: dict) -> tuple[dict, str | None]:
+        """The invite page, before any login: what the link is for (GET), or the new account (POST)."""
+        invite = self.store.invite(token)
+        if invite is None:
+            raise HttpError(404, "this invite link has expired or was already used; ask for a new one")
+        if method == "GET":
+            return {"workspace": invite["workspace"], "admin": bool(invite["admin"])}, None
+        user_id = self.store.accept_invite(token, str(body.get("email", "")), str(body.get("name", "")),
+                                           str(body.get("password", "")))
+        user = next(u for u in self.store.users() if u["id"] == user_id)
+        return {"user": user}, self.store.new_session(user_id)
 
     # --- views --------------------------------------------------------------------
 
@@ -373,6 +435,11 @@ def _admin(user: dict) -> None:
         raise HttpError(403, "only an admin can do that")
 
 
+def _owner(user: dict) -> None:
+    if not user.get("owner"):
+        raise HttpError(403, "only the owner can do that")
+
+
 def make_handler(app: App):
     class Handler(BaseHTTPRequestHandler):
         server_version = "Nightshift"
@@ -406,6 +473,12 @@ def make_handler(app: App):
                 if path == "/api/login" and method == "POST":
                     user, token = app.login(body, self._ip())
                     self._json(200, {"user": user}, {"Set-Cookie": app.cookie(token, secure=self._https())})
+                elif join := re.fullmatch(r"/api/join/([A-Za-z0-9_-]{20,100})", path):
+                    if method not in ("GET", "POST"):
+                        raise HttpError(404, "not found")
+                    payload, new_token = app.join(join[1], method, body)
+                    headers = {"Set-Cookie": app.cookie(new_token, secure=self._https())} if new_token else None
+                    self._json(201 if new_token else 200, payload, headers)
                 elif path == "/api/logout" and method == "POST":
                     app.store.end_session(token)
                     self._json(200, {"ok": True}, {"Set-Cookie": app.cookie("", max_age=0, secure=self._https())})

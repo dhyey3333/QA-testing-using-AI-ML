@@ -6,6 +6,7 @@
 const view = document.getElementById("view");
 const side = document.getElementById("side");
 let me = null;
+let workspace = null;  // the agency's workspace: its name shows in the sidebar
 let poll = null;
 // Each page load gets a number. A load that finishes after the user moved on (an auto-refresh still in
 // flight, a slow request) is stale and must not paint over the page they are on now.
@@ -202,9 +203,10 @@ async function renderSide(active) {
   side.hidden = false;
   try { clients = (await api("GET", "/api/projects")).projects; } catch { clients = []; }
   const nav = [["#/", "grid", "Clients", "projects"], ...(me.admin ? [["#/users", "users", "Team", "users"]] : []),
-    ["#/account", "user", "Account", "account"]];
+    ...(me.owner ? [["#/workspaces", "layers", "Workspaces", "workspaces"]] : []), ["#/account", "user", "Account", "account"]];
   side.innerHTML = `
     <a href="#/" class="logo"><span class="logo-mark">${icon("moon")}</span><span class="word">Nightshift QA</span></a>
+    <div class="side-ws" title="Your workspace">${esc(workspace?.name || "")}</div>
     <nav class="side-nav">${nav.map(([href, ic, label, key]) => `<a href="${href}" class="${active === key ? "on" : ""}">${icon(ic)}<span class="word">${label}</span></a>`).join("")}</nav>
     <div class="side-label">Clients</div>
     <div class="side-projects">${clients.map((p) => `<a href="#/p/${esc(p.slug)}" class="${active === `p:${p.slug}` ? "on" : ""}">
@@ -214,7 +216,7 @@ async function renderSide(active) {
       <button type="button" class="ghost small" id="logout" title="Log out">${icon("logout")}</button></div>`;
   document.getElementById("logout").addEventListener("click", async () => {
     await api("POST", "/api/logout").catch(() => {});
-    me = null;
+    me = workspace = null;
     location.hash = "#/login";
   });
 }
@@ -243,12 +245,80 @@ function loginPage() {
           <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
           <p class="error" role="alert"></p>
           <button type="submit">Log in</button>
+          <div class="auth-links">
+            <p>New here? <a href="https://nightshift-qa.github.io/pilot/#apply" target="_blank" rel="noopener">Apply for a free pilot</a></p>
+            <p class="muted small">Invited by your team? Open the invite link you were sent to set up your account.</p>
+          </div>
         </form>
       </div>
     </div>`;
   onSubmit(document.getElementById("login"), async (form) => {
     me = (await api("POST", "/api/login", form)).user;
+    workspace = null;  // fetched with the next page
     location.hash = "#/";
+  });
+}
+
+// An invite link: who it's from, then a name, email and password make the account.
+async function joinPage(inviteToken) {
+  side.hidden = true;
+  view.classList.add("bare");
+  const shell = (inner) => `
+    <div class="auth">
+      <div class="auth-brand">
+        <div class="logo"><span class="logo-mark">${icon("moon")}</span>Nightshift QA</div>
+        <h1>AI regression testing your clients can trust.</h1>
+        <ul class="proof">
+          <li>${icon("check")} Plain-English tests, run every night in a real browser</li>
+          <li>${icon("check")} Every pass proven by a quote from the page</li>
+          <li>${icon("check")} A client report with your agency's name after each run</li>
+        </ul>
+      </div>
+      <div class="auth-form">${inner}</div>
+    </div>`;
+  let invite;
+  try {
+    invite = await api("GET", `/api/join/${encodeURIComponent(inviteToken)}`);
+  } catch (exc) {
+    view.innerHTML = shell(`<div class="card stack"><div><h2>This link doesn't work</h2>
+      <p class="muted">${esc(exc.message)}</p></div><a class="btn" href="#/login">Go to log in</a></div>`);
+    return;
+  }
+  view.innerHTML = shell(`
+    <form class="card stack" id="join">
+      <div><h2>Join ${esc(invite.workspace)}</h2>
+        <p class="muted">You've been invited${invite.admin ? " as an admin" : ""}. Set up your account to get started.</p></div>
+      <label>Your name <input name="name" autocomplete="name" required autofocus></label>
+      <label>Work email <input name="email" type="email" autocomplete="username" required></label>
+      <label>Password <span class="hint">10+ characters</span><input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
+      <p class="error" role="alert"></p>
+      <button type="submit">Create my account</button>
+      <p class="muted small">Already have one? <a href="#/login">Log in</a></p>
+    </form>`);
+  onSubmit(document.getElementById("join"), async (fields) => {
+    me = (await api("POST", `/api/join/${encodeURIComponent(inviteToken)}`, fields)).user;
+    workspace = null;
+    toast(`Welcome to ${invite.workspace}`);
+    location.hash = "#/";
+  });
+}
+
+// A new invite: the link, shown this once (only its hash is kept), with a copy button.
+function inviteResult(made, who) {
+  const link = made.link || `${location.origin}${made.path}`;
+  return `
+    <div class="card stack invite-made">
+      <div class="card-head">${icon("check")}<h3>Invite link for ${esc(who || "your invite")}</h3></div>
+      <div class="copy-row"><input readonly value="${esc(link)}" id="invite-link"><button type="button" id="copy-link">Copy link</button></div>
+      <p class="muted small">Send it to them yourself (email or WhatsApp). It works once and expires in 7 days.
+        Copy it now: for safety it can't be shown again.${made.link ? "" : " This link uses this computer's address; start Nightshift QA with its public link for one that works anywhere."}</p>
+    </div>`;
+}
+function wireCopy() {
+  document.getElementById("copy-link")?.addEventListener("click", async () => {
+    const input = document.getElementById("invite-link");
+    try { await navigator.clipboard.writeText(input.value); } catch { input.select(); document.execCommand("copy"); }
+    toast("Link copied");
   });
 }
 
@@ -653,40 +723,95 @@ function settingsTab(section, slug, data) {
   }));
 }
 
-async function usersPage() {
+async function usersPage(made) {
   const token = routeToken;
-  const [{ users }] = await Promise.all([api("GET", "/api/users"), renderSide("users")]);
+  const [{ users }, { invites }] = await Promise.all([api("GET", "/api/users"), api("GET", "/api/invites"), renderSide("users")]);
   if (stale(token)) return;
+  const pending = invites.map((i) => `
+    <tr><td class="status">${statusIcon("info")}</td>
+      <td><div class="cell-title">${esc(i.note || "Invite")}</div><div class="muted small">${i.admin ? "Admin" : "Staff"} · not used yet · expires ${esc(new Date(i.expires * 1000).toLocaleDateString())}</div></td>
+      <td class="narrow"><button type="button" class="ghost small" data-revoke="${i.id}" title="Cancel this invite">${icon("x")}Cancel</button></td></tr>`).join("");
   const rows = users.map((u) => `
     <tr><td class="status"><span class="avatar">${esc(initials(u.name || u.email))}</span></td>
       <td><div class="cell-title">${esc(u.name || u.email)}${u.id === me.id ? '<span class="chip">you</span>' : ""}</div><div class="muted small">${esc(u.email)}</div></td>
       <td class="narrow"><span class="pill ${u.admin ? "run" : "off"}">${u.admin ? "Admin" : "Staff"}</span></td>
       <td class="narrow">${u.id === me.id ? "" : `<button type="button" class="ghost small" data-user="${u.id}" title="Delete">${icon("trash")}</button>`}</td></tr>`).join("");
   view.innerHTML = `
-    <div class="page-head"><div><h1>Team</h1><div class="sub">Admins manage clients, team and secrets; staff write tests and start runs.</div></div></div>
+    <div class="page-head"><div><h1>Team</h1><div class="sub">Everyone in ${esc(workspace?.name || "your workspace")}. Admins manage clients, team and secrets; staff write tests and start runs.</div></div></div>
     <div class="table-wrap"><table><tbody>${rows}</tbody></table></div>
-    <form class="card stack" id="new-user">
-      <div class="card-head">${icon("plus")}<h3>Add someone</h3></div>
+    ${made ? inviteResult(made.result, made.who) : ""}
+    <form class="card stack" id="new-invite">
+      <div class="card-head">${icon("plus")}<h3>Invite someone</h3></div>
+      <p class="muted small">You get a link to send them; they choose their own name and password.</p>
       <div class="fields">
-        <label>Email <input name="email" type="email" required></label>
-        <label>Name <input name="name"></label>
-        <label>First password <span class="hint">10+ characters; they change it under Account</span><input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
+        <label>Who is it for? <span class="hint">so you know which invite is whose</span><input name="note" placeholder="Ravi, manual tester"></label>
       </div>
-      <label class="check"><input name="admin" type="checkbox" value="1"> Admin</label>
+      <label class="check"><input name="admin" type="checkbox" value="1"> Make them an admin</label>
       <p class="error" role="alert"></p>
-      <div class="actions"><button type="submit">${icon("plus")}Add to team</button></div>
+      <div class="actions"><button type="submit">${icon("plus")}Create invite link</button></div>
+    </form>
+    ${pending ? `<div class="section-title"><h2>Invites not used yet <span class="count">${invites.length}</span></h2></div>
+      <div class="table-wrap"><table><tbody>${pending}</tbody></table></div>` : ""}
+    <form class="card stack" id="workspace-name">
+      <div class="card-head">${icon("sliders")}<h3>Workspace name</h3></div>
+      <p class="muted small">Your agency's name. New clients' reports say "prepared by" it.</p>
+      <div class="fields"><label>Name <input name="name" required value="${esc(workspace?.name || "")}"></label></div>
+      <p class="error" role="alert"></p>
+      <div class="actions"><button type="submit" class="secondary">Save name</button></div>
     </form>`;
-  onSubmit(document.getElementById("new-user"), async (fields) => {
-    await api("POST", "/api/users", { ...fields, admin: fields.admin === "1" });
-    toast(`${fields.email} added`);
+  wireCopy();
+  onSubmit(document.getElementById("new-invite"), async (fields) => {
+    const result = await api("POST", "/api/invites", { note: fields.note, admin: fields.admin === "1" });
+    await usersPage({ result, who: fields.note });
+  });
+  onSubmit(document.getElementById("workspace-name"), async (fields) => {
+    workspace = (await api("PUT", "/api/workspace", fields)).workspace;
+    toast("Workspace renamed");
     route();
   });
+  view.querySelectorAll("[data-revoke]").forEach((button) => action(button,
+    () => api("DELETE", `/api/invites/${button.dataset.revoke}`), "Invite cancelled"));
   view.querySelectorAll("[data-user]").forEach((button) => button.addEventListener("click", async () => {
     if (!confirm("Remove this person from the team?")) return;
     await api("DELETE", `/api/users/${button.dataset.user}`);
     toast("Removed");
     route();
   }));
+}
+
+// The owner's page: a workspace per agency, made with the invite for its first admin. Names and
+// sizes only; what's inside each workspace stays with that agency.
+async function workspacesPage(made) {
+  const token = routeToken;
+  const [{ workspaces }] = await Promise.all([api("GET", "/api/workspaces"), renderSide("workspaces")]);
+  if (stale(token)) return;
+  const rows = workspaces.map((w) => `
+    <tr><td class="status"><span class="avatar">${esc(initials(w.name))}</span></td>
+      <td><div class="cell-title">${esc(w.name)}${w.id === me.workspace_id ? '<span class="chip">yours</span>' : ""}</div>
+        <div class="muted small">since ${esc(new Date(w.created).toLocaleDateString())}</div></td>
+      <td class="narrow"><div class="small">${plural(w.members, "member")}</div></td>
+      <td class="narrow"><div class="small">${plural(w.clients, "client")}</div></td>
+      <td class="narrow">${w.pending ? `<span class="pill run">${plural(w.pending, "invite")} open</span>` : ""}</td></tr>`).join("");
+  view.innerHTML = `
+    <div class="page-head"><div><h1>Workspaces</h1><div class="sub">One per agency. Each sees only its own clients, tests and team.</div></div></div>
+    <div class="table-wrap"><table><tbody>${rows}</tbody></table></div>
+    ${made ? inviteResult(made.result, made.who) : ""}
+    <form class="card stack" id="new-workspace">
+      <div class="card-head">${icon("plus")}<h3>New workspace for an agency</h3></div>
+      <p class="muted small">You get an invite link for their first admin, who then invites the rest of their team.</p>
+      <div class="fields">
+        <label>Agency name <input name="name" required placeholder="Acme QA Services"></label>
+        <label>Invite for <span class="hint">their admin's name</span><input name="note" placeholder="Priya Sharma"></label>
+      </div>
+      <p class="error" role="alert"></p>
+      <div class="actions"><button type="submit">${icon("plus")}Create workspace and invite</button></div>
+    </form>`;
+  wireCopy();
+  onSubmit(document.getElementById("new-workspace"), async (fields) => {
+    const result = await api("POST", "/api/workspaces", fields);
+    toast(`${fields.name} created`);
+    await workspacesPage({ result, who: fields.note || `${fields.name}'s admin` });
+  });
 }
 
 async function accountPage() {
@@ -705,7 +830,7 @@ async function accountPage() {
     </form>`;
   onSubmit(document.getElementById("password"), async (fields) => {
     await api("PUT", "/api/me/password", fields);
-    me = null;
+    me = workspace = null;
     toast("Password changed: log in again");
     location.hash = "#/login";
   });
@@ -718,15 +843,17 @@ async function route() {
   clearTimeout(poll);
   const parts = location.hash.replace(/^#\/?/, "").split("/");
   if (parts[0] === "login") return loginPage();
+  if (parts[0] === "join" && parts[1]) return joinPage(parts[1]);
   view.classList.remove("bare");
   try {
-    if (!me) me = (await api("GET", "/api/me")).user;
+    if (!me || !workspace) ({ user: me, workspace } = await api("GET", "/api/me"));
   } catch {
     return;  // api() sent us to the login page
   }
   try {
     if (parts[0] === "p" && parts[1]) return await projectPage(parts[1], parts[2] || "runs", parts[3]);
     if (parts[0] === "users" && me.admin) return await usersPage();
+    if (parts[0] === "workspaces" && me.owner) return await workspacesPage();
     if (parts[0] === "account") return await accountPage();
     return await projectsPage();
   } catch (exc) {
