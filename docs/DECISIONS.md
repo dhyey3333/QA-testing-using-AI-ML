@@ -501,3 +501,22 @@ use, a week long, stored only as a hash (so it is shown once, like a secret), an
 step it is checked, so a link opened twice makes one account. The login page points new people to the
 pilot form. Databases from before workspaces move everything into the first workspace, and its first
 admin becomes the owner.
+
+## D52. Exploring proves broken images and mislabelled fields, and spreads its actions
+An exploration of a practice shop found real bugs but filed them too low: a picture missing on
+every page only as a warning, and Country/State labels swapped onto each other's fields only as
+"suspected". Both can be proven by code, so exploring now files them as bugs: a broken picture
+when the server refused its file (an empty-looking SVG alone proves nothing), and a field whose
+label names one known thing (country, state, city, postcode, email, phone, password, name,
+address, date of birth) while the field's own name, test id, autocomplete or visible hint names
+another. The id is ignored, since it is usually the label's anchor, and fields with meaningless
+names are never flagged. Test runs keep both as warnings, so a broken footer picture doesn't fail
+a checkout test. The same run spent 20 of 25 actions on one sign-up form and never saw the cart, so
+the agent is told how many actions it has used on the page (about a fifth of the budget is enough)
+and is sent back to the start after twice that.
+
+Measured: on 18 clean pages of 11 practice sites (200 fields, 87 images) the new rules flagged
+nothing; on a site not used to design them (the-internet's broken-images page) they caught both
+broken pictures and not the working one. The same 25-action exploration of the buggy shop went
+from 3 pages and 2 findings to 5 pages and 7 distinct real bugs (each checked against the clean
+shop), with no false ones. The shop is now a seen site: don't tune further on it.

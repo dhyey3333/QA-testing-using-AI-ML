@@ -4,7 +4,10 @@ Two signals fail a run on their own, even when the page looks fine:
   - an uncaught JavaScript error (unless the spec or run sets js_errors: warn)
   - an HTTP 5xx from the app's own origin
 The rest are warnings a tester would note: console errors, 404s, slow calls,
-dialogs, and basic accessibility gaps (unlabelled fields, images without alt text).
+dialogs, basic accessibility gaps (unlabelled fields, images without alt text), broken
+images and mislabelled fields. Exploring promotes the last two to bugs when they are
+proven (explore.py); a test run keeps them as warnings, so a broken footer picture
+doesn't fail a checkout test.
 """
 
 from __future__ import annotations
@@ -38,7 +41,47 @@ _PAGE_CHECKS_JS = r"""
     if (!visible(img)) continue;
     const src = img.getAttribute('src') || '';
     if (!img.hasAttribute('alt')) issues.push(`a11y: image without alt text (${src.split('/').pop().slice(0, 60)})`);
-    if (src && img.complete && img.naturalWidth === 0) issues.push(`broken image: ${src.slice(0, 80)}`);
+    if (src && img.complete && img.naturalWidth === 0) {
+      // The resolved address, as a path for the site's own images, so exploring can match it with the
+      // server's answer for that file.
+      let where = src;
+      try { const u = new URL(img.currentSrc || img.src, location.href); where = u.origin === location.origin ? u.pathname : u.href; } catch (e) {}
+      issues.push(`broken image: ${where.slice(0, 100)}`);
+    }
+  }
+  // A field whose label names one thing while the field itself names another known thing: the
+  // label "Country" on a field named "state" whose placeholder says "Your state". The id is left out,
+  // since it is usually the label's own anchor; name, test ids, autocomplete and the visible hint
+  // are the field speaking for itself. Fields with meaningless names (field_7) are never flagged.
+  const KINDS = {country: ['country'], state: ['state', 'province', 'region', 'county'], city: ['city', 'town'],
+    postcode: ['postcode', 'postal', 'zip', 'zipcode', 'postalcode', 'pincode'], email: ['email', 'mail'],
+    phone: ['phone', 'mobile', 'tel', 'telephone'], password: ['password', 'passwd', 'pwd'],
+    'first name': ['firstname', 'fname', 'first', 'given'], 'last name': ['lastname', 'lname', 'last', 'surname', 'family'],
+    address: ['address', 'street', 'addr'], 'date of birth': ['birth', 'dob', 'birthday', 'birthdate', 'bday']};
+  const AUTOCOMPLETE = {country: 'country', 'country-name': 'country', 'address-level1': 'state', 'address-level2': 'city',
+    'postal-code': 'postcode', email: 'email', tel: 'phone', 'current-password': 'password', 'new-password': 'password',
+    'given-name': 'first name', 'family-name': 'last name', 'street-address': 'address', 'address-line1': 'address',
+    bday: 'date of birth'};
+  const words = (s) => (s || '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  const kindsOf = (text) => { const w = new Set(words(text)); return Object.keys(KINDS).filter((k) => KINDS[k].some((x) => w.has(x))); };
+  for (const el of document.querySelectorAll('input:not([type=hidden]):not([type=submit]):not([type=button]), select, textarea')) {
+    if (!visible(el)) continue;
+    const label = clean((el.labels && el.labels[0] && el.labels[0].innerText) || el.getAttribute('aria-label'));
+    const said = kindsOf(label);
+    if (!said.length) continue;
+    const own = new Set();
+    const marks = [];
+    for (const attr of ['name', 'data-test', 'data-testid', 'formcontrolname']) {
+      const value = el.getAttribute(attr);
+      if (value) { kindsOf(value).forEach((k) => own.add(k)); marks.push(`${attr}=${value}`); }
+    }
+    const auto = (el.getAttribute('autocomplete') || '').toLowerCase().split(/\s+/).pop();
+    if (AUTOCOMPLETE[auto]) { own.add(AUTOCOMPLETE[auto]); marks.push(`autocomplete=${auto}`); }
+    const hint = clean(el.getAttribute('placeholder') || (el.tagName === 'SELECT' && el.options[0] ? el.options[0].text : ''));
+    if (hint) { kindsOf(hint).forEach((k) => own.add(k)); marks.push(`"${hint.slice(0, 40)}"`); }
+    if (own.size && !said.some((k) => own.has(k))) {
+      issues.push(`mislabelled field: labelled "${label.slice(0, 40)}" but it is the ${[...own].join('/')} field (${marks.join(', ').slice(0, 160)})`);
+    }
   }
   const fields = 'input:not([type=hidden]):not([type=submit]):not([type=button]):not([type=reset]), select, textarea';
   for (const el of document.querySelectorAll(fields)) {

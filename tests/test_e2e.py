@@ -239,6 +239,30 @@ def test_explore_turns_browser_errors_into_findings(shop, browser, base_url, tmp
         assert (tmp_path / "explore" / name).exists(), name
 
 
+def test_explore_proves_broken_images_and_mislabelled_fields(browser, base_url, tmp_path):
+    # The lab page: a banner whose file is missing (404), a logo that loads, Country and State
+    # labels swapped onto each other's fields, and correct fields with names like field_7.
+    explorer = ScriptedModel([("raw", {"action": "done", "reason": "seen enough"})])
+    result = explore(browser, base_url + "/lab/explore-lab.html", explorer, out_dir=tmp_path / "explore", budget=5)
+    bugs = {f.title for f in result.findings if f.severity == "bug"}
+    assert bugs == {
+        "broken image: /lab/missing-banner.png (HTTP 404)",
+        'mislabelled field: labelled "Country" but it is the state field',
+        'mislabelled field: labelled "State" but it is the country field',
+    }
+    assert "the label and the field disagree" in (tmp_path / "explore" / "findings.md").read_text(encoding="utf-8")
+
+
+def test_explore_moves_on_after_a_pages_share_of_actions(browser, base_url, tmp_path):
+    # An agent that would fill a long form forever: after twice its share it is sent back to the start.
+    fill = [("type", f"Field {i % 12 + 1}", "x") for i in range(20)]
+    explorer = ScriptedModel([("click", "Long form"), *fill])
+    result = explore(browser, base_url + "/lab/explore-lab.html", explorer, out_dir=tmp_path / "explore", budget=30)
+    assert result.moved_on == ["/lab/explore-long.html"]
+    assert len([s for s in result.steps if s.description.startswith("type")]) == 12  # 2 x max(5, 30 // 5)
+    assert "Moved on after their share of actions" in (tmp_path / "explore" / "findings.md").read_text(encoding="utf-8")
+
+
 def test_a_replay_tolerates_a_new_order_number_but_not_a_new_total(run, tmp_path):
     from nightshift.runner import _still_shown
 

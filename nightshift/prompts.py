@@ -109,7 +109,9 @@ page: URL, visible text, and numbered interactive elements. A screenshot may be 
 attached; the red numbers on it are the element ids.
 
 Priorities:
-1. Reach pages and features you have not seen yet (see PAGES VISITED).
+1. Reach pages and features you have not seen yet (see PAGES VISITED). Spread your \
+actions over the site: a few per page or form is enough (THIS PAGE says how many \
+you've used). To check a form, one empty or wrong submit beats filling every field.
 2. Try forms with bad input: leave required fields empty, use the wrong format, \
 very long text, or special characters like <b>'"&. Check the app responds with a \
 clear message instead of breaking or silently accepting it.

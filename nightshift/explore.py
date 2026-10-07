@@ -1,9 +1,15 @@
 """Exploratory testing: no spec, just "find what's broken".
 
 The agent roams the app on a step budget: new pages first, then forms filled the
-ways real users get them wrong. What the browser proves (JS crashes, 5xx, 404s,
-accessibility gaps) is recorded as it happens. What the model only suspects is
-kept apart, so nobody mistakes a guess for a proof.
+ways real users get them wrong. What the browser proves (JS crashes, 5xx, a picture
+the server didn't deliver, a field labelled as something it isn't) is recorded as a
+bug as it happens; 404s, slow calls and accessibility gaps as warnings. What the model
+only suspects is kept apart, so nobody mistakes a guess for a proof.
+
+The budget is spread over the site: after a few actions on one page the agent is told
+it has checked it enough, and after twice that it is moved back to the start. Found
+on a practice shop: 20 of 25 actions went into one long sign-up form, and the cart and
+checkout were never seen.
 
 It also writes discovered.json, a map of the pages it found, which
 `nightshift generate` turns into specs.
@@ -65,6 +71,7 @@ class ExploreResult:
     # The browser's raw signals; findings are built from them step by step.
     app_errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    moved_on: list[str] = field(default_factory=list)  # pages left because they'd had their share of actions
 
     def count(self, severity: str) -> int:
         return sum(finding.severity == severity for finding in self.findings)
@@ -88,6 +95,17 @@ def explore(
         block_ads(context)
     watch_form_validation(context)
     context.tracing.start(screenshots=True, snapshots=True)
+    # The site's own pictures the server didn't deliver (a 404, a refused or dropped request): with
+    # one of these, "broken image" on the page is proven, not a guess (an SVG, say, can look empty).
+    failed_images: dict[str, int] = {}
+
+    def note_image(response_or_request, status: int) -> None:
+        request = getattr(response_or_request, "request", response_or_request)
+        if request.resource_type == "image" and _origin(request.url) == _origin(url):
+            failed_images[urlsplit(request.url).path] = status
+
+    context.on("response", lambda r: r.status >= 400 and note_image(r, r.status))
+    context.on("requestfailed", lambda r: note_image(r, 0))
     page = context.new_page()
     listen(page, url, result)
     track_network(page)
@@ -97,7 +115,7 @@ def explore(
     try:
         page.goto(url, wait_until="domcontentloaded")
         settle(page)
-        _Explorer(page, spec, model, options, result, out_dir, avoid, log, new_tabs).run(budget)
+        _Explorer(page, spec, model, options, result, out_dir, avoid, log, new_tabs, failed_images).run(budget)
     except PlaywrightError as exc:
         result.stopped = f"browser error: {str(exc).strip().splitlines()[0][:300]}"
     finally:
@@ -118,7 +136,8 @@ def explore(
 
 class _Explorer:
     def __init__(self, page: Page, spec: Spec, model: Model, options: RunOptions, result: ExploreResult,
-                 out_dir: Path, avoid: tuple[str, ...], log: Log, new_tabs: list[Page] | None = None) -> None:
+                 out_dir: Path, avoid: tuple[str, ...], log: Log, new_tabs: list[Page] | None = None,
+                 failed_images: dict[str, int] | None = None) -> None:
         self.page, self.spec, self.model, self.options = page, spec, model, options
         self.result, self.out_dir, self.avoid, self.log = result, out_dir, avoid, log
         self.origin = _origin(spec.url)
@@ -126,11 +145,18 @@ class _Explorer:
         self.new_tabs = new_tabs if new_tabs is not None else []
         self.errors_seen = 0
         self.warnings_seen = 0
+        self.failed_images = failed_images if failed_images is not None else {}
+        self.home_key = _page_key(spec.url)
+        self.page_actions: dict[str, int] = {}  # actions spent on each page
+        self.enough = self.limit = 0
 
     def run(self, budget: int) -> None:
         steps = self.result.steps
         last_fingerprint = ""
         invalid_streak = 0
+        # About a fifth of the budget is enough to check one page or form; twice that, and it moves on.
+        self.enough = max(5, budget // 5)
+        self.limit = 2 * self.enough
         for index in range(1, budget + 1):
             observation = observe(self.page)
             check_page(self.page, self.result, self.seen_pages)
@@ -149,12 +175,20 @@ class _Explorer:
                 self._return_home()
                 continue
             self._remember_page(observation, index)
+            here = _page_key(observation.url)
+            if self.page_actions.get(here, 0) >= self.limit and here != self.home_key:
+                if here not in self.result.moved_on:
+                    self.result.moved_on.append(here)
+                self.log(f"    moved on: {self.page_actions[here]} actions on {here} is its share")
+                self._go_home()
+                continue
+            self.page_actions[here] = self.page_actions.get(here, 0) + 1
 
             shot_name = f"step-{index:02d}.jpg"
             shot = screenshot(self.page)
             (self.out_dir / shot_name).write_bytes(shot)
             context = Context(self.spec, observation, tuple(steps), shot if self.options.send_screenshot else None,
-                              mode="explore", notes=self._notes(budget - index + 1))
+                              mode="explore", notes=self._notes(budget - index + 1, here))
             started = time.perf_counter()
             try:
                 raw = self.model.decide(context)
@@ -221,8 +255,27 @@ class _Explorer:
                               screenshot=cause.screenshot if cause else None))
         self.errors_seen = len(self.result.app_errors)
         for warning in self.result.warnings[self.warnings_seen:]:
-            self._add(Finding("warning", warning, step=cause.index if cause else None, url=where))
+            self._add(self._classify(warning, cause, where))
         self.warnings_seen = len(self.result.warnings)
+
+    def _classify(self, warning: str, cause: Step | None, where: str) -> Finding:
+        """A warning, or a bug when the browser proves it: a broken picture whose file the server
+        refused, or a field labelled as something it isn't."""
+        step, shot = (cause.index, cause.screenshot) if cause else (None, None)
+        text, _, page = warning.rpartition(" on ")  # the page checks end each line with " on <page>"
+        if warning.startswith("broken image: ") and text:
+            path = text.removeprefix("broken image: ")
+            if path in self.failed_images:
+                status = self.failed_images[path]
+                answer = f"HTTP {status}" if status else "the request failed"
+                return Finding("bug", f"broken image: {path} ({answer})", step=step, url=where, screenshot=shot,
+                               details=f"on {page}: the page shows a picture the server didn't deliver ({answer})")
+        if warning.startswith("mislabelled field: ") and text:
+            title, _, marks = text.partition(" (")
+            return Finding("bug", title, step=step, url=where, screenshot=shot,
+                           details=f"on {page}: the label and the field disagree, so people fill in the wrong thing. "
+                                   f"The field: {marks.rstrip(')')}")
+        return Finding("warning", warning, step=step, url=where)
 
     def _add(self, finding: Finding) -> None:
         if any(f.title == finding.title and f.severity == finding.severity for f in self.result.findings):
@@ -230,6 +283,13 @@ class _Explorer:
         self.result.findings.append(finding)
         if finding.severity != "warning":
             self.log(f"    {finding.severity.upper()}: {finding.title}")
+
+    def _go_home(self) -> None:
+        try:
+            self.page.goto(self.spec.url, wait_until="domcontentloaded")
+            settle(self.page)
+        except PlaywrightError:
+            pass
 
     def _return_home(self) -> None:
         try:
@@ -252,13 +312,22 @@ class _Explorer:
             "text": mask(observation.text, self.spec.data)[:800],
         }
 
-    def _notes(self, actions_left: int) -> str:
+    def _notes(self, actions_left: int, here: str = "") -> str:
         pages = "\n".join(f'- {key} "{page["title"]}"' for key, page in self.result.pages.items())
         found = "\n".join(f"- {f.title}" for f in self.result.findings if f.severity != "warning")
+        used = self.page_actions.get(here, 0)
+        this_page = f"THIS PAGE: {used} actions used here. About {self.enough} is enough to check a page or form"
+        if here != self.home_key:
+            this_page += f"; after {self.limit} you will be moved back to the start"
+        if used >= self.enough:
+            this_page += ". You have checked this page enough: move on to a part of the site you haven't visited"
+        covered = f"\n\nALREADY COVERED (don't go back unless following a new lead): {', '.join(self.result.moved_on)}" \
+            if self.result.moved_on else ""
         return "\n\n".join([
             f"AVOID (never click these): {', '.join(self.avoid) or '(nothing)'}",
             f"PAGES VISITED ({len(self.result.pages)}):\n{pages or '(none yet)'}",
             f"FINDINGS SO FAR:\n{found or '(none yet)'}",
+            this_page + "." + covered,
             f"ACTIONS LEFT: {actions_left}",
         ])
 
@@ -277,6 +346,8 @@ def findings_markdown(result: ExploreResult) -> str:
     out_dir = Path(result.out_dir)
     lines = [f"# Exploratory test of {result.url}", "",
              f"{len(result.steps)} actions, {len(result.pages)} pages, {result.duration_s:.0f}s. Stopped: {result.stopped}.", ""]
+    if result.moved_on:
+        lines += [f"Moved on after their share of actions: {', '.join(result.moved_on)}.", ""]
     sections = [("bug", "Bugs the browser proved"), ("suspected", "Suspected by the agent (check by hand)"),
                 ("warning", "Warnings")]
     for severity, heading in sections:
@@ -311,6 +382,8 @@ def explore_report_html(result: ExploreResult) -> str:
     body = (f"<h1>Exploratory test</h1><p class=\"reason\">{escape(result.url)}: {escape(counts)}</p>"
             f'<p class="muted">{len(result.steps)} actions · {len(result.pages)} pages · {result.duration_s:.0f}s · '
             f"{result.model_calls} model calls ({tokens:,} tokens) · stopped: {escape(result.stopped)}</p>"
+            + (f'<p class="muted">Moved on after their share of actions: {escape(", ".join(result.moved_on))}</p>'
+               if result.moved_on else "") +
             f'<h2>Findings</h2><div class="wrap"><table><tr><th></th><th>Finding</th><th>Where</th><th>Evidence</th></tr>'
             f"{rows or '<tr><td colspan=4>Nothing found.</td></tr>'}</table></div>"
             f'<h2>Pages visited</h2><ul class="plain panel">{pages}</ul>'
