@@ -321,20 +321,18 @@ also notes any API call the app refused. It's in each report, in `bug.md` and in
 
 ## One click on Windows
 
-The desktop icon (`launch\make-shortcut.ps1` puts it there) starts Nightshift QA with no window and
-opens it in the browser; double-click it again while it runs to **Open** or **Stop** it. Messages go to
-`runs
-ightshift.log`. `launch\Start Nightshift.bat` does the same in a visible window. Either way it:
-- checks Ollama and uses the free cloud model;
-- on first start, creates your admin login in its window;
-- starts the app and opens your browser;
-- with Tailscale installed and signed in (free, no card), opens your **fixed** public link with
-  Tailscale Funnel: the same https address every time, so it can go on the website;
-- otherwise, with `cloudflared` installed (`winget install Cloudflare.cloudflared`), opens a free
-  public link that changes on every start;
-- copies the link to the clipboard, to paste to anyone, and opens it.
+Run `powershell -ExecutionPolicy Bypass -File launch\make-shortcut.ps1` once. It sets Nightshift QA up
+like an installed app:
+- **Windows startup** runs it in the background with no window, so nightly runs and the public link
+  work whenever the laptop is on (turn it off in Task Manager > Startup apps, or rerun with `-NoStartup`);
+- the **Nightshift QA** desktop icon opens it in its own window (Edge or Chrome in app mode: no tabs,
+  no address bar, its own login), starting it first if it isn't running. Closing the window leaves it running.
 
-Stop it with the icon's **Stop** (or, for the .bat, by closing its window).
+When it starts it checks Ollama (the free cloud model), creates your admin login the first time (in a
+window, since that needs typing), and opens your public link: a **fixed** one with Tailscale Funnel
+(free, no card), or else a Cloudflare quick tunnel that changes on every start. Messages go to
+`runs
+ightshift.log`. `launch\Start Nightshift.bat` runs the same in a visible window, until you close it.
 
 The public website is in `site/`; see `deploy/site/README.md` to preview and publish it.
 

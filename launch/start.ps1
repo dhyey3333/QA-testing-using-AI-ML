@@ -1,17 +1,21 @@
 <#
-  Nightshift QA, one click. Checks the model, starts the web app, opens a free public link (a fixed
-  one with Tailscale Funnel, else a Cloudflare quick tunnel), and opens the browser.
+  Nightshift QA on Windows. Three ways in:
+    (no switch)   in this window: starts the app and its public link, opens the app window, and runs
+                  until the window closes. "Start Nightshift.bat" does this.
+    -Background   the desktop icon: if the app is running, opens its window at once; if not, starts it
+                  with no window (-Server) and then opens the window. Never asks anything.
+    -Server       Windows startup: runs the app and its public link with no window, all the time.
+                  Messages go to runs\nightshift.log.
+  The app window is Edge (or Chrome) in app mode with its own profile: no tabs, no address bar, its own
+  taskbar icon, and its own login. Closing it leaves the app running.
 
   Works in Windows PowerShell 5.1 (every Windows 10/11) and PowerShell 7.
-    -Background      no window (the desktop icon uses this): messages go to runs\nightshift.log, and
-                     starting it again while it runs asks Open / Stop instead
     -Port 8080       where the app listens
     -NoTunnel        no public link: only this computer can open the app
-    -NoBrowser       don't open the browser
+    -NoBrowser       don't open the app window
     -Data <folder>   the app's data (default: hosted-data next to this folder)
-  Without -Background it runs in this window: close the window, or press Ctrl+C, to stop it.
 #>
-param([int]$Port = 8080, [switch]$NoTunnel, [switch]$NoBrowser, [switch]$Background, [string]$Data = "")
+param([int]$Port = 8080, [switch]$NoTunnel, [switch]$NoBrowser, [switch]$Background, [switch]$Server, [string]$Data = "")
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
@@ -21,13 +25,13 @@ $Runs = Join-Path $Root "runs"
 New-Item -ItemType Directory -Force $Runs | Out-Null
 $TunnelLog = Join-Path $Runs "tunnel.log"
 $PidFile = Join-Path $Runs "tunnel.pid"
-$Local = "http://127.0.0.1:$Port/"
 $LogFile = Join-Path $Runs "nightshift.log"
-$UrlFile = Join-Path $Runs "nightshift.url"  # the address to open, for "Open" while it runs
+$Local = "http://127.0.0.1:$Port/"
+$Hidden = $Background -or $Server
 
 # With no window, messages go to the log, and anything the person must see is a small dialog.
 function Say([string]$Text, [string]$Color = "Gray") {
-    if ($Background) { Add-Content $LogFile $Text } else { Write-Host $Text -ForegroundColor $Color }
+    if ($Hidden) { Add-Content $LogFile $Text -Encoding UTF8 } else { Write-Host $Text -ForegroundColor $Color }
 }
 function Show-Message([string]$Text) {
     Add-Type -AssemblyName System.Windows.Forms
@@ -35,107 +39,112 @@ function Show-Message([string]$Text) {
 }
 function Stop-Here([string]$Text) {
     Say $Text "Red"
-    if ($Background) { Show-Message $Text } else { Read-Host "Press Enter to close" }
+    if ($Hidden) { Show-Message $Text } else { Read-Host "Press Enter to close" }
     exit 1
 }
-# "Nightshift QA is running at <link>": Open, Stop or Cancel. Returns "open", "stop" or "".
-function Show-Running([string]$Url) {
-    Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-    [System.Windows.Forms.Application]::EnableVisualStyles()
-    $form = New-Object System.Windows.Forms.Form
-    $form.Text = "Nightshift QA"; $form.StartPosition = "CenterScreen"; $form.FormBorderStyle = "FixedDialog"
-    $form.MaximizeBox = $false; $form.MinimizeBox = $false; $form.TopMost = $true
-    $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-    $form.ClientSize = New-Object System.Drawing.Size(392, 132)
-    $icon = Join-Path $PSScriptRoot "nightshift.ico"
-    if (Test-Path $icon) { $form.Icon = New-Object System.Drawing.Icon($icon) }
-    $label = New-Object System.Windows.Forms.Label
-    $label.Text = "Nightshift QA is running at`n$Url"
-    $label.Location = New-Object System.Drawing.Point(18, 16); $label.Size = New-Object System.Drawing.Size(360, 48)
-    $form.Controls.Add($label)
-    $buttons = @(("Open", [System.Windows.Forms.DialogResult]::Yes), ("Stop", [System.Windows.Forms.DialogResult]::No),
-                 ("Cancel", [System.Windows.Forms.DialogResult]::Cancel))
-    $x = 18
-    foreach ($b in $buttons) {
-        $button = New-Object System.Windows.Forms.Button
-        $button.Text = $b[0]; $button.DialogResult = $b[1]
-        $button.Location = New-Object System.Drawing.Point($x, 80); $button.Size = New-Object System.Drawing.Size(112, 34)
-        $form.Controls.Add($button); $x += 124
-        if ($b[0] -eq "Open") { $form.AcceptButton = $button }
-        if ($b[0] -eq "Cancel") { $form.CancelButton = $button }
+# Is the app answering? A plain TCP connect: much quicker than a web request or Get-NetTCPConnection.
+function Test-Up {
+    $client = New-Object System.Net.Sockets.TcpClient
+    try { return $client.ConnectAsync("127.0.0.1", $Port).Wait(400) } catch { return $false } finally { $client.Close() }
+}
+# The app window is Edge (or Chrome) in app mode, with a profile of its own.
+$AppProfile = Join-Path $env:LOCALAPPDATA "NightshiftQA\window"
+function Get-Browser {
+    @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
+      "$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") |
+        Where-Object { Test-Path $_ } | Select-Object -First 1
+}
+# The app in its own window. If that window is already open, bring it to the front instead.
+function Open-AppWindow {
+    # Found by its title: an app-mode window is titled exactly as the page, while a browser tab's
+    # window adds " - Microsoft Edge". (Searching process command lines instead takes seconds.)
+    $open = Get-Process msedge, chrome -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -eq "Nightshift QA" }
+    $shell = New-Object -ComObject WScript.Shell
+    foreach ($p in $open) { if ($shell.AppActivate([int]$p.Id)) { return } }
+    $browser = Get-Browser
+    if ($browser) {
+        Start-Process $browser -ArgumentList "--app=$Local", "--user-data-dir=`"$AppProfile`"", "--no-first-run",
+                                             "--no-default-browser-check", "--window-size=1320,880"
+    } else {
+        Start-Process $Local  # no Edge or Chrome: an ordinary browser tab
     }
-    switch ($form.ShowDialog()) { "Yes" { "open" } "No" { "stop" } default { "" } }
 }
 
+# 1. The desktop icon. Running: open the window, done. Not running: start the app with no window, wait
+#    for it, open the window. This is the path people click, so it touches nothing slow.
 if ($Background) {
-    "--- Nightshift QA started $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Set-Content $LogFile
+    if (-not (Test-Up)) {
+        $serverArgs = "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Server -Port $Port"
+        if ($PSBoundParameters.ContainsKey("Data")) { $serverArgs += " -Data `"$Data`"" }
+        if ($NoTunnel) { $serverArgs += " -NoTunnel" }
+        Start-Process "$env:SystemRoot\System32\conhost.exe" -ArgumentList $serverArgs
+        $up = $false
+        for ($i = 0; $i -lt 120 -and -not $up; $i++) { Start-Sleep -Milliseconds 500; $up = Test-Up }
+        if (-not $up) { Stop-Here "Nightshift QA didn't start within a minute. What happened is in $LogFile" }
+    }
+    if (-not $NoBrowser) { Open-AppWindow }
+    exit 0
+}
+
+if ($Server) {
+    "--- Nightshift QA started $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Set-Content $LogFile -Encoding UTF8
 } else {
     $Host.UI.RawUI.WindowTitle = "Nightshift QA (close this window to stop it)"
 }
 Say "Nightshift QA" "Cyan"
 
-# 1. uv runs Nightshift.
-if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
-    Stop-Here "uv isn't installed. Install it from https://docs.astral.sh/uv/ and try again."
-}
-
-# 2. Already running? Open it, or (from the icon) offer Open / Stop. Stopping ends the server; the
-#    copy of this script that started it then switches the public link off and exits.
-$running = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-if ($running) {
-    $url = if (Test-Path $UrlFile) { (Get-Content $UrlFile -Raw).Trim() } else { $Local }
-    if ($Background) {
-        $choice = Show-Running $url
-        if ($choice -eq "open") { Start-Process $url }
-        if ($choice -eq "stop") { $running | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue } }
-        exit 0
-    }
-    Say "Nightshift QA is already running: opening $url" "Yellow"
-    if (-not $NoBrowser) { Start-Process $url }
+# 2. Already running (Windows started it, or another window did)? Then just open it.
+if (Test-Up) {
+    if ($Server) { Say "Already running."; exit 0 }
+    Say "Nightshift QA is already running." "Yellow"
+    if (-not $NoBrowser) { Open-AppWindow }
     Start-Sleep 2
     exit 0
 }
 
-# 3. The model. The free cloud model through the Ollama app, unless MODEL_NAME says otherwise.
+# 3. How to run Nightshift: the project's own environment directly when it exists (quicker than uv
+#    checking the environment first on every start), otherwise through uv.
+$exe = Join-Path $Root ".venv\Scripts\nightshift.exe"
+if (Test-Path $exe) {
+    $NsCommand = $exe; $NsPrefix = @()
+} elseif (Get-Command uv -ErrorAction SilentlyContinue) {
+    $NsCommand = "uv"; $NsPrefix = @("run", "--quiet", "nightshift")
+} else {
+    Stop-Here "uv isn't installed. Install it from https://docs.astral.sh/uv/ and try again."
+}
+
+# 4. The model: the free cloud model through the Ollama app, unless MODEL_NAME says otherwise. The app
+#    doesn't need the model to start, so a stopped Ollama is started without waiting for it.
 if (-not $env:MODEL_NAME) { $env:MODEL_NAME = "gemma4:31b-cloud" }
 if (-not $env:MODEL_TIMEOUT) { $env:MODEL_TIMEOUT = "120" }
 $env:PYTHONIOENCODING = "utf-8"
-function Test-Ollama {
-    try { Invoke-WebRequest "http://localhost:11434/api/tags" -UseBasicParsing -TimeoutSec 3 | Out-Null; return $true }
-    catch { return $false }
-}
 if ($env:MODEL_BASE_URL) {
     Say "Model: $env:MODEL_NAME at $env:MODEL_BASE_URL" "Green"
 } else {
-    if (-not (Test-Ollama)) {
-        $ollama = Get-Command ollama -ErrorAction SilentlyContinue
-        if ($ollama) {
-            Say "Starting Ollama..."
-            Start-Process $ollama.Source -ArgumentList "serve" -WindowStyle Hidden
-            for ($i = 0; $i -lt 20 -and -not (Test-Ollama); $i++) { Start-Sleep 1 }
-        }
-    }
-    if (Test-Ollama) { Say "Model: $env:MODEL_NAME (through Ollama)" "Green" }
-    else { Say "Ollama isn't running. Open the Ollama app for AI runs; saved replays work without it." "Yellow" }
+    $ollamaUp = $false
+    try { Invoke-WebRequest "http://localhost:11434/api/tags" -UseBasicParsing -TimeoutSec 2 | Out-Null; $ollamaUp = $true } catch { }
+    $ollama = Get-Command ollama -ErrorAction SilentlyContinue
+    if ($ollamaUp) { Say "Model: $env:MODEL_NAME (through Ollama)" "Green" }
+    elseif ($ollama) { Start-Process $ollama.Source -ArgumentList "serve" -WindowStyle Hidden; Say "Starting Ollama for $env:MODEL_NAME." }
+    else { Say "Ollama isn't installed. AI runs need it; saved replays work without it." "Yellow" }
 }
 
-# 4. The first time: create the admin login, here in this window.
-$users = & uv run --quiet nightshift hosted users --data "$Data"
+# 5. The first time: create the admin login. That needs typing, so it always happens in a window.
+$users = & $NsCommand @NsPrefix hosted users --data "$Data"
 if (-not $users) {
-    if ($Background) {
-        # Creating the first login needs typing, so this one time it opens in a window.
+    if ($Server) {
         Start-Process powershell -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", "-Port", "$Port"
         exit 0
     }
     Say "`nFirst start: create your admin login." "Cyan"
     $email = Read-Host "Your email"
-    & uv run --quiet nightshift hosted add-user --data "$Data" --email $email --admin
+    & $NsCommand @NsPrefix hosted add-user --data "$Data" --email $email --admin
     if ($LASTEXITCODE -ne 0) { Stop-Here "The login wasn't created. Run this again to retry." }
 }
 
-# 5. A public link. Tailscale Funnel gives a fixed https address that never changes (a free account,
-#    no card), so it can go on the website. Without it, a Cloudflare quick tunnel gives a new random
-#    address on every start. A tunnel left over from a window closed last time is stopped first.
+# 6. A public link. Tailscale Funnel gives a fixed https address that never changes (a free account,
+#    no card), so it can go on the website; its setting survives restarts, so usually there is nothing
+#    to do. Without Tailscale, a Cloudflare quick tunnel gives a new random address on every start.
 if (Test-Path $PidFile) {
     $old = Get-Content $PidFile -ErrorAction SilentlyContinue
     if ($old) { Stop-Process -Id ([int]$old) -ErrorAction SilentlyContinue }
@@ -143,7 +152,6 @@ if (Test-Path $PidFile) {
 }
 $PublicUrl = ""
 $Tunnel = $null
-$Funnel = $null
 $tailscale = Get-Command tailscale -ErrorAction SilentlyContinue
 if (-not $tailscale -and (Test-Path "$env:ProgramFiles\Tailscale\tailscale.exe")) { $tailscale = Get-Command "$env:ProgramFiles\Tailscale\tailscale.exe" }
 if ($tailscale -and -not $NoTunnel) {
@@ -152,23 +160,24 @@ if ($tailscale -and -not $NoTunnel) {
     $status = $null
     try { $status = (& $tailscale.Source status --json 2>$null | Out-String) | ConvertFrom-Json } catch { }
     if ($status -and $status.BackendState -eq "Running" -and $status.Self.DNSName) {
-        Say "Opening your fixed link with Tailscale Funnel (the first time, it may ask you to allow Funnel in the browser)..."
-        if ($Background) {
+        $already = (& $tailscale.Source funnel status --json 2>$null | Out-String) -match [regex]::Escape("127.0.0.1:$Port")
+        if ($already) {
+            $ok = $true
+        } elseif ($Server) {
             # With no window nobody could follow an "allow Funnel" link, so give it 25 s and move on.
             $job = Start-Job { param($ts, $port) & $ts funnel --bg --https=443 "http://127.0.0.1:$port" 2>&1 | Out-String; $LASTEXITCODE } `
                 -ArgumentList $tailscale.Source, $Port
             $ok = $false
             if (Wait-Job $job -Timeout 25) { $out = @(Receive-Job $job); Say ($out[0]); $ok = ($out[-1] -eq 0) } else { Stop-Job $job }
             Remove-Job $job -Force
-            $global:LASTEXITCODE = if ($ok) { 0 } else { 1 }
         } else {
+            Say "Opening your fixed link with Tailscale Funnel (the first time, it may ask you to allow Funnel in the browser)..."
             & $tailscale.Source funnel --bg --https=443 "http://127.0.0.1:$Port"
+            $ok = ($LASTEXITCODE -eq 0)
         }
-        if ($LASTEXITCODE -eq 0) {
+        if ($ok) {
             $PublicUrl = "https://" + $status.Self.DNSName.TrimEnd(".")
-            $Funnel = $tailscale
-            Set-Clipboard -Value $PublicUrl
-            Say "Your fixed link (copied): $PublicUrl" "Green"
+            Say "Your fixed link: $PublicUrl" "Green"
         } else {
             Say "Tailscale Funnel didn't start; using a Cloudflare link instead." "Yellow"
         }
@@ -185,7 +194,7 @@ if (-not $cloudflared) {
     if ($found) { $cloudflared = Get-Command $found }
 }
 if ($PublicUrl) {
-    # Tailscale Funnel already gave the fixed link.
+    # Tailscale Funnel gave the fixed link.
 } elseif ($NoTunnel) {
     Say "No public link (-NoTunnel): only this computer can open the app."
 } elseif (-not $cloudflared) {
@@ -203,46 +212,57 @@ if ($PublicUrl) {
             if ($match) { $PublicUrl = $match.Matches[0].Value }
         }
     }
-    if ($PublicUrl) {
-        Set-Clipboard -Value $PublicUrl
-        Say "Public link (copied, paste it to anyone): $PublicUrl" "Green"
-    } else {
-        Say "The tunnel gave no link within 40 s; only this computer can open the app." "Yellow"
-    }
+    if ($PublicUrl) { Say "Public link (paste it to anyone): $PublicUrl" "Green" }
+    else { Say "The tunnel gave no link within 40 s; only this computer can open the app." "Yellow" }
 }
 
-# 6. Open the browser once the app answers, and run the app here until the window closes. With the
-#    fixed link, the browser opens that, the same address clients use, rather than 127.0.0.1.
-$Open = if ($Funnel) { $PublicUrl } else { $Local }
-if (-not $NoBrowser) {
+# 7. Run the app until the window closes (or, with -Server, until Windows shuts down). In a window,
+#    the app window opens as soon as the app answers.
+if (-not $Server -and -not $NoBrowser) {
     Start-Job -ScriptBlock {
-        param($check, $open)
-        for ($i = 0; $i -lt 90; $i++) {
-            try { Invoke-WebRequest $check -UseBasicParsing -TimeoutSec 2 | Out-Null; Start-Process $open; break }
-            catch { Start-Sleep 1 }
+        param($script, $port)
+        for ($i = 0; $i -lt 180; $i++) {
+            $client = New-Object System.Net.Sockets.TcpClient
+            $up = $false
+            try { $up = $client.ConnectAsync("127.0.0.1", $port).Wait(400) } catch { } finally { $client.Close() }
+            if ($up) { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Background -Port $port; break }
+            Start-Sleep -Milliseconds 500
         }
-    } -ArgumentList $Local, $Open | Out-Null
+    } -ArgumentList $PSCommandPath, $Port | Out-Null
 }
-if ($Background) { Say "Nightshift QA: $Open" } else { Say "`nNightshift QA: $Open   Close this window (or press Ctrl+C) to stop it.`n" "Cyan" }
-$Open | Set-Content $UrlFile
-$serve = @("run", "--quiet", "nightshift", "hosted", "serve", "--data", "$Data", "--port", "$Port")
+# The app window's browser is kept running with no window, so the icon opens the window in about a
+# second instead of five (most of that is the browser starting). It quits when its window is closed, so
+# this checks every 15 s and starts it again; the browser holds "lockfile" in its profile while it runs.
+$browser = Get-Browser
+if ($Server -and $browser -and -not $NoBrowser) {
+    Start-Job -ScriptBlock {
+        param($browser, $profileDir)
+        $lock = Join-Path $profileDir "lockfile"
+        while ($true) {
+            $running = $false
+            if (Test-Path $lock) { try { [IO.File]::Open($lock, "Open", "ReadWrite", "None").Close() } catch { $running = $true } }
+            if (-not $running) { Start-Process $browser -ArgumentList "--user-data-dir=`"$profileDir`"", "--no-startup-window", "--no-first-run" }
+            Start-Sleep 15
+        }
+    } -ArgumentList $browser, $AppProfile | Out-Null
+}
+$where = if ($PublicUrl) { "$Local and $PublicUrl" } else { $Local }
+if ($Server) { Say "Nightshift QA: $where" }
+else { Say "`nNightshift QA: $where   Close this window (or press Ctrl+C) to stop it.`n" "Cyan" }
+$serve = @($NsPrefix) + @("hosted", "serve", "--data", "$Data", "--port", "$Port")
 if ($PublicUrl) { $serve += @("--public-url", $PublicUrl) }
 try {
-    if ($Background) {
-        $ErrorActionPreference = "Continue"  # the server's own messages go to the log, not to a stopping error
-        & uv @serve *>> $LogFile
+    if ($Server) {
+        # The server's own messages go to the log as UTF-8 (">>" would write UTF-16 in Windows PowerShell),
+        # and its error output is just more lines, not a stopping error.
+        $ErrorActionPreference = "Continue"
+        & $NsCommand @serve 2>&1 | ForEach-Object { Add-Content $LogFile "$_" -Encoding UTF8 }
     } else {
-        & uv @serve
+        & $NsCommand @serve
     }
 } finally {
-    Remove-Item $UrlFile -ErrorAction SilentlyContinue
     if ($Tunnel) {
         Stop-Process -Id $Tunnel.Id -ErrorAction SilentlyContinue
         Remove-Item $PidFile -ErrorAction SilentlyContinue
-    }
-    if ($Funnel) {
-        # The fixed link stays reserved for you; it just stops pointing at a closed app.
-        $ErrorActionPreference = "Continue"
-        & $Funnel.Source funnel reset 2>$null | Out-Null
     }
 }
