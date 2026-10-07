@@ -473,7 +473,8 @@ when the request came over HTTPS, or a browser on the laptop would be logged out
 The first web app worked but looked like a bare form, which is not something you show a paying
 agency. The new one has a sidebar with every client and the status of its last run, client cards
 with a pass/fail bar and a strip of the last ten runs, stat tiles and plain-English causes on a run,
-toasts instead of browser alerts, a split login screen, dark mode and a phone layout. It is still
+toasts instead of browser alerts, a split login screen and a phone layout. (It followed the system's dark
+mode at first; the user preferred the light page always, so it is light whatever the system says.) It is still
 one plain-JS file and one stylesheet, with no framework and no bundler, so the app runs straight
 from the repo. The page's CSP forbids inline styles and scripts, so every look is a class, and the
 result bars are SVG whose widths are attributes, not styles.

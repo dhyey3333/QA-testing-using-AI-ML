@@ -1,4 +1,4 @@
-/* Nightshift hosted: one design system, light and dark. No inline styles anywhere (the page's
+/* Nightshift hosted: one design system: a dark sidebar beside a light page, whatever the system theme. No inline styles anywhere (the page's
    Content-Security-Policy forbids them), so every look is a class here. */
 [hidden] { display: none !important; }  /* the hidden attribute wins over display rules below */
 
@@ -11,16 +11,6 @@
   --side: #0e1222; --side-2: #171c33; --side-ink: #c8cde0; --side-muted: #7d849f;
   --radius: 12px; --shadow: 0 1px 2px rgba(15, 23, 42, .05), 0 4px 16px rgba(15, 23, 42, .05);
   --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0b0e1a; --surface: #131729; --surface-2: #181d33; --ink: #e8eaf4; --ink-2: #c4c9dc; --muted: #8b92ad;
-    --line: #262c45; --line-2: #1f2540;
-    --brand: #7c7cf0; --brand-2: #9494f5; --brand-soft: #23264a; --brand-ink: #0b0e1a;
-    --ok: #4ade80; --ok-soft: #12291c; --bad: #f87171; --bad-soft: #2d1416; --warn: #fbbf24; --warn-soft: #2b2110;
-    --block: #a78bfa; --block-soft: #221a3a; --run: #60a5fa; --run-soft: #12213b;
-    --side: #080a14; --side-2: #121628; --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
-  }
 }
 
 * { box-sizing: border-box; }
