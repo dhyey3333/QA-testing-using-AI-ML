@@ -534,12 +534,12 @@ async function testsTab(section, slug, data, editing) {
         <p class="muted small">It explores the site like a new user, then writes draft tests for you to review. A few minutes.</p>
         <div class="fields">
           <label>Website <input name="url" type="url" required value="${esc(data.project.base_url)}" placeholder="https://academybugs.com/"></label>
-          <label>Tests <input name="count" type="number" min="1" max="10" value="5"></label>
+          <label>How many tests <span class="hint">1 to 10</span><input name="count" type="number" min="1" max="10" value="5"></label>
         </div>
         <label>What is the site for? <span class="hint">optional, but it helps</span>
           <textarea name="about" placeholder="${lines("An online shop: people search for products, add them to a cart and check out.")}"></textarea></label>
         <details class="more"><summary>More options</summary>
-          <label>Explore first <span class="hint">actions before writing</span><input name="steps" type="number" min="0" max="40" value="20"></label></details>
+          <label>Explore first <span class="hint">clicks it may use before writing, up to 40</span><input name="steps" type="number" min="0" max="40" value="20"></label></details>
         <p class="error" role="alert"></p>
         <div class="actions"><button type="submit">${icon("sparkles")}Generate tests</button></div>
       </form>
