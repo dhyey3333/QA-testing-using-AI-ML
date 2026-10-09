@@ -1,0 +1,9 @@
+# Blind set 2. Right verdict: pass.
+name: b2-pa-javascript-delays
+url: https://practice-automation.com/javascript-delays/
+steps:
+- press Start
+- wait for the countdown to finish
+expect:
+- the page says Liftoff!
+max_steps: 10

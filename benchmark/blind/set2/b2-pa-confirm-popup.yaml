@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: pass.
+name: b2-pa-confirm-popup
+url: https://practice-automation.com/popups/
+steps:
+- press Confirm Popup and answer OK
+expect:
+- the page says OK it is!
+max_steps: 6

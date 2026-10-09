@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: pass.
+name: b2-tap-dynamic-button
+url: https://testautomationpractice.blogspot.com/
+steps:
+- press the START button in the Dynamic Button section
+expect:
+- the button now says STOP
+max_steps: 8

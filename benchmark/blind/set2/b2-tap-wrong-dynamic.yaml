@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: fail.
+name: b2-tap-wrong-dynamic
+url: https://testautomationpractice.blogspot.com/
+steps:
+- press the START button in the Dynamic Button section
+expect:
+- the button still says START
+max_steps: 8

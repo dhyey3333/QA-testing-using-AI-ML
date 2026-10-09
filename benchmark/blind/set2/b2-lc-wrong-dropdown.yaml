@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: fail.
+name: b2-lc-wrong-dropdown
+url: https://letcode.in/dropdowns
+steps:
+- choose Mango in the fruit dropdown
+expect:
+- the page says You have selected Apple
+max_steps: 6

@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: fail. (it says Hi there, pal!)
+name: b2-pa-wrong-alert
+url: https://practice-automation.com/popups/
+steps:
+- press Alert Popup
+expect:
+- an alert says Goodbye!
+max_steps: 6

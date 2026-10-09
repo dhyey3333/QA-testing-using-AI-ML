@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: pass.
+name: b2-tap-dynamic-table
+url: https://testautomationpractice.blogspot.com/
+steps:
+- read the Dynamic Web Table
+expect:
+- the CPU load of Chrome process label shows the same value as the CPU column in the table's Chrome row
+max_steps: 6

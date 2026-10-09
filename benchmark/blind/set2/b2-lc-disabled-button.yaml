@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: pass.
+name: b2-lc-disabled-button
+url: https://letcode.in/button
+steps:
+- read the page
+expect:
+- the button labelled Disabled is disabled
+max_steps: 4

@@ -1,0 +1,9 @@
+# Blind set 2. Right verdict: fail. (a real (intentional) bug: the two radios have different names)
+name: b2-lc-radio-bug
+url: https://letcode.in/radio
+steps:
+- in the Find the bug group, select Yes
+- then select No in the same group
+expect:
+- only No is selected in the Find the bug group
+max_steps: 8

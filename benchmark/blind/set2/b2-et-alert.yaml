@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: pass.
+name: b2-et-alert
+url: https://testpages.eviltester.com/pages/basics/alerts-javascript/
+steps:
+- press Show alert box
+expect:
+- the page says You triggered and handled the alert dialog
+max_steps: 6

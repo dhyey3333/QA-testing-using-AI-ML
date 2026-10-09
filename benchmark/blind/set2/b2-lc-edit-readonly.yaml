@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: pass.
+name: b2-lc-edit-readonly
+url: https://letcode.in/edit
+steps:
+- read the page
+expect:
+- the read-only field contains This text is readonly
+max_steps: 4

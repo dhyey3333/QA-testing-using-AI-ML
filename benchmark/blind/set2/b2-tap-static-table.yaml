@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: pass.
+name: b2-tap-static-table
+url: https://testautomationpractice.blogspot.com/
+steps:
+- read the Static Web Table
+expect:
+- the table lists Master In Selenium by Mukesh with price 3000
+max_steps: 4

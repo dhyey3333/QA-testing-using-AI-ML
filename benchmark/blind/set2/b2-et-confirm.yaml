@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: pass.
+name: b2-et-confirm
+url: https://testpages.eviltester.com/pages/basics/alerts-javascript/
+steps:
+- press Show confirm box and answer OK
+expect:
+- the page says You clicked OK, confirm returned true.
+max_steps: 6

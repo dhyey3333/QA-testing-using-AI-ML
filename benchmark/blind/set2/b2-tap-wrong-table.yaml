@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: fail. (it is 500)
+name: b2-tap-wrong-table
+url: https://testautomationpractice.blogspot.com/
+steps:
+- read the Static Web Table
+expect:
+- the table lists Learn Java by Mukesh with price 300
+max_steps: 4

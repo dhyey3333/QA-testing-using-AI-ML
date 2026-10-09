@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: pass.
+name: b2-lc-modern-alert
+url: https://letcode.in/alert
+steps:
+- press Modern Alert
+expect:
+- a popup says Modern Alert - Some people address me as sweet alert as well
+max_steps: 6

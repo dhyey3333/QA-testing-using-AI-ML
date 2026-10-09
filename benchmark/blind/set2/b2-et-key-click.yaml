@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: pass.
+name: b2-et-key-click
+url: https://testpages.eviltester.com/pages/basics/key-click/
+steps:
+- click the click me button
+expect:
+- the event list below the button shows a click event
+max_steps: 6

@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: pass.
+name: b2-tap-simple-alert
+url: https://testautomationpractice.blogspot.com/
+steps:
+- press Simple Alert
+expect:
+- an alert says I am an alert box!
+max_steps: 6

@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: pass.
+name: b2-lc-dropdown-country
+url: https://letcode.in/dropdowns
+steps:
+- choose India in the country dropdown
+expect:
+- 'the page says Selected Value: India'
+max_steps: 6

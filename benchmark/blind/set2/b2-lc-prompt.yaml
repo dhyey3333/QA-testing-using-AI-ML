@@ -1,0 +1,10 @@
+# Blind set 2. Right verdict: pass. (needs a prompt answered with test data)
+name: b2-lc-prompt
+url: https://letcode.in/alert
+steps:
+- press Prompt Alert and answer with the name
+expect:
+- 'the page says Your name is: followed by the name'
+data:
+  name: Nightshift
+max_steps: 8

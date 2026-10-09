@@ -1,0 +1,8 @@
+# Blind set 2. Right verdict: fail.
+name: b2-pa-wrong-hover
+url: https://practice-automation.com/hover/
+steps:
+- move the mouse over the Mouse over me text
+expect:
+- the page says You failed!
+max_steps: 6
