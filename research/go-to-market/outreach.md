@@ -71,6 +71,8 @@
 | "We already use Selenium / Playwright." | Keep them. Nightshift covers the flows that keep breaking your scripts, and its passing paths export as Playwright tests your team can keep. |
 | "Automation will cut our billable hours." | Sell it as a fixed-price nightly-regression package. Your margin goes up, and testers move to exploratory and client work, which bills better. |
 | "AI makes things up." | That's why every pass must quote the page, checked in code. It has had zero false passes in our benchmarks, and a person reviews any AI-written test before it counts. |
+| "How does it do on a site it has never seen?" | Measured on practice sites it had never seen: no false passes. After fixing what the first blind test found, 1 false alarm in 20 working flows (it can't hover the mouse yet). That's why your tester checks failures in the first weeks on a new site. |
+| "Is our client's data safe with you?" | Test passwords are encrypted on the server and never shown back or sent to the AI; two-factor login; an activity log of every change; nightly backups; each agency sees only its own clients; delete a client's data any time. See docs/business/security-overview.md. |
 | "Our client won't allow a third-party tool." | The model never sees passwords or test data values, only placeholders. It can run on your own machine or server, and secrets stay on it. |
 | "What does it cost after the pilot?" | See the pricing sheet: from ₹14,999/month for up to 5 testers, well under one junior tester's salary. |
 | "Does it work on {big site}?" | It's for your clients' staging and test environments. Big consumer sites block automated browsers, and it reports that as "blocked", not as a bug. |

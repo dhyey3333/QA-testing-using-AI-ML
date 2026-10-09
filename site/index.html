@@ -60,11 +60,13 @@
           { "@type": "Question", "name": "Which websites can it test?",
             "acceptedAnswer": { "@type": "Answer", "text": "Any website your client lets you test, ideally a staging or test environment. Sites with bot protection, such as large marketplaces, block automated browsers; Nightshift QA reports those as blocked instead of guessing." } },
           { "@type": "Question", "name": "How often is it wrong?",
-            "acceptedAnswer": { "@type": "Answer", "text": "On our benchmark it caught 23 of 23 planted bugs, made no false passes in about 400 runs, and raised a false alarm on 1 in 45 clean runs of an app it was never tuned on. The pilot measures the same numbers on your project." } },
+            "acceptedAnswer": { "@type": "Answer", "text": "It has never passed a test it shouldn't have: no false passes in about 400 benchmark runs, nor on practice sites it had never seen. False alarms are the cost: on 20 working flows of practice sites it had never seen, it wrongly failed 1 (it can't hover the mouse yet) and couldn't finish 1 (a prompt box that needed typing). It caught 23 of 23 planted bugs on our test shop. The pilot measures the same numbers on your project, and a person checks failures in the first weeks." } },
           { "@type": "Question", "name": "Does it test mobile apps?",
             "acceptedAnswer": { "@type": "Answer", "text": "Mobile websites, yes: iPhone and Android screen sizes, touch and browsers. Native apps from the Play Store or App Store, not yet." } },
           { "@type": "Question", "name": "What does the AI see?",
             "acceptedAnswer": { "@type": "Answer", "text": "Screenshots and text of the page under test, with your test data replaced by placeholders. Passwords and keys stay on the server and are never sent to the AI." } },
+          { "@type": "Question", "name": "Is our clients' data safe?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Test passwords and keys are encrypted on the server and can't be read back, logins can require a code from an authenticator app, every change is written to your workspace's activity log, and data is backed up every night. Each agency sees only its own clients. You can delete a client's data, or your whole workspace, at any time." } },
           { "@type": "Question", "name": "What happens after the pilot?",
             "acceptedAnswer": { "@type": "Answer", "text": "Pick a plan, or leave with your tests as plain text and your passing paths as standard Playwright tests." } }
         ]
@@ -255,7 +257,7 @@
       <div class="head">
         <div class="kicker">Found in the wild</div>
         <h2>Real bugs it found on public demo sites</h2>
-        <p>Found by exploring, with no tests written first. Each one is the kind of bug a regression pass exists to catch.</p>
+        <p>Found by Nightshift while testing and exploring public demo sites. Each one is the kind of bug a regression pass exists to catch.</p>
       </div>
       <div class="grid4">
         <div class="card"><div class="badge bad"><svg class="icon"><use href="#i-bug"/></svg></div>
@@ -388,11 +390,13 @@
         <details><summary>Which websites can it test?</summary>
           <p>Any website your client lets you test, ideally a staging or test environment. Sites with bot protection, such as large marketplaces, block automated browsers; Nightshift QA reports those as blocked instead of guessing.</p></details>
         <details><summary>How often is it wrong?</summary>
-          <p>On our benchmark it caught 23 of 23 planted bugs, made no false passes in about 400 runs, and raised a false alarm on 1 in 45 clean runs of an app it was never tuned on. The pilot measures the same numbers on your project.</p></details>
+          <p>It has never passed a test it shouldn't have: no false passes in about 400 benchmark runs, nor on practice sites it had never seen. False alarms are the cost: on 20 working flows of practice sites it had never seen, it wrongly failed 1 (it can't hover the mouse yet) and couldn't finish 1 (a prompt box that needed typing). It caught 23 of 23 planted bugs on our test shop. The pilot measures the same numbers on your project, and a person checks failures in the first weeks.</p></details>
         <details><summary>Does it test mobile apps?</summary>
           <p>Mobile websites, yes: iPhone and Android screen sizes, touch and browsers. Native apps from the Play Store or App Store, not yet.</p></details>
         <details><summary>What does the AI see?</summary>
           <p>Screenshots and text of the page under test, with your test data replaced by placeholders. Passwords and keys stay on the server and are never sent to the AI.</p></details>
+        <details><summary>Is our clients' data safe?</summary>
+          <p>Test passwords and keys are encrypted on the server and can't be read back, logins can require a code from an authenticator app, every change is written to your workspace's activity log, and data is backed up every night. Each agency sees only its own clients. You can delete a client's data, or your whole workspace, at any time.</p></details>
         <details><summary>What happens after the pilot?</summary>
           <p>Pick a plan, or leave with your tests as plain text and your passing paths as standard Playwright tests.</p></details>
       </div>

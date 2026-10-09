@@ -464,3 +464,60 @@ In order of false alarms removed:
 8. Exploration: wait for the network before calling a page blank; don't call a repeat click "no effect" when the page still shows the first click's result; move on after 3 identical dead clicks, not 12.
 
 These pages are now seen. Once these fixes go in, the playground becomes tuning data, and measuring the fixes honestly needs a new blind set.
+
+## After the fixes: the second blind test (2026-10-09, later)
+
+The 8 causes from the first blind test were fixed (D53, commit fbfdcff), with 13 new tests, and
+nothing loosened in the proof rule. Blind set 2 (`benchmark/blind/set2`) was written and committed
+(5980ea3) **before** any fix, on four sites Nightshift had never run on: practice-automation.com,
+letcode.in, testpages.eviltester.com and testautomationpractice.blogspot.com. It was run once,
+after the fixes. Every verdict was checked by hand, including the screenshot of each pop-up pass.
+
+| | First blind test (before fixes) | Blind set 2 (after fixes) |
+|---|---|---|
+| Verdicts right | 21 / 30 (70%) | **26 / 28 (93%)** |
+| False passes | 0 | **0** (18 passes, all checked) |
+| Working flows failed falsely | 8 / 22 (36%) | **1 / 20 (5%)** |
+| Working flows the tester couldn't finish | 1 / 22 | 1 / 20 |
+| Real bug caught | 1 (HTTP-only clipboard error) | 1 (LetCode's radio group that lets two answers be chosen) |
+| Wrong expectations failed | 6 / 7 | 8 / 8 (one for the wrong reason) |
+| Median time per test | 15 s | 9 s |
+
+The two it got wrong, and why:
+- **pa-hover** (false alarm): Nightshift has no "hover" action, so "move the mouse over the text"
+  can't be done. Its wrong-expectation twin failed for the same wrong reason.
+- **lc-prompt** (couldn't finish): a prompt box that needs typed text. Dialogs are now seen, but
+  prompts are answered with their default value; the agent can't type into one.
+- One pass is correct but weakly proven: "the button labelled Disabled is disabled" was quoted with
+  the label alone. The button is disabled (checked by hand); the proof doesn't show the state.
+
+Different pages, so the two rows are not the same test; both are blind, and that is the honest
+comparison available.
+
+### No regressions on the benchmarks (before → after, same code otherwise)
+
+| | Before | After |
+|---|---|---|
+| Shop: planted bugs / false alarms | 23/23, 0/13 | **23/23, 0/13** |
+| Clinic (holdout): bugs / false alarms | 8/8, 1/5 | **7/8, 1/5**; the miss was the model timing out (reported as an environment problem), and caught on a rerun |
+| Public sites: pass / fail / environment | 27 / 0 / 4 | **28 / 0 / 3** (OpenCart's bot check; the-internet timing out) |
+
+### The first blind test's pages again (now seen, so a check of the fixes, not a score)
+
+- Playground: 27/30 (was 21/30, counting the real clipboard bug as right). Alerts, confirm,
+  "does not contain spin", hidden buttons, the no-href link, the half-covered field and the
+  covered button all pass now, with quoted proof. Left: the progress bar (the model is too slow to
+  press Stop at 75%; the range check itself works), one flaky run, and the visibility page, which
+  answered HTTP 500 during the run.
+- Re-exploring DemoQA, OrangeHRM and the hotel demo: the fake console error is gone; OrangeHRM's
+  "page is blank" report was held back because the page was still loading; the hotel's Login is no
+  longer called dead. New suspected bugs: OrangeHRM "no validation on an empty employee form" was
+  **false** (the screenshot shows "Required" under both names); the hotel's **"£100 x -2 nights,
+  total £-160" when check-out is before check-in is real**, confirmed in a plain browser. The
+  first functional bug the explorations have found.
+
+### Still open
+- A hover action, and typing into prompt boxes (the two blind-set misses).
+- Timing-critical steps (press Stop at 75%): the model is too slow; a "wait until the page shows X"
+  action would fix it.
+- Blind set 2 is now seen too. The next measurement needs blind set 3, written before any change.
