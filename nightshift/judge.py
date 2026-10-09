@@ -12,8 +12,10 @@ one chance to be corrected; after that the check counts as not shown.
 
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
+from dataclasses import dataclass
 
 from .actions import InvalidAction
 from .model import Model, ModelError
@@ -75,6 +77,88 @@ def key_terms(expected: str) -> list[str]:
     return list(dict.fromkeys(t for t in terms if t))
 
 
+# Bounds an expected result sets instead of naming a value: "stopped between 70% and 80%". Found on a
+# practice site: the judge quoted "79%", and the claim was thrown out because the page never says "70"
+# or "80". A bound's numbers are not values to quote; code checks the quoted number against them.
+_BOUND_NUM = r"([₹$€£])?\s?(\d[\d,]*(?:\.\d+)?)\s?(%)?"
+_BOUND_RES: list[tuple[re.Pattern, str]] = [
+    (re.compile(rf"\b(?:between|from)\s+{_BOUND_NUM}\s+(?:and|to)\s+{_BOUND_NUM}", re.IGNORECASE), "range"),
+    (re.compile(rf"\b(?:at least|no less than|not less than|a minimum of)\s+{_BOUND_NUM}", re.IGNORECASE), ">="),
+    (re.compile(rf"\b(?:at most|no more than|not more than|a maximum of|up to)\s+{_BOUND_NUM}", re.IGNORECASE), "<="),
+    (re.compile(rf"\b(?:more than|over|above|greater than)\s+{_BOUND_NUM}", re.IGNORECASE), ">"),
+    (re.compile(rf"\b(?:less than|under|below|fewer than)\s+{_BOUND_NUM}", re.IGNORECASE), "<"),
+]
+
+
+@dataclass(frozen=True)
+class Bound:
+    low: float
+    high: float
+    low_inclusive: bool
+    high_inclusive: bool
+    unit: str  # "%", a currency sign, or "" for a plain number
+    written: tuple[str, ...]  # the numbers as the expected result writes them ("70", "1,000")
+    text: str  # "between 70% and 80%"
+
+    def holds_for(self, value: float) -> bool:
+        above = value >= self.low if self.low_inclusive else value > self.low
+        below = value <= self.high if self.high_inclusive else value < self.high
+        return above and below
+
+
+def bounds_in(expected: str) -> list[Bound]:
+    found = []
+    for pattern, kind in _BOUND_RES:
+        for match in pattern.finditer(expected):
+            g = match.groups()
+            unit = next((u for u in g if u and not u[0].isdigit()), "") or ""
+            numbers = [n for n in g if n and n[0].isdigit()]
+            values = [float(n.replace(",", "")) for n in numbers]
+            if kind == "range":
+                low, high = sorted(values)
+                found.append(Bound(low, high, True, True, unit, tuple(numbers), match.group(0)))
+            elif kind in (">=", ">"):
+                found.append(Bound(values[0], math.inf, kind == ">=", True, unit, tuple(numbers), match.group(0)))
+            else:
+                found.append(Bound(-math.inf, values[0], True, kind == "<=", unit, tuple(numbers), match.group(0)))
+    return found
+
+
+_VALUE_RE = re.compile(r"([₹$€£])?\s?(\d[\d,]*(?:\.\d+)?)\s?(%)?")
+
+
+def bound_problem(bound: Bound, quotes: list[str]) -> str:
+    """Why the quoted evidence does not show a value inside the bound, or "" when it does.
+
+    Every number in the evidence with the bound's unit must be inside it, and there must be one:
+    "Subtotal ₹300, Total ₹600" can't prove "the total is under ₹500" by its ₹300.
+    """
+    values = []
+    for quote in quotes:
+        for currency, number, percent in _VALUE_RE.findall(quote):
+            unit = percent or currency or ""
+            if not bound.unit or unit == bound.unit:
+                values.append(float(number.replace(",", "")))
+    if not values:
+        return f"its evidence shows no number{f' in {bound.unit}' if bound.unit else ''} to compare with \"{bound.text}\""
+    outside = [v for v in values if not bound.holds_for(v)]
+    if outside:
+        return f'{outside[0]:g} in its evidence is not {bound.text}'
+    return ""
+
+
+def _lines_with(quotes: list[str], page_text: str) -> list[str] | None:
+    """The whole page lines each quote sits on, or None when a quote spans lines."""
+    lines = [normalize(line) for line in page_text.splitlines()]
+    found = []
+    for quote in quotes:
+        hits = [line for line in lines if normalize(quote) in line]
+        if not hits:
+            return None
+        found += hits
+    return found
+
+
 def is_on_page(quote: str, page_text: str) -> bool:
     """True if the quote appears on the page, ignoring case, spacing and line breaks.
 
@@ -86,7 +170,8 @@ def is_on_page(quote: str, page_text: str) -> bool:
     return bool(parts) and all(len(part) >= 2 and part in page for part in parts)
 
 
-def verify(raw: dict, spec: Spec, observation: Observation) -> tuple[list[Check], list[str]]:
+def verify(raw: dict, spec: Spec, observation: Observation,
+           refused: tuple[str, ...] = ()) -> tuple[list[Check], list[str]]:
     """Read the judge's reply against the real page. Returns the checks and what was wrong with them.
 
     A claim is demoted to "does not hold" right here when it isn't proven: no real
@@ -99,6 +184,10 @@ def verify(raw: dict, spec: Spec, observation: Observation) -> tuple[list[Check]
     # title: on a real site a heading bug showed "Baguette" while the tab still said "Baguette
     # Parisienne", and a quote from the tab "proved" the heading. Claims are proven from the page.
     page_text = mask(f"{observation.url}\n{observation.text}", spec.data)
+    if refused:
+        # Actions the browser refused during the test ("another element is covering it"). The browser
+        # wrote these, not a model, and they can only show that something could NOT be done.
+        page_text += "\n" + "\n".join(mask(line, spec.data) for line in refused)
     items = raw.get("checks")
     if not isinstance(items, list) or not items:
         return [], ['the reply needs a "checks" list with one entry per expected result']
@@ -118,18 +207,31 @@ def verify(raw: dict, spec: Spec, observation: Observation) -> tuple[list[Check]
         # The text the judge reads has test data masked ({{invalid_email}}); its screenshot shows
         # the real value (not-an-email). A quote may use either, so mask quotes the same way.
         missing = [quote for quote in evidence if not is_on_page(mask(quote, spec.data), page_text)]
-        present = [quote for quote in absent if is_on_page(mask(quote, spec.data), page_text)]
         grounded = [quote for quote in evidence if quote not in missing]
+        # "X is no longer listed" is proven by what the page shows instead ("You have no
+        # appointments"), so only claims that something IS there must name their values.
+        needs_terms = not is_absence_claim(expected)
+        # Absent text is checked against the whole page for a claim that something is gone. For a claim
+        # about what something shows ("the status shows the class, and the class does not contain spin")
+        # it is checked against the whole lines its evidence is on: found on a practice site, the page's
+        # own instructions said "does not contain 'spin'", and a true claim about the label was thrown out.
+        scope = _lines_with([mask(q, spec.data) for q in grounded], page_text) if needs_terms and grounded else None
+        if scope is None:
+            present = [quote for quote in absent if is_on_page(mask(quote, spec.data), page_text)]
+        else:
+            present = [quote for quote in absent if normalize(mask(quote, spec.data)) in " \n ".join(scope)]
         # A made-up number sinks the claim: that is where hallucinations do harm ("Total: ₹600").
         # A made-up label is dropped, and the claim stands if the real evidence left proves it.
         invented_numbers = [quote for quote in missing if re.search(r"\d", quote)]
         cited = normalize(" ".join(grounded + [q for q in absent if q not in present]))
-        # "X is no longer listed" is proven by what the page shows instead ("You have no
-        # appointments"), so only claims that something IS there must name their values.
-        needs_terms = not is_absence_claim(expected)
-        unmentioned = [t for t in key_terms(expected) if normalize(t) not in cited] if needs_terms else []
+        bounds = bounds_in(expected) if needs_terms else []
+        bound_numbers = {n for bound in bounds for n in bound.written}
+        unmentioned = ([t for t in key_terms(expected)
+                        if t.lstrip("₹$€£ ") not in bound_numbers and normalize(t) not in cited]
+                       if needs_terms else [])
+        out_of_bounds = [p for p in (bound_problem(b, [mask(q, spec.data) for q in grounded]) for b in bounds) if p]
         proven = grounded or [q for q in absent if q not in present]
-        if holds and (invented_numbers or present or unmentioned or not proven):
+        if holds and (invented_numbers or present or unmentioned or out_of_bounds or not proven):
             if not proven and not missing and not needs_terms:
                 # An absence claim with nothing to check. Small models leave "absent" empty even
                 # after "no evidence given"; telling them exactly what to put there works better.
@@ -146,6 +248,8 @@ def verify(raw: dict, spec: Spec, observation: Observation) -> tuple[list[Check]
                 shown = ", ".join(f'"{term}"' for term in unmentioned)
                 problems.append(f"check {index + 1} says it holds but its evidence never mentions {shown}; "
                                 "quote the text that shows it")
+            if out_of_bounds and proven and not invented_numbers:
+                problems.append(f"check {index + 1} says it holds but {out_of_bounds[0]}; quote the number that shows it")
             holds = False
             why = "the judge could not point to it on the page" + (f" ({why})" if why else "")
         checks.append(Check(expected=expected, evidence=[q for q in evidence if q not in missing], why=why,
@@ -174,21 +278,23 @@ def _quotes(value: object) -> list[str]:
 
 
 def judge_page(
-    model: Model, spec: Spec, observation: Observation, screenshot: bytes | None
+    model: Model, spec: Spec, observation: Observation, screenshot: bytes | None, refused: tuple[str, ...] = ()
 ) -> tuple[str, str, list[Check]]:
-    """Returns (verdict, reason, checks). The verdict is pass, fail, or error if the judge never answers usefully."""
+    """Returns (verdict, reason, checks). The verdict is pass, fail, or error if the judge never answers usefully.
+
+    `refused` lists actions the browser refused during the test, as "[refused] ..." lines."""
     feedback = ""
     checks: list[Check] = []
     problems: list[str] = []
     for _ in range(2):
         try:
-            raw = model.judge(JudgeContext(spec, observation, screenshot, feedback))
+            raw = model.judge(JudgeContext(spec, observation, screenshot, feedback, refused=refused))
         except InvalidAction as exc:
             checks, problems = [], [str(exc)]
         except ModelError as exc:
             return "error", f"judge call failed: {exc}", []
         else:
-            checks, problems = verify(raw, spec, observation)
+            checks, problems = verify(raw, spec, observation, refused)
         if not problems:
             break
         feedback = "; ".join(problems)

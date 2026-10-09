@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lab: blind-test fixes</title>
+<!-- An ad network's script: Nightshift aborts it, and that abort is not the page's error. -->
+<script async src="https://securepubads.g.doubleclick.net/tag/js/gpt.js"></script>
+<style>
+  body { font-family: sans-serif; margin: 20px; }
+  .row { position: relative; margin: 12px 0; height: 40px; }
+  .cover { position: absolute; left: 0; top: 0; width: 160px; height: 40px; }
+  #box { overflow-y: scroll; height: 100px; width: 240px; position: relative; }
+  #box input { display: block; margin: 10px 0; }
+  #grey { position: absolute; left: 0; top: 60px; width: 240px; height: 50px; background: #ccc; }
+</style>
+</head>
+<body>
+  <!-- Test fixture for the fixes after the 2026-10-09 blind test. Fake data only. -->
+  <h1>Blind-test fixes</h1>
+  <p>Shown text</p>
+
+  <button id="save" onclick="alert('Saved!')">Save</button>
+  <button id="same" onclick="alert('Saved!')">Save again</button>
+
+  <!-- Text nobody can see: none of it may reach the judge. -->
+  <div style="opacity: 0">Ghost one</div>
+  <button style="width: 0; padding: 0; border: 0; overflow: hidden">Ghost two</button>
+  <div style="position: absolute; left: -9999px; top: -9999px">Ghost three</div>
+  <div class="row">
+    <button style="width: 160px; height: 40px">Ghost four</button>
+    <div class="cover" style="background: white"></div>
+  </div>
+  <!-- Under a see-through layer (a modal backdrop, say) the button is still visible. -->
+  <div class="row">
+    <button style="width: 160px; height: 40px">Dimmed button</button>
+    <div class="cover" style="background: rgba(0, 0, 0, 0.4)"></div>
+  </div>
+
+  <!-- A link with no href that script makes clickable. -->
+  <a id="scripted" onmouseenter="this.title = 'ready'"
+     onclick="document.getElementById('count').textContent = Number(document.getElementById('count').textContent) + 1">Script link</a>
+  <p>Clicked <span id="count">0</span> times</p>
+
+  <!-- A field half under a grey box; its script wipes the value unless the field's middle is uncovered. -->
+  <div style="position: relative">
+    <div id="box">
+      <input id="id" placeholder="Id">
+      <input id="name" placeholder="Name" aria-label="Name">
+      <input id="subject" placeholder="Subject">
+    </div>
+    <div id="grey"></div>
+  </div>
+  <script>
+    const nameField = document.getElementById('name');
+    nameField.addEventListener('input', () => {
+      const r = nameField.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      if (top !== nameField) nameField.value = '';
+    });
+  </script>
+
+  <p><a href="/lab/repeat-login.html">Sign in page</a></p>
+  <p><a href="/lab/late-content.html">Late content</a></p>
+</body>
+</html>

@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Lab: repeat login</title></head>
+<body>
+  <!-- Test fixture: Login with empty fields says "Invalid credentials" every time. Pressing it
+       again shows the same message, which is not a dead button. -->
+  <h1>Sign in</h1>
+  <label>Username <input id="user"></label>
+  <label>Password <input id="pass" type="password"></label>
+  <button onclick="document.getElementById('msg').textContent = 'Invalid credentials'">Login</button>
+  <p id="msg"></p>
+  <p><a href="/lab/blind-fixes.html">Back</a></p>
+</body>
+</html>

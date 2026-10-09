@@ -226,8 +226,11 @@ def execute(page: Page, action: Action, data: dict[str, str], target: Locator | 
         if action.kind not in ("click", "type", "select") or not _transient(exc):
             raise ActionFailed(_short_reason(exc)) from None
         # Covered, not visible yet, still animating, re-rendered: a slow page, not a broken one.
-        # One more try after a pause, before the model hears it failed.
+        # One more try after a pause, before the model hears it failed. A covered element is first
+        # scrolled clear, as a person would, in case it is only half under something.
         page.wait_for_timeout(RETRY_PAUSE_MS)
+        if "intercepts pointer events" in str(exc):
+            _uncover(target)
         try:
             _act(page, action, data, target)
         except PlaywrightError as again:
@@ -245,7 +248,11 @@ def _transient(exc: PlaywrightError) -> bool:
 def _act(page: Page, action: Action, data: dict[str, str], target: Locator | None) -> None:
     match action.kind:
         case "click":
+            opens_tab = _opens_new_tab(target)
+            tabs_before = len(page.context.pages)
             target.click(timeout=ACTION_TIMEOUT_MS)
+            if opens_tab:
+                _wait_for_new_tab(page, tabs_before)
         case "type":
             _type(page, target, fill_placeholders(action.text, data))
         case "select":
@@ -281,10 +288,68 @@ _CODE_BOXES_JS = r"""
 """
 
 
+_OPENS_TAB_JS = r"""
+(el) => {
+  const link = el.closest('a[href], area[href]');
+  return !!link && !!link.target && !['_self', '_top', '_parent'].includes(link.target.toLowerCase());
+}
+"""
+NEW_TAB_WAIT_MS = 5_000
+
+
+def _opens_new_tab(target: Locator) -> bool:
+    try:
+        return bool(target.evaluate(_OPENS_TAB_JS, timeout=ACTION_TIMEOUT_MS))
+    except PlaywrightError:
+        return False
+
+
+def _wait_for_new_tab(page: Page, tabs_before: int) -> None:
+    """A link with target="_blank" was clicked: give its tab time to open before the page is read.
+
+    On a busy machine the new tab took over 1.5 s to appear, the old page was read, and the click
+    looked like it did nothing ("no change")."""
+    deadline = time.monotonic() + NEW_TAB_WAIT_MS / 1000
+    while len(page.context.pages) <= tabs_before and time.monotonic() < deadline:
+        page.wait_for_timeout(100)  # also lets Playwright deliver the new page's event
+
+
+# Scrolls an element (and the boxes it sits in) until its middle is its own, trying a few positions;
+# true when it ends up uncovered. Found on a practice site: a Name field half under a grey box, whose
+# own script wipes what is typed unless the field's middle is uncovered. fill() never noticed, so the
+# typing "had no effect" three times and a working page failed. A person scrolls it clear first.
+_UNCOVER_JS = r"""
+(el) => {
+  const root = el.getRootNode();
+  const at = root.elementFromPoint ? root : document;
+  const clear = () => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return true;  // nothing to uncover
+    const top = at.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!top && (top === el || el.contains(top));
+  };
+  if (clear()) return true;
+  for (const block of ['center', 'start', 'end', 'nearest']) {
+    el.scrollIntoView({ block, inline: 'nearest' });
+    if (clear()) return true;
+  }
+  return false;
+}
+"""
+
+
+def _uncover(target: Locator) -> bool:
+    try:
+        return bool(target.evaluate(_UNCOVER_JS, timeout=ACTION_TIMEOUT_MS))
+    except PlaywrightError:
+        return False
+
+
 def _type(page: Page, target: Locator, text: str) -> None:
     """Get `text` into the field the way a person would end up with it there."""
     if len(text) > 1 and _fill_code_boxes(target, text):
         return
+    _uncover(target)
     target.fill(text, timeout=ACTION_TIMEOUT_MS)
     if not any(c.isdigit() for c in text):
         return
@@ -351,14 +416,14 @@ def track_network(page: Page) -> None:
     _NETWORK[page] = _Network(page)
 
 
-def settle(page: Page) -> None:
+def settle(page: Page, max_s: float = SETTLE_MAX_S) -> None:
     """Wait for the page to finish reacting to the last action.
 
     Playwright's "networkidle" only describes the initial page load: once a page
     has loaded, it returns at once, even while a click's fetch is still in flight.
     Reading the page then shows the old state, the agent sees "no change" and
     clicks again into a re-rendering page. So in-flight requests are counted
-    here and the page must be quiet for QUIET_S, capped at SETTLE_MAX_S.
+    here and the page must be quiet for QUIET_S, capped at `max_s`.
     """
     try:
         page.wait_for_load_state("domcontentloaded", timeout=5_000)
@@ -370,7 +435,7 @@ def settle(page: Page) -> None:
             page.wait_for_load_state("networkidle", timeout=2_000)
     else:
         page.wait_for_timeout(100)  # give the action's own requests a moment to start
-        deadline = time.monotonic() + SETTLE_MAX_S
+        deadline = time.monotonic() + max_s
         while time.monotonic() < deadline:
             if network.in_flight == 0 and time.monotonic() - network.last_change >= QUIET_S:
                 break

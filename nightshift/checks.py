@@ -18,6 +18,8 @@ from urllib.parse import urlsplit
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page
 
+from .observe import AD_REQUEST_RE, record_dialog
+
 SLOW_MS = 3_000
 MAX_WARNINGS = 100
 
@@ -151,13 +153,22 @@ def listen(page: Page, url: str, sink: Sink, js_errors: str = "fail") -> None:
     def on_console(message) -> None:
         if message.type != "error":
             return
-        if str((message.location or {}).get("url", "")).endswith("/favicon.ico"):
+        where = str((message.location or {}).get("url", ""))
+        if where.endswith("/favicon.ico"):
+            return
+        # Nightshift aborts ad networks' requests (observe.block_ads) and Chrome logs each abort as
+        # "Failed to load resource". Found on a practice site: that self-inflicted error was reported
+        # as the site's. The site's own failed requests still count.
+        if AD_REQUEST_RE.match(where):
             return
         warn(sink, f"console: {message.text[:300]}")
 
     def on_dialog(dialog) -> None:
         # Playwright dismisses dialogs by default, which silently cancels confirm() flows.
         warn(sink, f"{dialog.type} dialog accepted: {dialog.message[:200]}")
+        answer = {"alert": "closed with OK", "confirm": "answered OK", "beforeunload": "answered Leave",
+                  "prompt": "answered with its default value"}.get(dialog.type, "accepted")
+        record_dialog(page, dialog.type, dialog.message, answer)
         dialog.accept()
 
     page.on("pageerror", on_page_error)

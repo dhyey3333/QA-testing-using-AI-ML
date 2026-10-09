@@ -146,6 +146,9 @@ class ShopHandler(SimpleHTTPRequestHandler):
         elif path.startswith(("/mail/api/v1/", "/sms/api/v1/")):
             self._messages(self.server.outbox if path.startswith("/mail/") else self.server.sms,
                            path.split("/api/v1/", 1)[1])
+        elif path == "/lab/api/slow":
+            time.sleep(5)  # a busy demo server, for lab/late-content.html
+            self._json(200, {"rows": ["Asha Rao (fake)", "Vikram Shah (fake)"]})
         else:
             super().do_GET()
 

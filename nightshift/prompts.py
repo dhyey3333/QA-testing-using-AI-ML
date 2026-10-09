@@ -10,7 +10,7 @@ import os
 import re
 from dataclasses import dataclass, replace
 
-from .observe import Element, Observation
+from .observe import DIALOG_HEADING, Element, Observation
 from .result import Step
 from .totp import SECRET_KEY as TOTP_SECRET
 from .spec import Spec
@@ -97,6 +97,12 @@ page shows, and they can be quoted as evidence.
 "[field] Quantity: 2". Quote them as evidence for what a field shows.
 8. A {{name}} in VISIBLE TEXT is test data the page really shows, hidden from you on \
 purpose. "Welcome {{username}}" welcomes the user by their real username: quote it as is.
+9. Lines under "[browser dialogs shown, oldest first]" are the alert, confirm and prompt \
+boxes the browser showed during the test. They are not part of the page, but the user saw \
+them: quote them as evidence for what a dialog said.
+10. Lines starting with "[refused]" are actions the browser refused during the test, e.g. \
+a click blocked because another element covered the button. Quote them only for an \
+expected result about something that could not be done.
 """
 
 EXPLORE_PROMPT = """\
@@ -219,6 +225,7 @@ class JudgeContext:
     screenshot: bytes | None
     feedback: str = ""  # why the previous answer was rejected, on a second try
     compact: bool = False
+    refused: tuple[str, ...] = ()  # "[refused] click "Button": another element is covering it"
 
 
 def agent_messages(context: Context) -> tuple[str, str, bytes | None]:
@@ -300,26 +307,33 @@ def judge_messages(context: JudgeContext) -> tuple[str, str, bytes | None]:
     spec = context.spec
     expect = "\n".join(f"{i}. {item}" for i, item in enumerate(spec.expect, 1))
     obs = context.observation
-    text = mask(obs.text, spec.data)
     limit = COMPACT_JUDGE_TEXT_LIMIT if context.compact else JUDGE_TEXT_LIMIT
-    if len(text) > limit:
-        text = text[:limit] + "\n...(truncated)"
+    text = _truncate(mask(obs.text, spec.data), limit)
     parts = [
         f"TEST: {spec.name}",
         f"EXPECTED RESULTS:\n{expect}",
         f"CURRENT PAGE: {obs.url}",  # no tab title: claims must be proven from the page itself
         f"VISIBLE TEXT:\n{text or '(empty)'}",
     ]
+    if context.refused:
+        parts.append("REFUSED BY THE BROWSER DURING THE TEST:\n" + "\n".join(mask(line, spec.data)
+                                                                          for line in context.refused))
     if context.feedback:
         parts.append(f"YOUR LAST ANSWER WAS REJECTED: {context.feedback}. Copy evidence exactly from VISIBLE TEXT.")
     parts.append("Reply with one JSON object.")
     return JUDGE_PROMPT, "\n\n".join(parts), context.screenshot
 
 
+def _truncate(text: str, limit: int) -> str:
+    """A long page's text cut to `limit`, keeping the browser-dialogs section that ends it."""
+    body, heading, dialogs = text.partition(f"\n{DIALOG_HEADING}\n")
+    if len(body) > limit:
+        body = body[:limit] + "\n...(truncated)"
+    return body + heading + dialogs
+
+
 def _page_sections(observation: Observation, data: dict[str, str], limit: int, compact: bool = False) -> list[str]:
-    text = mask(observation.text, data)
-    if len(text) > limit:
-        text = text[:limit] + "\n...(truncated)"
+    text = _truncate(mask(observation.text, data), limit)
     shown = observation.elements
     if compact:
         shown = tuple(replace(e, label=e.label[:COMPACT_LABEL_LIMIT]) for e in shown if e.in_view)

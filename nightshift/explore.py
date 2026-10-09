@@ -35,8 +35,10 @@ from .observe import Observation, block_ads, observe, screenshot, watch_form_val
 from .prompts import Context, format_element, mask
 from .report import page_html, step_html
 from .result import PENDING, Step
-from .runner import INVALID_LIMIT, VIEWPORT, RunOptions, _step_line, _stuck, adopt_new_tab
+from .runner import INVALID_LIMIT, STUCK_REPEATS, VIEWPORT, RunOptions, _step_line, _stuck, adopt_new_tab
 from .spec import Spec
+
+LOADING_WAIT_MS = 15_000  # how long a report on a sparse page waits for the page to finish loading
 
 DEFAULT_AVOID = ("delete", "remove account", "close account", "deactivate", "log out", "logout",
                  "sign out", "unsubscribe")
@@ -168,8 +170,18 @@ class _Explorer:
             self._collect(observation)
 
             if stuck := _stuck(steps):
-                self._add(Finding("suspected", stuck, step=steps[-1].index, url=observation.url,
-                                  screenshot=steps[-1].screenshot))
+                if self._worked_before(steps):
+                    # The control did something the first time and pressing it again shows the same
+                    # thing. Found on a hotel demo: Login with empty fields showed "Invalid credentials",
+                    # the repeats changed nothing, and a working button was reported as dead.
+                    self.log(f"    {steps[-1].description} worked the first time; repeating it shows nothing new")
+                else:
+                    self._add(Finding("suspected", stuck, step=steps[-1].index, url=observation.url,
+                                      screenshot=steps[-1].screenshot))
+                # Either way, the same action three times with no effect uses up this page's share. The
+                # same demo spent 12 of its 30 actions on that one button.
+                stuck_on = _page_key(observation.url)
+                self.page_actions[stuck_on] = max(self.page_actions.get(stuck_on, 0), self.limit)
             if _origin(observation.url) != self.origin:
                 self.log(f"    left the site ({observation.url}); going back")
                 self._return_home()
@@ -220,6 +232,10 @@ class _Explorer:
                 self.result.stopped = f"the agent finished: {action.reason}"
                 break
             if action.kind == "report":
+                if self._was_loading(observation):
+                    step.outcome = "not reported: the page was still loading and has more on it now; look again"
+                    self.log(_step_line(step))
+                    continue
                 step.outcome = "reported"
                 self.log(_step_line(step))
                 self._add(Finding("suspected", action.title or "", details=action.details or "", step=index,
@@ -290,6 +306,29 @@ class _Explorer:
             settle(self.page)
         except PlaywrightError:
             pass
+
+    @staticmethod
+    def _worked_before(steps: list[Step]) -> bool:
+        """The repeated action changed the page at least once in the last few steps."""
+        last = steps[-1].action
+        earlier = steps[-10:-STUCK_REPEATS]
+        return any(s.action is not None and s.action.signature == last.signature and s.outcome == "changed"
+                   for s in earlier)
+
+    def _was_loading(self, seen: Observation) -> bool:
+        """The agent judged a page that hadn't finished loading: it has much more on it now.
+
+        Found on OrangeHRM's demo: its APIs took 15 s, the agent saw a blank page and reported it, and
+        the page was there one step later. Only a sparse page is re-checked, so a report on a full page
+        costs no wait."""
+        if len(seen.text) >= 300 and len(seen.elements) >= 5:
+            return False
+        settle(self.page, max_s=LOADING_WAIT_MS / 1000)
+        try:
+            now = observe(self.page)
+        except PlaywrightError:
+            return False
+        return len(now.text) > 2 * len(seen.text) + 100 or len(now.elements) > 2 * len(seen.elements) + 5
 
     def _return_home(self) -> None:
         try:

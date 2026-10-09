@@ -772,7 +772,8 @@ class _Run:
             shot = screenshot(self.page)
         started = time.perf_counter()
         verdict, reason, checks = judge_page(self.model, self.spec, observation,
-                                             shot if self.options.send_screenshot else None)
+                                             shot if self.options.send_screenshot else None,
+                                             refused_lines(self.result.steps))
         self.result.judge_ms = _ms_since(started)
         self.result.checks = checks
         self.log(f"judge ({self.result.judge_ms / 1000:.1f}s):")
@@ -864,6 +865,24 @@ def _stuck(steps: list[Step]) -> str | None:
             return f"{last.description} failed {STUCK_REPEATS} times in a row: {last.outcome.removeprefix('failed: ')}"
         return f"{last.description} had no effect {STUCK_REPEATS} times in a row"
     return None
+
+
+def refused_lines(steps: list[Step]) -> tuple[str, ...]:
+    """What the browser refused during the run, for the judge: '[refused] click "Button": another
+    element is covering it'. Found on a practice site: "the green button can't be pressed twice" was
+    exactly what happened (the second click was blocked), but the final page alone couldn't show it."""
+    lines = []
+    for step in steps:
+        if step.action is None or step.action.kind not in ("click", "type", "select"):
+            continue
+        if not step.outcome.startswith("failed: "):
+            continue
+        what = re.sub(r"\s*\[\d+\]", "", step.description)  # element numbers mean nothing to the judge
+        why = step.outcome.removeprefix("failed: ").split(". ")[0]  # the reason, not the advice after it
+        line = f"[refused] {what}: {why}"
+        if line not in lines:
+            lines.append(line)
+    return tuple(lines[-5:])
 
 
 def _step_line(step: Step) -> str:

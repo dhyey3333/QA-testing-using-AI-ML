@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Lab: late content</title></head>
+<body>
+  <!-- Test fixture: the page stays empty until a slow API (5 s) answers, like a demo whose
+       server is busy. Calling it blank before then is a tester mistake, not a bug. -->
+  <main id="app"></main>
+  <script>
+    fetch('/lab/api/slow').then((r) => r.json()).then((data) => {
+      const app = document.getElementById('app');
+      app.innerHTML = '<h1>Candidates</h1>' + data.rows.map((row) => `<p>${row}</p>`).join('')
+        + '<button>Add</button><button>Search</button><button>Reset</button><input placeholder="Name">'
+        + '<input placeholder="Keywords"><a href="/lab/blind-fixes.html">Back</a>';
+    });
+  </script>
+</body>
+</html>

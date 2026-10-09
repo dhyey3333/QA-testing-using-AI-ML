@@ -21,6 +21,15 @@ from playwright.sync_api import Frame, Page
 MAX_ELEMENTS = 80
 JPEG_QUALITY = 60
 
+# Browser dialogs (alert, confirm, prompt) each page has shown. A dialog is something the user sees,
+# but it is not in the page, so the judge could never prove "an alert says Saved", and the agent saw
+# "no change" after a click whose whole effect was an alert. Found on two practice sites: working
+# alerts failed as bugs while the browser had recorded their text. Distinct dialogs, oldest first,
+# so the same alert shown again changes nothing and a dead button still looks dead.
+_DIALOGS: WeakKeyDictionary = WeakKeyDictionary()
+MAX_DIALOGS = 5
+DIALOG_HEADING = "[browser dialogs shown, oldest first]"
+
 # Every open shadow root on the page, so queries reach inside web components. document.querySelectorAll
 # stops at a shadow root: on a public demo shop built with web components (Polymer's), Nightshift saw
 # no elements and no text at all. Playwright's own locators already pierce open shadow roots.
@@ -97,6 +106,7 @@ _OBSERVE_JS = r"""
       if (node.nodeType === Node.TEXT_NODE) { out.push(node.data.replace(/\s+/g, ' ')); return; }
       if (node.nodeType !== Node.ELEMENT_NODE) return;
       if (['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT'].includes(node.tagName)) return;
+      if (node.hasAttribute('data-ns-unseen')) return;
       if (node.tagName === 'SLOT') {
         const assigned = node.assignedNodes({ flatten: true });
         (assigned.length ? assigned : [...node.childNodes]).forEach(walk);
@@ -158,6 +168,16 @@ _OBSERVE_JS = r"""
     const named = clean(el.getAttribute('aria-label') || el.getAttribute('title'));
     const label = named || (text.length > 1 ? text : '') || 'Close';
     add(el, el, { label: /^close/i.test(label) ? label : `${label} (closes it)`, role: 'button' });
+  }
+
+  // A link with no href that script makes clickable looks like plain text to the selector above. Found
+  // on a practice site: "Click me" (<a onmouseenter=...>, no href) was never offered, and a working page
+  // failed. Such an anchor counts when it has an event handler attribute or the page gives it a
+  // pointer cursor, which is how a person can tell it is clickable.
+  for (const el of deepAll('a:not([href])')) {
+    if (taken.has(el) || !isVisible(el) || inside(el) || !clean(el.innerText)) continue;
+    const handler = [...el.attributes].some((a) => a.name.startsWith('on'));
+    if (handler || getComputedStyle(el).cursor === 'pointer') add(el, el, { role: 'link' });
   }
 
   // One-time-code boxes: four to eight one-character inputs side by side. Nightshift types the whole
@@ -235,8 +255,72 @@ _OBSERVE_JS = r"""
     return item;
   });
 
-  let text = (roots.length > 1 ? renderedText(document.body) : (document.body?.innerText || ''))
-    .split('\n').map((line) => line.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
+  // Text nobody can see must not prove anything. innerText leaves out display:none and
+  // visibility:hidden, but not text at opacity 0, clipped to nothing, moved off the page, or a control
+  // under an opaque box. Found on a practice site: after "Hide" the screenshot showed no buttons, the
+  // judge read four of them from the page text, and a working page failed. Those elements are marked,
+  // a stylesheet hides them from innerText while it is read, and the marks come off again. visibility
+  // (not display) is what changes, so nothing moves and no animation restarts.
+  const unseen = [];
+  const opaque = (el) => {
+    const s = getComputedStyle(el);
+    return parseFloat(s.opacity) === 1 && (s.backgroundImage !== 'none' || s.backgroundColor.startsWith('rgb('));
+  };
+  const covered = (el, r) => {
+    const root = el.getRootNode();
+    const at = root.elementFromPoint ? root : document;
+    for (const [fx, fy] of [[0.5, 0.5], [0.2, 0.2], [0.8, 0.2], [0.2, 0.8], [0.8, 0.8]]) {
+      const top = at.elementFromPoint(r.left + r.width * fx, r.top + r.height * fy);
+      if (!top || top === el || el.contains(top) || top.contains(el) || !opaque(top)) return false;
+    }
+    return true;
+  };
+  const CONTROL = 'a[href], button, [role="button"], input[type="button"], input[type="submit"]';
+  const pageWidth = document.documentElement.scrollWidth;
+  let budget = 6000;  // elements looked at, so a huge page can't stall a step
+  const markUnseen = (start) => {
+    if (!start) return;
+    const walker = document.createTreeWalker(start, NodeFilter.SHOW_ELEMENT);
+    const skip = () => {  // the next element after this one's subtree
+      for (;;) {
+        const next = walker.nextSibling();
+        if (next) return next;
+        if (!walker.parentNode()) return null;
+      }
+    };
+    let el = walker.nextNode();
+    while (el && budget-- > 0) {
+      const s = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      const gone = s.opacity === '0'
+        || ((r.width <= 1 || r.height <= 1) && /hidden|clip/.test(s.overflowX + s.overflowY) && el.textContent.trim() !== '')
+        || (r.width > 0 && r.height > 0 && (r.right + scrollX <= 0 || r.bottom + scrollY <= 0 || r.left + scrollX >= pageWidth))
+        || (el.matches(CONTROL) && r.width >= 4 && r.height >= 4 && r.bottom > 0 && r.right > 0
+            && r.top < innerHeight && r.left < innerWidth && covered(el, r));
+      if (gone) {
+        el.setAttribute('data-ns-unseen', '');
+        unseen.push(el);
+        el = skip();
+      } else {
+        el = walker.nextNode();
+      }
+    }
+  };
+  roots.forEach((root) => markUnseen(root === document ? document.body : root));
+  let sheet = null;
+  let text;
+  try {
+    if (unseen.length && document.adoptedStyleSheets) {
+      sheet = new CSSStyleSheet();
+      sheet.replaceSync('[data-ns-unseen], [data-ns-unseen] * { visibility: hidden !important; }');
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    }
+    text = (roots.length > 1 ? renderedText(document.body) : (document.body?.innerText || ''))
+      .split('\n').map((line) => line.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
+  } finally {
+    if (sheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter((x) => x !== sheet);
+    unseen.forEach((el) => el.removeAttribute('data-ns-unseen'));
+  }
   // The browser's own form validation ("Please include an '@'...") is a tooltip outside the
   // page, so innerText never has it. Add it as text the agent can read and the judge can quote.
   for (const el of deepAll('input, select, textarea')) {
@@ -371,6 +455,8 @@ def observe(page: Page, max_elements: int = MAX_ELEMENTS) -> Observation:
         if sub["text"]:
             text += f"\n[inside a frame: {_frame_name(frame)}]\n{sub['text']}"
     _FRAMES[page] = (owners, observed)
+    if dialogs := _DIALOGS.get(page):
+        text += f"\n{DIALOG_HEADING}\n" + "\n".join(dialogs)
     return Observation(
         url=raw["url"],
         title=raw["title"],
@@ -391,6 +477,16 @@ AD_REQUEST_RE = re.compile(
     r"^https?://([^/]*\.)?(doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.[a-z.]+|"
     r"amazon-adsystem\.com|adnxs\.com|taboola\.com|outbrain\.com|criteo\.(com|net)|pubmatic\.com|"
     r"rubiconproject\.com|openx\.net|media\.net)(:\d+)?(/|$)")
+
+
+def record_dialog(page: Page, kind: str, message: str, answer: str) -> None:
+    """Remember a dialog the page showed, for observe() to report: "alert: Saved (closed with OK)"."""
+    line = f"{kind}: {' '.join(message.split())[:200]} ({answer})"
+    seen = _DIALOGS.setdefault(page, [])
+    if line in seen:
+        return
+    seen.append(line)
+    del seen[:-MAX_DIALOGS]
 
 
 def block_ads(context) -> None:
