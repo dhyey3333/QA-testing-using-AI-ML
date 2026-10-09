@@ -520,3 +520,54 @@ nothing; on a site not used to design them (the-internet's broken-images page) t
 broken pictures and not the working one. The same 25-action exploration of the buggy shop went
 from 3 pages and 2 findings to 5 pages and 7 distinct real bugs (each checked against the clean
 shop), with no false ones. The shop is now a seen site: don't tune further on it.
+
+## D53. Fixing what the blind test found, without loosening the proof rule
+The first test on never-seen pages (research/part-c-results.md, 2026-10-09) passed nothing it
+shouldn't have, but failed 8 of 22 working flows. Each cause got a fix that keeps "a pass needs
+proof" intact:
+- Browser dialogs are part of what the user saw, so their text is added to the page text under its
+  own heading. Distinct dialogs only, so a dead button that shows the same alert still looks dead.
+- A bound ("between 70% and 80%") is not a value the page prints, so its numbers are no longer
+  required in the quote; instead code checks that every number in the quoted evidence with the
+  bound's unit is inside it. That is stricter than before for the cases that matter: "Subtotal
+  ₹300, Total ₹600" can't prove "under ₹500".
+- "The label shows X and does not contain Y" is checked on the whole lines its evidence comes from,
+  not the whole page (the page's own instructions said "spin"). A claim that something is gone
+  still checks the whole page.
+- Text nobody can see (opacity 0, clipped to nothing, off the page, a control under an opaque box)
+  is left out of the page text. It is hidden with a stylesheet on `visibility` while innerText is
+  read, never `display`, so nothing moves and no animation restarts; see-through overlays (modal
+  backdrops) don't count as covering.
+- What the browser refused ("another element is covering it") can be quoted, but only as
+  "[refused]" lines and only for something that could not be done: the browser wrote them, not a
+  model.
+- The rest are mechanics: links with no href made clickable by script are offered, a half-covered
+  field is scrolled clear before typing, an ad request Nightshift aborted isn't the site's console
+  error, a sparse page is re-read after loading before a report counts, a control that worked once
+  isn't "dead", and three identical no-effect actions use up a page's share in exploring.
+A new blind set (benchmark/blind/set2) was written and committed before any of this, and run once
+after: that number is the one to quote, not the playground's.
+
+## D54. Company basics: encrypted secrets, two-factor login, reset links, an activity log, backups
+What an agency would hit first in a security review:
+- Client secrets were plain text on disk. They are encrypted with Fernet (`cryptography`, the one
+  new dependency: the standard library has no encryption, and hand-made crypto is the wrong place
+  to save a dependency) under a key kept outside the data folder, so a copied folder or a backup
+  holds only ciphertext. Older plain values are encrypted when the app starts. The key's loss is
+  the cost: the setup prints it to be stored off the server.
+- Two-factor login with any authenticator app (TOTP, the existing totp.py). Each time step's code
+  works once, wrong codes count toward the same lockout as wrong passwords, and the secret is
+  stored encrypted. An admin can turn it off for someone who lost their phone.
+- There is no mail server, so a forgotten password is reset with a link an admin makes, like an
+  invite: random, single use, 24 hours, hashed; using it ends every login. `hosted reset-link` on
+  the server covers a locked-out only admin.
+- Every change through the API is one line in the workspace's activity log, worked out from the
+  route and a few named fields before the change runs (so a removed person is still named), and
+  written only after it succeeds. Never a password, a secret's value or a test's text. Kept a year;
+  only that workspace's admins read it.
+- A nightly backup zip (SQLite's backup API, so it is consistent while the app writes) with every
+  project's tests and encrypted secrets, 14 kept, plus `hosted backup` / `hosted restore`; a restore
+  refuses paths that leave the data folder and won't overwrite a database without --force.
+- Deleting a client or a whole agency's data, each confirmed by typing its name.
+- `/healthz` for an uptime monitor: no login, counts only.
+The deploy kit became deploy/server: any Ubuntu 24.04 server, not only Oracle's.

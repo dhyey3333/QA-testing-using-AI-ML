@@ -5,6 +5,7 @@ description = "An AI QA tester: plain-English test specs, run by an agent in a r
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "cryptography>=43",
     "httpx>=0.27",
     # Each Playwright release expects one exact Chromium build; pinning it means
     # `playwright install` never has to re-download a browser behind your back.

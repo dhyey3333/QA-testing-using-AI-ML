@@ -245,3 +245,21 @@ details.more[open] > summary { margin-bottom: 10px; }
   .auth { grid-template-columns: 1fr; } .auth-brand { padding: 36px 24px; } .auth-brand h1 { font-size: 1.6rem; }
   td, th { padding: 10px; } .hide-sm { display: none; }
 }
+
+/* Security pieces: per-person actions on the Team page, the 2FA setup steps, the delete-client card. */
+.row-actions { display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
+.steps-list { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+.card.danger { border-color: color-mix(in srgb, var(--bad) 35%, var(--line)); }
+.card.danger .card-head .icon { color: var(--bad); }
+.card-head .pill { margin-left: auto; }
+
+/* Getting started and Help. */
+.start-card { border-color: color-mix(in srgb, var(--run) 30%, var(--line)); }
+.start-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.start-steps li { display: flex; align-items: center; gap: 10px; }
+.start-steps li.done span { color: var(--muted); text-decoration: line-through; }
+.help ul { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+.help p { margin: 0; }
+.help .example { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; border-radius: 10px;
+  background: var(--line-2); font-size: .9rem; line-height: 1.6; }
+@media (max-width: 640px) { .help .example { grid-template-columns: 1fr; } }

@@ -173,12 +173,27 @@ def main(argv: list[str] | None = None) -> int:
 
     hosted = commands.add_parser("hosted", help="the hosted web app for a QA agency: logins, a project per client")
     hosted_commands = hosted.add_subparsers(dest="hosted_command", required=True)
-    h_serve = hosted_commands.add_parser("serve", help="run the web app (behind Caddy for HTTPS: see deploy/oracle)")
+    h_serve = hosted_commands.add_parser("serve", help="run the web app (behind Caddy for HTTPS: see deploy/server)")
     h_add = hosted_commands.add_parser("add-user", help="add a user; asks for their first password")
     h_users = hosted_commands.add_parser("users", help="list the users (no output: none yet)")
-    for sub in (h_serve, h_add, h_users):
+    h_backup = hosted_commands.add_parser("backup", help="write a backup zip of the database and every client's tests")
+    h_restore = hosted_commands.add_parser("restore", help="unpack a backup zip into the data folder (stop the app first)")
+    h_reset = hosted_commands.add_parser("reset-link", help="a password reset link for a user who is locked out")
+    for sub in (h_serve, h_add, h_users, h_backup, h_restore, h_reset):
         sub.add_argument("--data", type=Path, default=Path("hosted-data"),
                          help="where the database, projects and runs live (default: hosted-data/)")
+    h_backup.add_argument("--to", type=Path, help="the backups folder (default: hosted-backups/ beside the data folder)")
+    h_backup.add_argument("--keep", type=int, default=14, help="how many backups to keep (default: 14)")
+    h_backup.add_argument("--with-runs", action="store_true", help="include run folders (reports, screenshots)")
+    h_restore.add_argument("backup", type=Path)
+    h_restore.add_argument("--force", action="store_true", help="replace an existing database")
+    h_reset.add_argument("--email", required=True)
+    h_reset.add_argument("--no-2fa", action="store_true", help="also turn off their two-factor login (a lost phone)")
+    h_serve.add_argument("--backup-dir", type=Path,
+                         help="where the nightly backup goes (default: hosted-backups/ beside the data folder)")
+    h_serve.add_argument("--backup-at", default="03:15", help="when the nightly backup is made (default: 03:15)")
+    h_serve.add_argument("--keep-backups", type=int, default=14, help="(default: 14)")
+    h_serve.add_argument("--no-backups", action="store_true", help="make no automatic backups")
     h_serve.add_argument("--host", default="127.0.0.1", help="(default: 127.0.0.1; Caddy forwards to it)")
     h_serve.add_argument("--port", type=int, default=8080, help="(default: 8080)")
     h_serve.add_argument("--public-url", default="", help="the address people open, e.g. https://qa.example.com")
@@ -770,11 +785,45 @@ def _gherkin(args: argparse.Namespace) -> int:
 
 
 def _hosted(args: argparse.Namespace) -> int:
+    from .hosted.backup import BackupError, make_backup, restore_backup
     from .hosted.jobs import Runner
     from .hosted.server import App, serve
     from .hosted.store import Store, StoreError
+    from .hosted.vault import key_file
+
+    backups = getattr(args, "to", None) or getattr(args, "backup_dir", None) or args.data.resolve().parent / "hosted-backups"
+    if args.hosted_command == "restore":
+        try:
+            count = restore_backup(args.backup, args.data, force=args.force)
+        except (BackupError, OSError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        print(f"restored {count} files into {args.data}. Its secrets open only with the key it was made with "
+              f"({key_file()}).")
+        return 0
+    if args.hosted_command == "backup":
+        try:
+            made = make_backup(args.data, backups, keep=args.keep, with_runs=args.with_runs)
+        except (BackupError, OSError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        print(f"backup written: {made}\nThe key that opens its secrets is not in it: keep a copy of {key_file()} too.")
+        return 0
 
     store = Store(args.data / "nightshift.db")
+    if args.hosted_command == "reset-link":
+        user = next((u for u in store.users() if u["email"] == args.email.strip().lower()), None)
+        if user is None:
+            print(f"error: no user {args.email}", file=sys.stderr)
+            return 2
+        if args.no_2fa:
+            store.stop_two_factor(user["id"])
+        path = f"/#/reset/{store.new_reset(user['id'])}"
+        store.log("a reset link was made on the server" + (" and two-factor login turned off" if args.no_2fa else ""),
+                  user=user)
+        print(f"open this within 24 hours, on the app's address: {path}")
+        store.close()
+        return 0
     if args.hosted_command == "users":
         for user in store.users():
             print(f"{user['email']}" + (" (admin)" if user["admin"] else ""))
@@ -793,11 +842,16 @@ def _hosted(args: argparse.Namespace) -> int:
         print(f"added {args.email}" + (" (admin)" if args.admin else ""))
         return 0
 
-    runner = Runner(store, args.data, max_runs=args.max_runs, parallel=args.parallel, keep_runs=args.keep_runs)
+    runner = Runner(store, args.data, max_runs=args.max_runs, parallel=args.parallel, keep_runs=args.keep_runs,
+                    backup_dir=None if args.no_backups else backups, backup_at=args.backup_at,
+                    keep_backups=args.keep_backups)
     server = serve(App(store, runner, args.public_url), args.host, args.port)
     runner.start()
     if not store.users():
         print("no users yet: add one with  nightshift hosted add-user --email you@agency.example --admin")
+    print(f"secrets are encrypted with the key in {key_file()}: back it up apart from the data", flush=True)
+    if not args.no_backups:
+        print(f"nightly backup at {args.backup_at} into {backups} (last: {runner.last_backup or 'none yet'})", flush=True)
     print(f"Nightshift hosted on http://{args.host}:{server.server_port}/  ({args.public_url or 'no public URL set'})",
           flush=True)
     try:

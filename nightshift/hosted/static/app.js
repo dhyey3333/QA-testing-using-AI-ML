@@ -54,6 +54,8 @@ const PATHS = {
   list: '<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01"/>',
   sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
   file: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
 };
 const icon = (name, cls = "") => `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PATHS[name] || ""}</svg>`;
 
@@ -158,7 +160,11 @@ async function api(method, path, body) {
     location.hash = "#/login";
     throw new Error(data.error || "log in first");
   }
-  if (!response.ok) throw new Error(data.error || response.statusText);
+  if (!response.ok) {
+    const failure = new Error(data.error || response.statusText);
+    failure.data = data;  // e.g. need_code: the login's second step
+    throw failure;
+  }
   return data;
 }
 
@@ -203,7 +209,8 @@ async function renderSide(active) {
   side.hidden = false;
   try { clients = (await api("GET", "/api/projects")).projects; } catch { clients = []; }
   const nav = [["#/", "grid", "Clients", "projects"], ...(me.admin ? [["#/users", "users", "Team", "users"]] : []),
-    ...(me.owner ? [["#/workspaces", "layers", "Workspaces", "workspaces"]] : []), ["#/account", "user", "Account", "account"]];
+    ...(me.owner ? [["#/workspaces", "layers", "Workspaces", "workspaces"]] : []), ["#/account", "user", "Account", "account"],
+    ["#/help", "report", "Help", "help"]];
   side.innerHTML = `
     <a href="#/" class="logo"><span class="logo-mark">${icon("moon")}</span><span class="word">Nightshift QA</span></a>
     <div class="side-ws" title="Your workspace">${esc(workspace?.name || "")}</div>
@@ -243,19 +250,68 @@ function loginPage() {
           <div><h2>Welcome back</h2><p class="muted">Log in to your agency's workspace.</p></div>
           <label>Email <input name="email" type="email" autocomplete="username" required autofocus></label>
           <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+          <label id="code-field" hidden>Code from your authenticator app
+            <input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" maxlength="7"></label>
           <p class="error" role="alert"></p>
           <button type="submit">Log in</button>
           <div class="auth-links">
             <p>New here? <a href="https://nightshift-qa.github.io/pilot/#apply" target="_blank" rel="noopener">Apply for a free pilot</a></p>
+            <p class="muted small">Forgot your password? Ask an admin on your team for a reset link.</p>
             <p class="muted small">Invited by your team? Open the invite link you were sent to set up your account.</p>
           </div>
         </form>
       </div>
     </div>`;
+  const codeField = document.getElementById("code-field");
   onSubmit(document.getElementById("login"), async (form) => {
-    me = (await api("POST", "/api/login", form)).user;
+    try {
+      me = (await api("POST", "/api/login", form)).user;
+    } catch (exc) {
+      if (exc.data?.need_code) {  // the password was right; now the code from the phone
+        const first = codeField.hidden;
+        codeField.hidden = false;
+        codeField.querySelector("input").required = true;
+        codeField.querySelector("input").focus();
+        if (first) return;  // a next step, not a mistake
+      }
+      throw exc;
+    }
     workspace = null;  // fetched with the next page
     location.hash = "#/";
+  });
+}
+
+// A password reset link an admin made: set a new password, then log in with it.
+async function resetPage(resetToken) {
+  side.hidden = true;
+  view.classList.add("bare");
+  const shell = (inner) => `
+    <div class="auth">
+      <div class="auth-brand">
+        <div class="logo"><span class="logo-mark">${icon("moon")}</span>Nightshift QA</div>
+        <h1>AI regression testing your clients can trust.</h1>
+      </div>
+      <div class="auth-form">${inner}</div>
+    </div>`;
+  let who;
+  try {
+    who = await api("GET", `/api/reset/${encodeURIComponent(resetToken)}`);
+  } catch (exc) {
+    view.innerHTML = shell(`<div class="card stack"><div><h2>This link doesn't work</h2>
+      <p class="muted">${esc(exc.message)}</p></div><a class="btn" href="#/login">Go to log in</a></div>`);
+    return;
+  }
+  view.innerHTML = shell(`
+      <form class="card stack" id="reset">
+        <div><h2>Set a new password</h2><p class="muted">For ${esc(who.email)}. Every place you were logged in will be logged out.</p></div>
+        <label>New password <span class="hint">10+ characters</span><input name="password" type="password" autocomplete="new-password" minlength="10" required autofocus></label>
+        <p class="error" role="alert"></p>
+        <button type="submit">Save new password</button>
+      </form>`);
+  onSubmit(document.getElementById("reset"), async (fields) => {
+    await api("POST", `/api/reset/${encodeURIComponent(resetToken)}`, fields);
+    toast("Password saved: log in with it");
+    location.hash = "#/login";
   });
 }
 
@@ -322,6 +378,34 @@ function wireCopy() {
   });
 }
 
+// The first-week checklist on the Clients page, worked out from what the workspace already has, so a
+// new agency gets from an empty account to a nightly run and a client report without a call.
+function gettingStarted(team) {
+  try { if (localStorage.getItem("ns-hide-start") === "1") return ""; } catch { /* storage blocked: show it */ }
+  const first = clients[0];
+  const withTests = clients.find((p) => p.tests > 0) || first;
+  const steps = [
+    [clients.length > 0, me.admin ? "Add your first client" : "Ask an admin to add a client", "#/", "new-client"],
+    [clients.some((p) => p.tests > 0), "Give it tests: write one, or let the AI draft some from the website",
+      first ? `#/p/${first.slug}/tests` : "#/"],
+    [clients.some((p) => p.last_run), "Run them and read the client report", withTests ? `#/p/${withTests.slug}/runs` : "#/"],
+    [clients.some((p) => p.nightly), "Set a nightly time, so it runs while you sleep", first ? `#/p/${first.slug}/settings` : "#/"],
+    ...(me.admin ? [[team.length > 1, "Invite your team", "#/users"]] : []),
+    [me.two_factor, "Turn on two-factor login for your account", "#/account"],
+  ];
+  const done = steps.filter(([ok]) => ok).length;
+  if (done === steps.length) return "";
+  return `
+    <div class="card stack start-card">
+      <div class="card-head">${icon("sparkles")}<h3>Getting started</h3><span class="pill run">${done} of ${steps.length} done</span>
+        <button type="button" class="ghost small" id="hide-start" title="Hide this list">${icon("x")}</button></div>
+      <ol class="start-steps">${steps.map(([ok, text, href, id]) => `
+        <li class="${ok ? "done" : ""}">${statusIcon(ok ? "ok" : "off")}
+          ${ok ? `<span>${esc(text)}</span>` : `<a href="${href}" ${id ? `data-open="${id}"` : ""}>${esc(text)}</a>`}</li>`).join("")}</ol>
+      <p class="muted small">New to Nightshift? <a href="#/help">Read the two-minute guide</a>.</p>
+    </div>`;
+}
+
 async function projectsPage() {
   const token = routeToken;
   await renderSide("projects");
@@ -344,11 +428,14 @@ async function projectsPage() {
       ${historyStrip(p.history)}
     </a>`;
   }).join("");
+  const team = me.admin ? (await api("GET", "/api/users").catch(() => ({ users: [] }))).users : [];
+  if (stale(token)) return;
   view.innerHTML = `
     <div class="page-head">
       <div><h1>Clients</h1><div class="sub">One project per client: its tests, a nightly run, and a report you can send.</div></div>
       ${me.admin ? `<div class="head-actions"><button type="button" id="new-client">${icon("plus")}New client</button></div>` : ""}
     </div>
+    ${gettingStarted(team)}
     <form class="card stack" id="new-project" hidden>
       <div class="card-head">${icon("plus")}<h3>New client</h3></div>
       <div class="fields">
@@ -368,6 +455,11 @@ async function projectsPage() {
   const open = () => { form.hidden = false; form.elements.client.focus(); };
   document.getElementById("new-client")?.addEventListener("click", open);
   document.getElementById("new-client-empty")?.addEventListener("click", open);
+  view.querySelector('[data-open="new-client"]')?.addEventListener("click", (event) => { event.preventDefault(); open(); });
+  document.getElementById("hide-start")?.addEventListener("click", () => {
+    try { localStorage.setItem("ns-hide-start", "1"); } catch { /* storage blocked: it just comes back */ }
+    view.querySelector(".start-card")?.remove();
+  });
   document.getElementById("cancel-new")?.addEventListener("click", () => { form.hidden = true; });
   onSubmit(form, async (fields) => {
     const { project } = await api("POST", "/api/projects", fields);
@@ -702,7 +794,21 @@ function settingsTab(section, slug, data) {
       </div>
       <p class="error" role="alert"></p>
       <div class="actions"><button type="submit">${icon("plus")}Set secret</button></div>
-    </form>`;
+    </form>
+    ${me.admin ? `<form class="card stack danger" id="delete-client">
+      <div class="card-head">${icon("trash")}<h3>Delete this client</h3></div>
+      <p class="muted small">Deletes ${esc(p.client)}'s tests, secrets, saved paths and every run and report, for good.
+        Use it when a client leaves or asks for their data to be deleted.</p>
+      <div class="fields"><label><span>Type <b>${esc(p.client)}</b> to confirm</span><input name="confirm" autocomplete="off" required></label></div>
+      <p class="error" role="alert"></p>
+      <div class="actions"><button type="submit" class="danger">${icon("trash")}Delete client and data</button></div>
+    </form>` : ""}`;
+  const remove = document.getElementById("delete-client");
+  if (remove) onSubmit(remove, async (fields) => {
+    await api("POST", `/api/projects/${slug}/delete`, fields);
+    toast(`${p.client} and its data are deleted`);
+    location.hash = "#/";
+  });
   onSubmit(document.getElementById("settings"), async (fields) => {
     const targets = [...document.querySelectorAll("#settings input[name=target]:checked")].map((box) => box.value).join(",");
     delete fields.target;
@@ -734,12 +840,18 @@ async function usersPage(made) {
   const rows = users.map((u) => `
     <tr><td class="status"><span class="avatar">${esc(initials(u.name || u.email))}</span></td>
       <td><div class="cell-title">${esc(u.name || u.email)}${u.id === me.id ? '<span class="chip">you</span>' : ""}</div><div class="muted small">${esc(u.email)}</div></td>
+      <td class="narrow"><span class="pill ${u.two_factor ? "ok" : "off"}" title="Two-factor login">${icon("shield")}${u.two_factor ? "2FA on" : "2FA off"}</span></td>
       <td class="narrow"><span class="pill ${u.admin ? "run" : "off"}">${u.admin ? "Admin" : "Staff"}</span></td>
-      <td class="narrow">${u.id === me.id ? "" : `<button type="button" class="ghost small" data-user="${u.id}" title="Delete">${icon("trash")}</button>`}</td></tr>`).join("");
+      <td class="narrow">${u.id === me.id ? "" : `<div class="row-actions">
+        <button type="button" class="ghost small" data-reset="${u.id}" data-who="${esc(u.name || u.email)}" title="Make a password reset link">${icon("key")}Reset link</button>
+        ${u.two_factor ? `<button type="button" class="ghost small" data-tfoff="${u.id}" title="For a lost phone">${icon("shield")}Turn off 2FA</button>` : ""}
+        <button type="button" class="ghost small" data-user="${u.id}" title="Delete">${icon("trash")}</button></div>`}</td></tr>`).join("");
   view.innerHTML = `
-    <div class="page-head"><div><h1>Team</h1><div class="sub">Everyone in ${esc(workspace?.name || "your workspace")}. Admins manage clients, team and secrets; staff write tests and start runs.</div></div></div>
+    <div class="page-head"><div><h1>Team</h1><div class="sub">Everyone in ${esc(workspace?.name || "your workspace")}. Admins manage clients, team and secrets; staff write tests and start runs.</div></div>
+      <a class="btn secondary" href="#/activity">${icon("activity")}Activity log</a></div>
     <div class="table-wrap"><table><tbody>${rows}</tbody></table></div>
-    ${made ? inviteResult(made.result, made.who) : ""}
+    ${made?.reset ? resetResult(made.reset, made.who) : ""}
+    ${made?.result ? inviteResult(made.result, made.who) : ""}
     <form class="card stack" id="new-invite">
       <div class="card-head">${icon("plus")}<h3>Invite someone</h3></div>
       <p class="muted small">You get a link to send them; they choose their own name and password.</p>
@@ -777,6 +889,30 @@ async function usersPage(made) {
     toast("Removed");
     route();
   }));
+  view.querySelectorAll("[data-reset]").forEach((button) => button.addEventListener("click", async () => {
+    try {
+      const reset = await api("POST", `/api/users/${button.dataset.reset}/reset`);
+      await usersPage({ reset, who: button.dataset.who });
+    } catch (exc) { toast(exc.message, "bad"); }
+  }));
+  view.querySelectorAll("[data-tfoff]").forEach((button) => button.addEventListener("click", async () => {
+    if (!confirm("Turn off two-factor login for them? Do this only when they have lost their phone; they can set it up again.")) return;
+    await api("POST", `/api/users/${button.dataset.tfoff}/2fa-off`);
+    toast("Two-factor login turned off");
+    route();
+  }));
+}
+
+// A reset link, shown this once, like an invite.
+function resetResult(made, who) {
+  const link = made.link || `${location.origin}${made.path}`;
+  return `
+    <div class="card stack invite-made">
+      <div class="card-head">${icon("key")}<h3>Password reset link for ${esc(who)}</h3></div>
+      <div class="copy-row"><input readonly value="${esc(link)}" id="invite-link"><button type="button" id="copy-link">Copy link</button></div>
+      <p class="muted small">Send it to them yourself. It works once, for 24 hours, and logs them out everywhere when used.
+        Copy it now: it can't be shown again.</p>
+    </div>`;
 }
 
 // The owner's page: a workspace per agency, made with the invite for its first admin. Names and
@@ -791,7 +927,8 @@ async function workspacesPage(made) {
         <div class="muted small">since ${esc(new Date(w.created).toLocaleDateString())}</div></td>
       <td class="narrow"><div class="small">${plural(w.members, "member")}</div></td>
       <td class="narrow"><div class="small">${plural(w.clients, "client")}</div></td>
-      <td class="narrow">${w.pending ? `<span class="pill run">${plural(w.pending, "invite")} open</span>` : ""}</td></tr>`).join("");
+      <td class="narrow">${w.pending ? `<span class="pill run">${plural(w.pending, "invite")} open</span>` : ""}</td>
+      <td class="narrow">${w.id === me.workspace_id ? "" : `<button type="button" class="ghost small" data-delete-ws="${w.id}" data-name="${esc(w.name)}" title="Delete this agency and all its data">${icon("trash")}</button>`}</td></tr>`).join("");
   view.innerHTML = `
     <div class="page-head"><div><h1>Workspaces</h1><div class="sub">One per agency. Each sees only its own clients, tests and team.</div></div></div>
     <div class="table-wrap"><table><tbody>${rows}</tbody></table></div>
@@ -812,6 +949,16 @@ async function workspacesPage(made) {
     toast(`${fields.name} created`);
     await workspacesPage({ result, who: fields.note || `${fields.name}'s admin` });
   });
+  view.querySelectorAll("[data-delete-ws]").forEach((button) => button.addEventListener("click", async () => {
+    const name = button.dataset.name;
+    const typed = prompt(`This deletes ${name}: its people, clients, tests, secrets and every report, for good.\nType ${name} to confirm.`);
+    if (typed === null) return;
+    try {
+      await api("POST", `/api/workspaces/${button.dataset.deleteWs}/delete`, { confirm: typed });
+      toast(`${name} is deleted`);
+      route();
+    } catch (exc) { toast(exc.message, "bad"); }
+  }));
 }
 
 async function accountPage() {
@@ -827,13 +974,118 @@ async function accountPage() {
       </div>
       <p class="error" role="alert"></p>
       <div class="actions"><button type="submit">Change password</button></div>
-    </form>`;
+    </form>
+    <div class="card stack" id="two-factor">
+      <div class="card-head">${icon("shield")}<h3>Two-factor login</h3>
+        <span class="pill ${me.two_factor ? "ok" : "off"}">${me.two_factor ? "On" : "Off"}</span></div>
+      ${me.two_factor
+        ? `<p class="muted small">Logging in asks for a code from your authenticator app as well as your password.</p>
+           <form class="stack" id="tf-off"><div class="fields"><label>Your password, to turn it off
+             <input name="password" type="password" autocomplete="current-password" required></label></div>
+             <p class="error" role="alert"></p><div class="actions"><button type="submit" class="secondary">Turn off</button></div></form>`
+        : `<p class="muted small">With it on, a stolen password alone can't open your account: logging in also asks for a
+             6-digit code from an app on your phone (Google Authenticator, Microsoft Authenticator, Authy...).</p>
+           <div class="actions"><button type="button" id="tf-start">${icon("shield")}Set it up</button></div>
+           <div id="tf-setup"></div>`}
+    </div>`;
   onSubmit(document.getElementById("password"), async (fields) => {
     await api("PUT", "/api/me/password", fields);
     me = workspace = null;
     toast("Password changed: log in again");
     location.hash = "#/login";
   });
+  document.getElementById("tf-start")?.addEventListener("click", async (event) => {
+    event.target.disabled = true;
+    const { secret, uri } = await api("POST", "/api/me/2fa");
+    const grouped = secret.match(/.{1,4}/g).join(" ");
+    document.getElementById("tf-setup").innerHTML = `
+      <form class="stack" id="tf-confirm">
+        <ol class="small steps-list">
+          <li>In your authenticator app, add an account and choose <b>Enter a setup key</b>.</li>
+          <li>Account name: <b>Nightshift QA</b>. Key: <span class="mono">${esc(grouped)}</span> (time based).</li>
+          <li>Type the 6-digit code the app shows.</li>
+        </ol>
+        <p class="muted small">On this phone? <a href="${esc(uri)}">Open it in your authenticator app</a></p>
+        <div class="fields"><label>Code <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required></label></div>
+        <p class="error" role="alert"></p>
+        <div class="actions"><button type="submit">${icon("check")}Turn on</button></div>
+      </form>`;
+    onSubmit(document.getElementById("tf-confirm"), async (fields) => {
+      await api("POST", "/api/me/2fa/confirm", fields);
+      me = workspace = null;
+      toast("Two-factor login is on");
+      route();
+    });
+  });
+  const off = document.getElementById("tf-off");
+  if (off) onSubmit(off, async (fields) => {
+    await api("POST", "/api/me/2fa/off", fields);
+    me = workspace = null;
+    toast("Two-factor login is off");
+    route();
+  });
+}
+
+// The two-minute guide: everything a new tester needs to write good tests and read results.
+async function helpPage() {
+  await renderSide("help");
+  const verdicts = [
+    ["ok", "Pass", "Every expected result was proven with words quoted from the page. Click a test to see the quote."],
+    ["bad", "Fail · Bug", "The site did something wrong: a wrong or missing result, a button that does nothing, a server or script error. Check it, then send it on."],
+    ["warn", "Flaky", "Failed, then passed when tried again. Worth a look; often a slow page."],
+    ["block", "Error · Environment", "Nothing was really tested: the site was down, a bot check got in the way, or the AI model couldn't be reached. Not your client's bug."],
+    ["off", "Error · Test outdated", "The test couldn't be followed as written: the site changed, or a step is unclear. Update the test."],
+  ];
+  view.innerHTML = `
+    <div class="page-head"><div><h1>Help</h1><div class="sub">How to write tests that work, and how to read what comes back.</div></div></div>
+    <div class="card stack help">
+      <div class="card-head">${icon("edit")}<h3>Writing a test</h3></div>
+      <p>A test is what a careful person would do and see, in plain English. <b>Steps</b> say what to do; <b>expected results</b> say what the page must show afterwards.</p>
+      <div class="example"><div><b>Steps</b><br>log in with the email and password from the test data<br>add the blue backpack to the cart<br>open the cart</div>
+        <div><b>Expected results</b><br>the cart lists the blue backpack<br>the total is ₹1,499</div></div>
+      <ul>
+        <li>Write expected results that can be <b>seen</b>: a message, a number, a name. "It works" can't be proven; "a message says Order placed" can.</li>
+        <li>Put values in the test's data, and passwords under <b>Settings → Secrets</b>, used as <span class="mono">\${NAME}</span>. The AI only ever sees <span class="mono">{{name}}</span>, never the value.</li>
+        <li>Ranges are fine ("the bar stops between 70% and 80%"), and so are things that must not appear ("no error is shown").</li>
+        <li>Alerts and confirm boxes count as part of the page: "an alert says Saved" works.</li>
+        <li>Use test accounts and fake data, on a site you're allowed to test, ideally staging. Never real card details.</li>
+        <li>Not sure where to start? <b>Generate tests</b> lets the AI explore the site and draft tests for you to review.</li>
+      </ul>
+    </div>
+    <div class="card stack help">
+      <div class="card-head">${icon("check")}<h3>Reading results</h3></div>
+      <div class="table-wrap flat"><table><tbody>${verdicts.map(([tone, name, text]) => `
+        <tr><td class="status">${statusIcon(tone)}</td><td class="narrow"><b>${name}</b></td><td>${text}</td></tr>`).join("")}</tbody></table></div>
+      <ul>
+        <li>The first run of a test uses the AI. A pass saves its path, and later runs replay it with no AI at all: fast and free. If the site changes, it heals the path or asks the AI again.</li>
+        <li>Each run ends with a <b>client report</b> in your agency's name: the file to send your client.</li>
+        <li>An AI tester can raise a false alarm on an unusual page. Look at a failure's screenshot and reason before forwarding it, especially in the first weeks on a new site.</li>
+      </ul>
+    </div>
+    <div class="card stack help">
+      <div class="card-head">${icon("compass")}<h3>Exploring</h3></div>
+      <p>Explore lets the AI use a site on its own for a set number of actions and list what it finds: <b>bugs</b> it could prove, <b>suspected</b> ones to check by hand, and <b>warnings</b> such as accessibility gaps (missing labels, images without alt text). It is best at accessibility and broken-page checks; treat its suspected bugs as leads, not verdicts.</p>
+    </div>
+    <div class="card stack help">
+      <div class="card-head">${icon("message")}<h3>Getting help</h3></div>
+      <p>Write to your Nightshift QA contact with the client and run number. Forgot your password? Ask an admin on your team for a reset link.</p>
+    </div>`;
+}
+
+// The workspace's activity log: who did what and when, for its admins.
+async function activityPage() {
+  const token = routeToken;
+  const [{ events }] = await Promise.all([api("GET", "/api/audit"), renderSide("users")]);
+  if (stale(token)) return;
+  const rows = events.map((e) => `
+    <tr><td class="narrow small muted" title="${esc(fullTime(e.at))}">${esc(fullTime(e.at))}</td>
+      <td><div class="cell-title">${esc(e.action)}</div><div class="muted small">${esc(e.email || "someone")}${e.ip ? ` · ${esc(e.ip)}` : ""}</div></td></tr>`).join("");
+  view.innerHTML = `
+    <div class="page-head"><div><h1>Activity</h1><div class="sub">Everything changed in ${esc(workspace?.name || "your workspace")} in the last year, newest first.
+      Secret values and passwords are never written here.</div></div>
+      <a class="btn secondary" href="#/users">${icon("users")}Team</a></div>
+    ${rows ? `<div class="table-wrap"><table><tbody>${rows}</tbody></table></div>`
+      : `<div class="card empty">${icon("activity")}<h3>Nothing yet</h3></div>`}`;
 }
 
 // --- routing -------------------------------------------------------------------------------
@@ -844,6 +1096,7 @@ async function route() {
   const parts = location.hash.replace(/^#\/?/, "").split("/");
   if (parts[0] === "login") return loginPage();
   if (parts[0] === "join" && parts[1]) return joinPage(parts[1]);
+  if (parts[0] === "reset" && parts[1]) return resetPage(parts[1]);
   view.classList.remove("bare");
   try {
     if (!me || !workspace) ({ user: me, workspace } = await api("GET", "/api/me"));
@@ -853,8 +1106,10 @@ async function route() {
   try {
     if (parts[0] === "p" && parts[1]) return await projectPage(parts[1], parts[2] || "runs", parts[3]);
     if (parts[0] === "users" && me.admin) return await usersPage();
+    if (parts[0] === "activity" && me.admin) return await activityPage();
     if (parts[0] === "workspaces" && me.owner) return await workspacesPage();
     if (parts[0] === "account") return await accountPage();
+    if (parts[0] === "help") return await helpPage();
     return await projectsPage();
   } catch (exc) {
     view.innerHTML = `<div class="card empty">${icon("alert")}<h3>Something went wrong</h3><p>${esc(exc.message)}</p>

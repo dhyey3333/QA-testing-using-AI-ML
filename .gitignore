@@ -10,3 +10,4 @@ runs/
 
 # the hosted app's local data: database, client tests, secrets, reports
 hosted-data/
+hosted-backups/

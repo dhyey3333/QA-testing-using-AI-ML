@@ -381,7 +381,7 @@ project's secrets: `JIRA_URL`, `JIRA_PROJECT`, `JIRA_EMAIL`, `JIRA_API_TOKEN` an
 two at a time and two tests at a time within a run (`--max-runs`, `--parallel`); a nightly suite
 of saved paths replays with no model calls.
 
-It runs on Oracle Cloud's free server behind Caddy for HTTPS: `deploy/oracle/README.md` is the
+It runs on any Ubuntu 24.04 server (Hetzner, DigitalOcean, Oracle...) behind Caddy for HTTPS: `deploy/server/README.md` is the
 whole setup, one script on a fresh Ubuntu server. Locally:
 
 ```bash

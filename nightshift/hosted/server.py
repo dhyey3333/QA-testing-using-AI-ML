@@ -2,7 +2,7 @@
 
 Each of the agency's clients is a project: its tests, its saved paths, its test secrets,
 a nightly schedule, and every run's client report. On the server it listens on 127.0.0.1
-behind Caddy, which adds HTTPS (deploy/oracle/).
+behind Caddy, which adds HTTPS (deploy/server/).
 
 Guards, since it is on the internet and starts browsers:
   - each agency has its own workspace and sees only its own projects, people and run files: every
@@ -13,19 +13,24 @@ Guards, since it is on the internet and starts browsers:
     one) and, when the browser says where it comes from, this site's Origin;
   - five wrong passwords from one address lock that address out for 15 minutes;
   - run files are served to logged-in users only, and only from inside that run's folder;
-  - secrets can be set and deleted, never read back.
+  - secrets can be set and deleted, never read back, and are encrypted on disk (vault.py);
+  - two-factor login with an authenticator app, for anyone who turns it on;
+  - forgotten passwords are reset with a link an admin makes: single use, a day long, stored hashed;
+  - every change is written to the workspace's activity log (who, what, when, from where; never a
+    value), which its admins can read.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import shutil
 import threading
 import time
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 
@@ -60,9 +65,9 @@ REPORT_CSP = ("default-src 'self' 'unsafe-inline' data: blob:; frame-ancestors '
 
 
 class HttpError(Exception):
-    def __init__(self, status: int, message: str) -> None:
+    def __init__(self, status: int, message: str, extra: dict | None = None) -> None:
         super().__init__(message)
-        self.status, self.message = status, message
+        self.status, self.message, self.extra = status, message, extra or {}
 
 
 class App:
@@ -85,12 +90,30 @@ class App:
         with self._lock:
             if len(self._recent_failures(ip)) >= LOGIN_LIMIT:
                 raise HttpError(429, "too many wrong passwords from here; try again in 15 minutes")
-        user = self.store.check_login(str(body.get("email", "")), str(body.get("password", "")))
+        email = str(body.get("email", ""))
+        user = self.store.check_login(email, str(body.get("password", "")))
         if user is None:
-            with self._lock:
-                self._failures.setdefault(ip, []).append(time.time())
+            self._failed(ip)
+            if (workspace_id := self.store.workspace_of(email)) is not None:  # an unknown email logs nowhere
+                self.store.log("login failed: wrong password", email=email.strip().lower(),
+                               workspace_id=workspace_id, ip=ip)
             raise HttpError(401, "wrong email or password")
+        if user["two_factor"]:
+            # The password was right; the code from the authenticator app is the second step. A wrong
+            # code counts as a wrong password for the lockout, so codes can't be guessed either.
+            code = str(body.get("code", "")).strip()
+            if not code:
+                raise HttpError(401, "enter the 6-digit code from your authenticator app", {"need_code": True})
+            if not self.store.check_code(user["id"], code):
+                self._failed(ip)
+                self.store.log("login failed: wrong two-factor code", user=user, ip=ip)
+                raise HttpError(401, "that code is not right; use the newest one in your app", {"need_code": True})
+        self.store.log("logged in", user=user, ip=ip)
         return user, self.store.new_session(user["id"])
+
+    def _failed(self, ip: str) -> None:
+        with self._lock:
+            self._failures.setdefault(ip, []).append(time.time())
 
     def cookie(self, token: str, max_age: int = SESSION_DAYS * 86400, secure: bool = False) -> str:
         """Secure (HTTPS only) when this request came over HTTPS. Not whenever a public URL is set:
@@ -117,10 +140,36 @@ class App:
             self.store.set_password(user["id"], str(body.get("new", "")))
             return 200, {"ok": True}
 
+        # Two-factor login with any authenticator app (Google Authenticator, Microsoft Authenticator...).
+        if route == "POST /api/me/2fa":
+            secret = self.store.start_two_factor(user["id"])
+            label = quote(f"Nightshift QA:{user['email']}")
+            return 200, {"secret": secret, "uri": f"otpauth://totp/{label}?secret={secret}&issuer=Nightshift%20QA"}
+        if route == "POST /api/me/2fa/confirm":
+            self.store.confirm_two_factor(user["id"], str(body.get("code", "")))
+            return 200, {"ok": True}
+        if route == "POST /api/me/2fa/off":
+            if self.store.check_login(user["email"], str(body.get("password", ""))) is None:
+                raise HttpError(400, "the password is wrong")
+            self.store.stop_two_factor(user["id"])
+            return 200, {"ok": True}
+
         workspace_id = user["workspace_id"]
+        if route == "GET /api/audit":
+            _admin(user)
+            return 200, {"events": self.store.events(workspace_id)}
         if route == "GET /api/users":
             _admin(user)
             return 200, {"users": self.store.users(workspace_id)}
+        if match := re.fullmatch(r"POST /api/users/(\d+)/(reset|2fa-off)", route):
+            # Someone who forgot their password, or lost the phone with their codes, asks an admin.
+            _admin(user)
+            member = self._member(int(match[1]), workspace_id)
+            if match[2] == "2fa-off":
+                self.store.stop_two_factor(member["id"])
+                return 200, {"users": self.store.users(workspace_id)}
+            path = f"/#/reset/{self.store.new_reset(member['id'])}"
+            return 201, {"path": path, "link": f"{self.public_url}{path}" if self.public_url else ""}
         if route == "POST /api/users":
             _admin(user)
             self.store.add_user(str(body.get("email", "")), str(body.get("name", "")), str(body.get("password", "")),
@@ -161,6 +210,15 @@ class App:
                                           created_by=user["id"])
             return 201, {**self._invite_made(token, workspace["id"]), "workspace": workspace,
                          "workspaces": self.store.workspaces()}
+        if match := re.fullmatch(r"POST /api/workspaces/(\d+)/delete", route):
+            # An agency that leaves: everything of theirs goes, on the owner's word and the typed name.
+            _owner(user)
+            gone = self.store.workspace(int(match[1]))
+            if gone is None or str(body.get("confirm", "")).strip() != gone["name"]:
+                raise HttpError(400, "type the workspace's name exactly to confirm")
+            for slug in self.store.delete_workspace(gone["id"]):
+                shutil.rmtree(self.runner.data / "projects" / slug, ignore_errors=True)
+            return 200, {"workspaces": self.store.workspaces()}
 
         if route == "GET /api/projects":
             return 200, {"projects": [self._project_card(p) for p in self.store.projects(workspace_id)]}
@@ -182,6 +240,15 @@ class App:
 
         if rest == "GET ":
             return 200, self._project_view(project, files)
+        if rest == "POST /delete":
+            # A client that leaves, or asks for its data to be deleted: tests, secrets, saved paths, every
+            # run and report. Only an admin, and only with the client's name typed back.
+            _admin(user)
+            if str(body.get("confirm", "")).strip() != project["client"]:
+                raise HttpError(400, "type the client's name exactly to confirm")
+            self.store.delete_project(project["slug"])
+            shutil.rmtree(files.root, ignore_errors=True)
+            return 200, {"deleted": project["slug"]}
         if rest == "PUT ":
             _admin(user)
             self.store.update_project(project["slug"], **{k: str(body[k]) for k in ("client", "base_url", "brand", "nightly",
@@ -259,7 +326,7 @@ class App:
                 files.set_secret(m[2], str(body.get("value", "")))
             else:
                 files.delete_secret(m[2])
-            return 200, {"secrets": sorted(files.secrets())}
+            return 200, {"secrets": files.secret_names()}
         if rest == "POST /explore":
             url = str(body.get("url", "")).strip()
             if not re.fullmatch(r"https?://[^\s/]+(/\S*)?", url):
@@ -372,6 +439,39 @@ class App:
             raise HttpError(404, "no such project")
         return project
 
+    def _member(self, user_id: int, workspace_id: int) -> dict:
+        member = next((u for u in self.store.users(workspace_id) if u["id"] == user_id), None)
+        if member is None:
+            raise HttpError(404, "no such user")
+        return member
+
+    def reset(self, token: str, method: str, body: dict, ip: str) -> dict:
+        """A reset link, before any login: whose it is (GET), or the new password (POST)."""
+        member = self.store.reset_user(token)
+        if member is None:
+            raise HttpError(404, "this reset link has expired or was already used; ask an admin for a new one")
+        if method == "GET":
+            return {"email": member["email"]}
+        self.store.use_reset(token, str(body.get("password", "")))
+        self.store.log("set a new password with a reset link", user=member, ip=ip)
+        return {"ok": True}
+
+    def health(self) -> tuple[int, dict]:
+        """For an uptime monitor: is the app up and its database answering. Counts only, no names."""
+        try:
+            counts = self.store.counts()
+        except Exception:  # noqa: BLE001 (any database failure is "not healthy")
+            return 503, {"ok": False, "database": "not answering"}
+        return 200, {"ok": True, "database": "ok", **counts, "last_backup": self.runner.last_backup}
+
+    def describe(self, method: str, path: str, body: dict) -> str:
+        """The activity-log line for a change, worked out BEFORE it runs (so a removed person is still
+        named). Built from the route and a few named fields; never a password, a secret's value or a
+        test's text."""
+        words = _describe(method, path, body)
+        emails = {u["id"]: u["email"] for u in self.store.users()}
+        return re.sub(r"user #(\d+)", lambda m: emails.get(int(m[1]), m[0]), words)
+
     def _invite_made(self, token: str, workspace_id: int) -> dict:
         """A new invite: its link (shown once; only the token's hash is kept) and the open invites."""
         path = f"/#/join/{token}"
@@ -397,10 +497,11 @@ class App:
         # The last ten runs, oldest first, for the history strip on the client's card.
         history = [{key: run[key] for key in ("id", "trigger", "status", "passed", "failed", "flaky", "errors")}
                    for run in reversed(runs)]
-        return {**project, "last_run": self._run_view(project, None, runs[0]) if runs else None, "history": history}
+        return {**project, "last_run": self._run_view(project, None, runs[0]) if runs else None, "history": history,
+                "tests": len(self.runner.files(project).spec_names())}
 
     def _project_view(self, project: dict, files: ProjectFiles) -> dict:
-        return {"project": project, "specs": files.spec_names(), "secrets": sorted(files.secrets()),
+        return {"project": project, "specs": files.spec_names(), "secrets": files.secret_names(),
                 "drafts": files.drafts_list(),
                 "missing": [{"test": test, "secret": secret} for test, secret in files.missing_secrets()],
                 "runs": [self._run_view(project, files, run) for run in self.store.runs(project["id"])],
@@ -428,6 +529,48 @@ def _issues(folder: Path) -> dict:
         return json.loads((folder / "issues.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+
+
+# How each kind of change reads in the activity log. Only names from the path or the body (a client's,
+# a test's, a secret's, a person's email); the body's other fields never get in.
+_ACTIONS = [
+    (r"PUT /api/me/password", lambda m, b: "changed their password"),
+    (r"POST /api/me/2fa", lambda m, b: "began setting up two-factor login"),
+    (r"POST /api/me/2fa/confirm", lambda m, b: "turned on two-factor login"),
+    (r"POST /api/me/2fa/off", lambda m, b: "turned off two-factor login"),
+    (r"POST /api/users", lambda m, b: f"added {b.get('email', 'a user')}"),
+    (r"DELETE /api/users/(\d+)", lambda m, b: f"removed user #{m[1]}"),
+    (r"POST /api/users/(\d+)/reset", lambda m, b: f"made a password reset link for user #{m[1]}"),
+    (r"POST /api/users/(\d+)/2fa-off", lambda m, b: f"turned off two-factor login for user #{m[1]}"),
+    (r"PUT /api/workspace", lambda m, b: f"renamed the workspace to {b.get('name', '')}"),
+    (r"POST /api/invites", lambda m, b: "made an " + ("admin " if b.get("admin") else "") + "invite link"
+     + (f" for {b['note']}" if b.get("note") else "")),
+    (r"DELETE /api/invites/(\d+)", lambda m, b: "cancelled an invite link"),
+    (r"POST /api/workspaces", lambda m, b: f"made the workspace {b.get('name', '')}"),
+    (r"POST /api/workspaces/(\d+)/delete", lambda m, b: f"deleted the workspace {b.get('confirm', '')}"),
+    (r"POST /api/projects", lambda m, b: f"added the client {b.get('client', '')}"),
+    (r"POST /api/projects/([a-z0-9-]+)/delete", lambda m, b: f"deleted the client {m[1]} and all its data"),
+    (r"PUT /api/projects/([a-z0-9-]+)", lambda m, b: f"changed the settings of {m[1]}"),
+    (r"PUT /api/projects/([a-z0-9-]+)/specs/([a-z0-9-]+)", lambda m, b: f"saved the test {m[2]} in {m[1]}"),
+    (r"DELETE /api/projects/([a-z0-9-]+)/specs/([a-z0-9-]+)", lambda m, b: f"deleted the test {m[2]} from {m[1]}"),
+    (r"PUT /api/projects/([a-z0-9-]+)/secrets/(\w+)", lambda m, b: f"set the secret {m[2]} on {m[1]}"),
+    (r"DELETE /api/projects/([a-z0-9-]+)/secrets/(\w+)", lambda m, b: f"deleted the secret {m[2]} from {m[1]}"),
+    (r"POST /api/projects/([a-z0-9-]+)/runs", lambda m, b: f"started a run of {m[1]}"),
+    (r"POST /api/projects/([a-z0-9-]+)/runs/(\d+)/stop", lambda m, b: f"stopped run {m[2]} of {m[1]}"),
+    (r"POST /api/projects/([a-z0-9-]+)/explore", lambda m, b: f"started exploring {b.get('url', '')} for {m[1]}"),
+    (r"POST /api/projects/([a-z0-9-]+)/generate", lambda m, b: f"asked the AI to write tests for {m[1]}"),
+    (r"POST /api/projects/([a-z0-9-]+)/runs/(\d+)/(accept-visual|jira|slack)",
+     lambda m, b: {"accept-visual": "accepted the new look", "jira": "filed Jira issues",
+                   "slack": "posted to Slack"}[m[3]] + f" from run {m[2]} of {m[1]}"),
+]
+
+
+def _describe(method: str, path: str, body: dict) -> str:
+    route = f"{method} {path}"
+    for pattern, words in _ACTIONS:
+        if match := re.fullmatch(pattern, route):
+            return words(match, body)
+    return route  # a change with no wording yet: the route, which holds no values
 
 
 def _admin(user: dict) -> None:
@@ -473,17 +616,31 @@ def make_handler(app: App):
                 if path == "/api/login" and method == "POST":
                     user, token = app.login(body, self._ip())
                     self._json(200, {"user": user}, {"Set-Cookie": app.cookie(token, secure=self._https())})
+                elif path == "/healthz" and method == "GET":
+                    self._json(*app.health())
                 elif join := re.fullmatch(r"/api/join/([A-Za-z0-9_-]{20,100})", path):
                     if method not in ("GET", "POST"):
                         raise HttpError(404, "not found")
                     payload, new_token = app.join(join[1], method, body)
                     headers = {"Set-Cookie": app.cookie(new_token, secure=self._https())} if new_token else None
+                    if new_token:
+                        app.store.log("joined with an invite link", user=payload["user"], ip=self._ip())
                     self._json(201 if new_token else 200, payload, headers)
+                elif reset := re.fullmatch(r"/api/reset/([A-Za-z0-9_-]{20,100})", path):
+                    if method not in ("GET", "POST"):
+                        raise HttpError(404, "not found")
+                    self._json(200, app.reset(reset[1], method, body, self._ip()))
                 elif path == "/api/logout" and method == "POST":
+                    if user is not None:
+                        app.store.log("logged out", user=user, ip=self._ip())
                     app.store.end_session(token)
                     self._json(200, {"ok": True}, {"Set-Cookie": app.cookie("", max_age=0, secure=self._https())})
                 elif path.startswith("/api/"):
-                    self._json(*app.api(method, path, body, user))
+                    words = app.describe(method, path, body) if method != "GET" and user else ""
+                    status, payload = app.api(method, path, body, user)
+                    if words:  # logged only once the change went through
+                        app.store.log(words, user=user, ip=self._ip())
+                    self._json(status, payload)
                 elif path.startswith("/files/") and method == "GET":
                     target = app.file(path, user)
                     self._raw(200, target.read_bytes(), CONTENT_TYPES.get(target.suffix, "application/octet-stream"),
@@ -493,7 +650,7 @@ def make_handler(app: App):
                 else:
                     raise HttpError(404, "not found")
             except HttpError as exc:
-                self._json(exc.status, {"error": exc.message})
+                self._json(exc.status, {"error": exc.message, **exc.extra})
             except Busy as exc:
                 self._json(409, {"error": str(exc)})
             except StoreError as exc:

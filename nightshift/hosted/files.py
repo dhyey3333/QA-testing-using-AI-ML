@@ -20,6 +20,7 @@ import yaml
 
 from ..spec import SpecError, load_spec
 from .store import StoreError
+from .vault import is_sealed, vault
 
 MAX_SPEC_BYTES = 100_000
 _SPEC_NAME_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,59}")
@@ -124,7 +125,7 @@ class ProjectFiles:
 
     def drafts_list(self) -> list[dict]:
         found = []
-        secrets = self.secrets()
+        secrets = set(self.secret_names())
         for path in sorted(self.drafts.glob("*.yaml")):
             text = path.read_text(encoding="utf-8")
             reviews = [line.removeprefix("# Review:").strip() for line in text.splitlines() if line.startswith("# Review:")]
@@ -154,7 +155,7 @@ class ProjectFiles:
 
     def missing_secrets(self) -> list[tuple[str, str]]:
         """(test, secret) for every ${SECRET} a test uses that isn't set: the run would stop on it."""
-        secrets = self.secrets()
+        secrets = set(self.secret_names())
         missing = []
         for path in sorted(self.specs.glob("*.yaml")):
             for name in sorted(set(_ENV_RE.findall(path.read_text(encoding="utf-8")))):
@@ -170,7 +171,36 @@ class ProjectFiles:
 
     # --- secrets ------------------------------------------------------------------
 
+    def secret_names(self) -> list[str]:
+        return sorted(self._stored())
+
     def secrets(self) -> dict[str, str]:
+        """Names and real values, decrypted: only for the run that needs them (and Jira/Slack)."""
+        return {name: vault().open(value) for name, value in self._stored().items()}
+
+    def set_secret(self, name: str, value: str) -> None:
+        if not _SECRET_NAME_RE.fullmatch(name):
+            raise StoreError("a secret's name uses capital letters, digits and _, like SHOP_PASSWORD")
+        if "\n" in value or "\r" in value:
+            raise StoreError("a secret is one line")
+        self._write_stored({**self._stored(), name: vault().seal(value)})
+
+    def delete_secret(self, name: str) -> None:
+        stored = self._stored()
+        stored.pop(name, None)
+        self._write_stored(stored)
+
+    def seal_secrets(self) -> int:
+        """Encrypt any value written before encryption existed. Returns how many there were."""
+        stored = self._stored()
+        plain = [name for name, value in stored.items() if not is_sealed(value)]
+        if plain:
+            self._write_stored({name: value if is_sealed(value) else vault().seal(value)
+                                for name, value in stored.items()})
+        return len(plain)
+
+    def _stored(self) -> dict[str, str]:
+        """Names and values as stored: "enc:v1:..." ciphertext (see vault.py)."""
         if not self.secrets_file.exists():
             return {}
         found = {}
@@ -180,23 +210,11 @@ class ProjectFiles:
                 found[name] = value
         return found
 
-    def set_secret(self, name: str, value: str) -> None:
-        if not _SECRET_NAME_RE.fullmatch(name):
-            raise StoreError("a secret's name uses capital letters, digits and _, like SHOP_PASSWORD")
-        if "\n" in value or "\r" in value:
-            raise StoreError("a secret is one line")
-        self._write_secrets({**self.secrets(), name: value})
-
-    def delete_secret(self, name: str) -> None:
-        values = self.secrets()
-        values.pop(name, None)
-        self._write_secrets(values)
-
-    def _write_secrets(self, values: dict[str, str]) -> None:
+    def _write_stored(self, stored: dict[str, str]) -> None:
         # Created readable by its owner only, before anything is written into it.
         fd = os.open(self.secrets_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as out:
-            out.write("".join(f"{name}={value}\n" for name, value in sorted(values.items())))
+            out.write("".join(f"{name}={value}\n" for name, value in sorted(stored.items())))
 
     # --- runs ---------------------------------------------------------------------
 

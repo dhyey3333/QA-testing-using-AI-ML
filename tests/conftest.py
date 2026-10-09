@@ -1,10 +1,15 @@
+import os
 import sys
+import tempfile
 import threading
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # so tests can import scripted.py
+# Tests encrypt secrets with a key of their own, never the installation's (~/.nightshift/secret.key).
+os.environ["NIGHTSHIFT_KEY_FILE"] = str(Path(tempfile.mkdtemp(prefix="nightshift-test-key-")) / "secret.key")
+os.environ.pop("NIGHTSHIFT_SECRET_KEY", None)
 
 from demo_shop.server import make_server  # noqa: E402
 from nightshift.runner import RunOptions, open_browser, run_spec  # noqa: E402

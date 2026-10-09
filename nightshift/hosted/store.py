@@ -10,6 +10,7 @@ recordings, reports) live on disk under the data folder; this file only indexes 
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -21,8 +22,13 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from ..totp import totp
+from .vault import vault
+
 SESSION_DAYS = 14
 INVITE_DAYS = 7
+RESET_HOURS = 24
+AUDIT_DAYS = 365  # how long the activity log keeps an event
 MIN_PASSWORD = 10
 FIRST_WORKSPACE = 1  # the owner's own; everything made before workspaces existed belongs to it
 
@@ -85,6 +91,20 @@ CREATE TABLE IF NOT EXISTS runs (
     user_id INTEGER,
     params TEXT NOT NULL DEFAULT ''        -- JSON: an exploration's URL, steps and focus
 );
+CREATE TABLE IF NOT EXISTS resets (
+    token_hash TEXT PRIMARY KEY,           -- a password reset link; like invites, only the hash
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS audit (
+    id INTEGER PRIMARY KEY,
+    at REAL NOT NULL,
+    workspace_id INTEGER,                  -- whose activity log it is in; NULL for the owner's deployment events
+    email TEXT NOT NULL DEFAULT '',        -- who did it (as typed, for a failed login)
+    action TEXT NOT NULL,                  -- what, in words: "set secret SHOP_PASSWORD on acme". Never a value.
+    ip TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS audit_by_workspace ON audit (workspace_id, at);
 """
 
 _NIGHTLY_RE = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d")
@@ -162,6 +182,13 @@ class Store:
                 self._db.execute("ALTER TABLE users ADD COLUMN workspace_id INTEGER NOT NULL DEFAULT 1")
             if "owner" not in user_columns:
                 self._db.execute("ALTER TABLE users ADD COLUMN owner INTEGER NOT NULL DEFAULT 0")
+            # Two-factor login: the authenticator secret (encrypted, vault.py), one being set up, and the
+            # last code's time step, so a code can't be used twice.
+            for column, kind in (("totp_secret", "TEXT NOT NULL DEFAULT ''"), ("totp_pending", "TEXT NOT NULL DEFAULT ''"),
+                                 ("totp_last", "INTEGER NOT NULL DEFAULT 0")):
+                if column not in user_columns:
+                    self._db.execute(f"ALTER TABLE users ADD COLUMN {column} {kind}")
+            self._db.execute("DELETE FROM audit WHERE at < ?", (time.time() - AUDIT_DAYS * 86400,))
             if not self._db.execute("SELECT id FROM workspaces WHERE id = ?", (FIRST_WORKSPACE,)).fetchone():
                 self._db.execute("INSERT INTO workspaces (id, name, created) VALUES (?, 'My agency', ?)",
                                  (FIRST_WORKSPACE, _now()))
@@ -309,6 +336,96 @@ class Store:
     def end_session(self, token: str) -> None:
         self._write("DELETE FROM sessions WHERE token_hash = ?", (_token_hash(token),))
 
+    # --- password reset links -------------------------------------------------------
+
+    def new_reset(self, user_id: int) -> str:
+        """A link for setting a new password, made by an admin for someone who forgot theirs (there is no
+        email server to send one). Random, single use, a day long; only its hash is kept. A new link
+        replaces that person's older ones."""
+        if self._one("SELECT id FROM users WHERE id = ?", (user_id,)) is None:
+            raise StoreError("no such user")
+        token = secrets.token_urlsafe(32)
+        self._write("DELETE FROM resets WHERE user_id = ? OR expires < ?", (user_id, time.time()))
+        self._write("INSERT INTO resets (token_hash, user_id, expires) VALUES (?, ?, ?)",
+                    (_token_hash(token), user_id, time.time() + RESET_HOURS * 3600))
+        return token
+
+    def reset_user(self, token: str) -> dict | None:
+        """Whose password a live reset link is for; None if unknown, used or expired."""
+        if not token:
+            return None
+        row = self._one("SELECT users.* FROM resets JOIN users ON users.id = resets.user_id "
+                        "WHERE resets.token_hash = ? AND resets.expires > ?", (_token_hash(token), time.time()))
+        return _public_user(row) if row else None
+
+    def use_reset(self, token: str, password: str) -> dict:
+        """Set the new password and spend the link. Every login of that person ends."""
+        if len(password) < MIN_PASSWORD:
+            raise StoreError(f"the password must be at least {MIN_PASSWORD} characters")
+        with self._lock:
+            row = self._db.execute("SELECT * FROM resets WHERE token_hash = ? AND expires > ?",
+                                   (_token_hash(token), time.time())).fetchone()
+            if row is None or self._db.execute("DELETE FROM resets WHERE token_hash = ?",
+                                               (row["token_hash"],)).rowcount != 1:
+                raise StoreError("this reset link has expired or was already used; ask an admin for a new one")
+        self.set_password(row["user_id"], password)
+        return _public_user(self._one("SELECT * FROM users WHERE id = ?", (row["user_id"],)))
+
+    # --- two-factor login -------------------------------------------------------------
+
+    def start_two_factor(self, user_id: int) -> str:
+        """A new authenticator secret (base32), kept as pending until a code from it is confirmed."""
+        secret = base64.b32encode(secrets.token_bytes(20)).decode("ascii")
+        self._write("UPDATE users SET totp_pending = ? WHERE id = ?", (vault().seal(secret), user_id))
+        return secret
+
+    def confirm_two_factor(self, user_id: int, code: str) -> None:
+        row = self._one("SELECT totp_pending FROM users WHERE id = ?", (user_id,))
+        if not row or not row["totp_pending"]:
+            raise StoreError("start setting up two-factor login first")
+        step = _code_step(vault().open(row["totp_pending"]), code, 0)
+        if step is None:
+            raise StoreError("that code is not right; check the time on your phone and try the newest code")
+        self._write("UPDATE users SET totp_secret = totp_pending, totp_pending = '', totp_last = ? WHERE id = ?",
+                    (step, user_id))
+
+    def check_code(self, user_id: int, code: str) -> bool:
+        """A code from the user's authenticator, each time step usable once (a seen code can't be replayed)."""
+        with self._lock:
+            row = self._db.execute("SELECT totp_secret, totp_last FROM users WHERE id = ?", (user_id,)).fetchone()
+            if not row or not row["totp_secret"]:
+                return False
+            step = _code_step(vault().open(row["totp_secret"]), code, row["totp_last"])
+            if step is None:
+                return False
+            self._db.execute("UPDATE users SET totp_last = ? WHERE id = ?", (step, user_id))
+            return True
+
+    def two_factor_on(self, user_id: int) -> bool:
+        row = self._one("SELECT totp_secret FROM users WHERE id = ?", (user_id,))
+        return bool(row and row["totp_secret"])
+
+    def stop_two_factor(self, user_id: int) -> None:
+        self._write("UPDATE users SET totp_secret = '', totp_pending = '', totp_last = 0 WHERE id = ?", (user_id,))
+
+    # --- the activity log ---------------------------------------------------------------
+
+    def log(self, action: str, *, user: dict | None = None, email: str = "", workspace_id: int | None = None,
+            ip: str = "") -> None:
+        """One line in a workspace's activity log. Callers pass words, never a secret's value or a password."""
+        if user is not None:
+            email, workspace_id = user["email"], user["workspace_id"] if workspace_id is None else workspace_id
+        self._write("INSERT INTO audit (at, workspace_id, email, action, ip) VALUES (?, ?, ?, ?, ?)",
+                    (time.time(), workspace_id, email[:200], action[:300], ip[:64]))
+
+    def events(self, workspace_id: int, limit: int = 300) -> list[dict]:
+        return self._rows("SELECT at, email, action, ip FROM audit WHERE workspace_id = ? ORDER BY id DESC LIMIT ?",
+                          (workspace_id, limit))
+
+    def workspace_of(self, email: str) -> int | None:
+        row = self._one("SELECT workspace_id FROM users WHERE email = ?", (email.strip().lower(),))
+        return row["workspace_id"] if row else None
+
     # --- projects -----------------------------------------------------------------
 
     def add_project(self, client: str, base_url: str = "", brand: str = "", nightly: str = "",
@@ -365,6 +482,36 @@ class Store:
     def mark_nightly(self, project_id: int, day: str) -> None:
         self._write("UPDATE projects SET last_nightly = ? WHERE id = ?", (day, project_id))
 
+    def delete_project(self, slug: str) -> None:
+        """The project's rows; its runs go with it (ON DELETE CASCADE). Its files are the caller's."""
+        project = self.project(slug)
+        if project is None:
+            raise StoreError("no such project")
+        if self.active_run(project["id"]):
+            raise StoreError("a run of this client is queued or running; stop it first")
+        self._write("DELETE FROM projects WHERE id = ?", (project["id"],))
+
+    def delete_workspace(self, workspace_id: int) -> list[str]:
+        """A whole agency: its projects (and runs), people, invites and logins. Returns the projects'
+        slugs, whose folders the caller removes. The owner's own workspace can't be deleted."""
+        if workspace_id == FIRST_WORKSPACE or self.workspace(workspace_id) is None:
+            raise StoreError("that workspace can't be deleted")
+        slugs = [p["slug"] for p in self.projects(workspace_id)]
+        if any(self.active_run(p["id"]) for p in self.projects(workspace_id)):
+            raise StoreError("one of its clients has a run queued or running; stop it first")
+        with self._lock:
+            self._db.execute("DELETE FROM projects WHERE workspace_id = ?", (workspace_id,))
+            self._db.execute("DELETE FROM users WHERE workspace_id = ?", (workspace_id,))  # sessions and resets cascade
+            self._db.execute("DELETE FROM invites WHERE workspace_id = ?", (workspace_id,))
+            self._db.execute("DELETE FROM audit WHERE workspace_id = ?", (workspace_id,))
+            self._db.execute("DELETE FROM workspaces WHERE id = ?", (workspace_id,))
+        return slugs
+
+    def counts(self) -> dict:
+        """For the health check: how much is waiting, nothing about whose."""
+        row = self._one("SELECT SUM(status = 'queued') AS queued, SUM(status = 'running') AS running FROM runs")
+        return {"queued": int(row["queued"] or 0), "running": int(row["running"] or 0)}
+
     # --- runs ---------------------------------------------------------------------
 
     def add_run(self, project_id: int, trigger: str, user_id: int | None = None, params: dict | None = None) -> int:
@@ -407,7 +554,21 @@ class Store:
 def _public_user(row: dict | None) -> dict | None:
     return None if row is None else {"id": row["id"], "email": row["email"], "name": row["name"],
                                      "admin": bool(row["admin"]), "owner": bool(row["owner"]),
-                                     "workspace_id": row["workspace_id"]}
+                                     "workspace_id": row["workspace_id"],
+                                     "two_factor": bool(row.get("totp_secret"))}
+
+
+def _code_step(secret: str, code: str, last_step: int) -> int | None:
+    """The time step a 6-digit code belongs to (now, or one step either side for a slow phone clock),
+    if it is newer than the last one used; None otherwise."""
+    code = re.sub(r"\s", "", str(code or ""))
+    if not re.fullmatch(r"\d{6}", code):
+        return None
+    now = int(time.time() // 30)
+    for step in (now, now - 1, now + 1):
+        if step > last_step and hmac.compare_digest(totp(secret, at=step * 30), code):
+            return step
+    return None
 
 
 def _check_new_user(store: Store, email: str, password: str) -> str:

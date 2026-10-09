@@ -23,6 +23,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
+from .backup import make_backup, newest
 from .files import ProjectFiles
 from .store import Store, StoreError
 
@@ -36,7 +37,12 @@ class Busy(StoreError):
 
 class Runner:
     def __init__(self, store: Store, data: Path, *, max_runs: int = 2, parallel: int = 2, command=None,
-                 explore_command=None, keep_runs: int = 60) -> None:
+                 explore_command=None, keep_runs: int = 60, backup_dir: Path | None = None,
+                 backup_at: str = "03:15", keep_backups: int = 14) -> None:
+        # A backup a night (backup.py), into a folder outside the data folder. None: no automatic backups.
+        self.backup_dir = backup_dir.resolve() if backup_dir else None
+        self.backup_at, self.keep_backups = backup_at, keep_backups
+        self.last_backup = newest(self.backup_dir) if self.backup_dir else None
         # Each run keeps screenshots, a trace and reports: a few MB per test. Nightly for months
         # fills a small server's disk, so only the newest keep_runs finished runs per project keep
         # their files (0 keeps everything). Their rows stay, so the history still shows them.
@@ -60,6 +66,9 @@ class Runner:
         self.store.interrupted()
         for project in self.store.projects():
             self.prune(project)
+            # Secrets saved before encryption existed are encrypted now (vault.py).
+            if sealed := self.files(project).seal_secrets():
+                print(f"encrypted {sealed} older secret(s) of {project['slug']}", file=sys.stderr, flush=True)
         for n in range(self.max_runs):
             threading.Thread(target=self._work, name=f"run-worker-{n}", daemon=True).start()
         threading.Thread(target=self._schedule, name="nightly", daemon=True).start()
@@ -117,10 +126,22 @@ class Runner:
                 print(f"nightly run of {project['slug']} skipped: {exc}", file=sys.stderr, flush=True)
         return queued
 
+    def backup_tick(self, now: datetime) -> Path | None:
+        """The nightly backup, once a day at or after backup_at."""
+        if self.backup_dir is None or now.strftime("%H:%M") < self.backup_at:
+            return None
+        if self.last_backup and self.last_backup[:10] == now.strftime("%Y-%m-%d"):
+            return None
+        made = make_backup(self.data, self.backup_dir, keep=self.keep_backups)
+        self.last_backup = newest(self.backup_dir)
+        print(f"backup written: {made}", file=sys.stderr, flush=True)
+        return made
+
     def _schedule(self) -> None:
         while not self._closing:
             try:
                 self.tick(datetime.now())
+                self.backup_tick(datetime.now())
             except Exception:  # noqa: BLE001 (the scheduler must outlive one bad tick)
                 traceback.print_exc()
             time.sleep(SCHEDULE_EVERY_S)
