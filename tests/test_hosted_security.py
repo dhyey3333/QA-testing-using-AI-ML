@@ -272,3 +272,29 @@ def test_the_log_names_the_person_an_admin_acted_on_even_after_removing_them(hos
     admin.delete(f"/api/users/{staff_id}")
     actions = [e["action"] for e in admin.get("/api/audit").json()["events"]]
     assert f"made a password reset link for {STAFF[0]}" in actions and f"removed {STAFF[0]}" in actions
+
+
+def test_the_soak_report_lists_missed_nights_and_each_tests_history(tmp_path):
+    import json as _json
+    from datetime import date as _date
+
+    from benchmark.soak import report
+
+    store = Store(tmp_path / "nightshift.db")
+    project = store.add_project("Soak", nightly="01:30")
+    store._write("UPDATE projects SET created = ? WHERE id = ?", ("2026-10-01T10:00:00", project["id"]))
+    run_id = store.add_run(project["id"], "nightly")
+    night = datetime(2026, 10, 3, 1, 30).timestamp()
+    store._write("UPDATE runs SET queued = ?, started = ?, finished = ?, status = 'done', run_dir = 'r', passed = 1, "
+                 "failed = 1 WHERE id = ?", (night, night + 5, night + 125, run_id))
+    store.close()
+    folder = tmp_path / "projects" / project["slug"] / "runs" / str(run_id) / "r"
+    folder.mkdir(parents=True)
+    (folder / "summary.json").write_text(_json.dumps([
+        {"spec": "login", "verdict": "pass", "mode": "replay"},
+        {"spec": "cart", "verdict": "fail", "category": "BUG", "reason": "the total is wrong"}]), encoding="utf-8")
+    text = report(tmp_path, project["slug"], today=_date(2026, 10, 5))
+    assert "4 nights since 2026-10-02, 1 nightly runs, 2 missed" in text
+    assert "2026-10-02, 2026-10-04" in text  # the 5th is today: not missed yet
+    assert "| cart | F | 0/1 |" in text and "| login | P | 1/1 |" in text
+    assert "the total is wrong" in text and "1/2" in text  # one of two replayed
