@@ -1,0 +1,9 @@
+# Blind test, UI Testing Playground. Right verdict: fail.
+name: uitp-wrong-ajax
+url: http://uitestingplayground.com/ajax
+steps:
+- press the Button Triggering AJAX Request button
+- wait for the data label to appear
+expect:
+- a label says the data was calculated on the client side
+max_steps: 10

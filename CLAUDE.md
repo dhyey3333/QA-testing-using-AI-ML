@@ -30,6 +30,7 @@ Design reasoning: `docs/DECISIONS.md`.
 - `uv run nightshift serve [--port 8765] [--specs DIR]`: the local dashboard (`nightshift/dashboard/`: server.py + static/ plain JS). Keep its guards: 127.0.0.1 only, Host check, token on every change, paths confined to the workspace.
 - `uv run python -m benchmark [--app clinic] [--only bug1,bug2] [--no-judge] [--no-vision] [--clean-only]` writes `runs/bench-*/bench.md`
 - `uv run python -m benchmark.public_sites [--only a,b] [--rerun] [--resume runs/public-X]`: 27 specs on public practice sites (`benchmark/public/`), verdict, time, model calls and model cost in INR per run; every verdict must still be checked by hand. Signups use `${NS_RUN}`.
+- `uv run nightshift run benchmark/blind/uitp --no-replay --no-record`: the 2026-10-09 blind test (30 specs on uitestingplayground.com; files marked "Right verdict: fail" must fail). Results and the fix list are in `research/part-c-results.md`. These pages are seen now: once fixes are tuned on them, measure on a new blind set.
 - `uv run nightshift run --url URL --goal "..." [--data k=v] [--edge-cases]`: a goal-only spec, saved to `specs/goals/`.
 - `uv run nightshift client-report runs/<run> --client NAME --brand NAME [--logo F] [--specs specs/]` (or `run --client/--brand`): one self-contained HTML report for a client (`nightshift/client_report.py`); ticket links from `issues.json`.
 - `uv run nightshift edge-cases specs/x.yaml [--to specs/edge-cases]`: generated negative variants (`nightshift/edgecases.py`).

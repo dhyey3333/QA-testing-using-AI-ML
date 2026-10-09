@@ -1,0 +1,11 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-disabledinput
+url: http://uitestingplayground.com/disabledinput
+steps:
+- press the button that enables the edit field
+- as soon as the field is enabled, type the text into it and press Enter
+expect:
+- the status says the value changed to the typed text
+data:
+  text: Nightshift
+max_steps: 10

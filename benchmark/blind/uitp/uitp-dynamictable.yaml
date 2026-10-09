@@ -1,0 +1,8 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-dynamictable
+url: http://uitestingplayground.com/dynamictable
+steps:
+- read the CPU value in the Chrome row of the table
+expect:
+- the Chrome CPU value in the table is the same as the value in the yellow label
+max_steps: 6

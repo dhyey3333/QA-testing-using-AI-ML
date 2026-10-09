@@ -1,0 +1,9 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-progressbar
+url: http://uitestingplayground.com/progressbar
+steps:
+- press Start
+- wait until the progress bar reaches 75%, then press Stop
+expect:
+- the progress bar stopped between 70% and 80%
+max_steps: 12

@@ -1,0 +1,9 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-shadowdom
+url: http://uitestingplayground.com/shadowdom
+steps:
+- press the generate button (the gear)
+- press the copy button
+expect:
+- the GUID field shows a newly generated GUID
+max_steps: 8

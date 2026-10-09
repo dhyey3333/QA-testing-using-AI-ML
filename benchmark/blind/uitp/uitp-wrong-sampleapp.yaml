@@ -1,0 +1,11 @@
+# Blind test, UI Testing Playground. Right verdict: fail.
+name: uitp-wrong-sampleapp
+url: http://uitestingplayground.com/sampleapp
+steps:
+- log in with the username and password from the test data
+expect:
+- a message says the password is wrong
+data:
+  username: nightshift
+  password: pwd
+max_steps: 8

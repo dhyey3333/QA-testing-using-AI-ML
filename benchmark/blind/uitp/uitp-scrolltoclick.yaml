@@ -1,0 +1,8 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-scrolltoclick
+url: http://uitestingplayground.com/scrolltoclick
+steps:
+- click all four target buttons (some need scrolling, one appears only when you hover over its parent)
+expect:
+- the page says all buttons were clicked
+max_steps: 16

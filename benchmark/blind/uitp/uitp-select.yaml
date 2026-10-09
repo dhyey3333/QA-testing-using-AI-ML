@@ -1,0 +1,10 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-select
+url: http://uitestingplayground.com/select
+steps:
+- choose Python as the programming language
+- choose San Francisco as the city
+expect:
+- 'the language status says Selected: Python'
+- 'the city status says Selected: San Francisco'
+max_steps: 10

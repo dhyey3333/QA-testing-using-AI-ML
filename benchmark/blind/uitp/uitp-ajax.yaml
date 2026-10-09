@@ -1,0 +1,9 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-ajax
+url: http://uitestingplayground.com/ajax
+steps:
+- press the Button Triggering AJAX Request button
+- wait for the data label to appear, then click it
+expect:
+- a label says the data was loaded with an AJAX get request
+max_steps: 10

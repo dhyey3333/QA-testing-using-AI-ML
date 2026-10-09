@@ -1,0 +1,8 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-clearinput
+url: http://uitestingplayground.com/clearinput
+steps:
+- clear the text from every field on the page
+expect:
+- the status says all fields are cleared
+max_steps: 24

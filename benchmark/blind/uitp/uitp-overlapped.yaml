@@ -1,0 +1,10 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-overlapped
+url: http://uitestingplayground.com/overlapped
+steps:
+- type the name into the Name field
+expect:
+- the Name field shows the typed name
+data:
+  name: Nightshift
+max_steps: 8

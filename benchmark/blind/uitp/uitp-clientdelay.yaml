@@ -1,0 +1,9 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-clientdelay
+url: http://uitestingplayground.com/clientdelay
+steps:
+- press the Button Triggering Client Side Logic button
+- wait for the data label to appear, then click it
+expect:
+- a label says the data was calculated on the client side
+max_steps: 10

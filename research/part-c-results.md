@@ -406,3 +406,61 @@ Two passes, three ways of looking (D45). **Ten bugs found and fixed,** each with
 | Public sites | **28 / 28** reachable sites passed (Parabank's server had recovered); 3 unreachable (ENV_ISSUE) |
 | False passes | 0 (every pass has quoted proof) |
 | Median run time, public | 15 s |
+
+## Blind test on unseen sites (2026-10-09)
+
+The numbers above come from sites Nightshift was developed against. This test used pages it had never seen, with **no change to the agent, prompts or thresholds** during the run. Model: free `gemma4:31b-cloud`, one retry per failure (the default). I checked every verdict and every finding by hand (screenshots, the page in a plain browser, Chrome's accessibility tree).
+
+### UI Testing Playground: 30 plain-English specs
+
+`benchmark/blind/uitp/`, written from each challenge's own scenario text before any run. 23 describe what the site really does (right verdict: pass); 7 use the same flows with an expectation the site does not meet (right verdict: fail), to catch false passes.
+
+| | Result |
+|---|---|
+| **Verdicts right** | **21 / 30 (70%)** |
+| False passes | **0**: all 14 passes checked by screenshot, and 0 of 7 wrong expectations passed |
+| False alarms | **8 of 22 working flows (36%)** |
+| Real bug found | 1: the Shadow DOM page's Copy button throws `Cannot read properties of undefined (reading 'writeText')` for every visitor. The site is HTTP only, and browsers give no clipboard API to an insecure page. I had labelled this spec "should pass"; Nightshift was right |
+| Wrong expectations | 6 / 7 failed correctly; 1 ran out of steps (no verdict). One correct fail had a false headline ("the button does not respond") while the judge's own reason was right ("green, not red") |
+| Time | median 15 s a spec, 13 min for all 30 with retries, ₹0 |
+
+The 8 false alarms, by cause:
+
+| Cause | Specs | What happened |
+|---|---|---|
+| Dialogs are invisible to the judge | alerts, classattr | The browser recorded "alert dialog accepted: Yes" / "Primary button pressed", but the judge reads only the page, so it said no alert appeared |
+| The judge's key-term rule rejects true claims | animation, progressbar | "class does not contain spin" needs the word *spin* quoted, but it is absent by definition; "stopped between 70% and 80%" was refused with 79% on screen. Progressbar's first run also stopped at 25%: model latency is too slow to time a click |
+| Hidden text counted as visible | visibility | After Hide, the screenshot shows no buttons, but the judge read the opacity-0 / zero-width / offscreen buttons from the page text |
+| Element list misses `<a>` without `href` | mouseover | The "Click me" link (`onmouseenter`, no `href`) was never offered, and the bug report blamed the site in internal words ("not provided in the ELEMENTS list") |
+| Typing into a partly covered field | overlapped | The click to focus hit the grey box over the Name field; a plain Playwright click + type works |
+| Proof only in the action log | hiddenlayers | The second click failed with "another element is covering it", which is exactly the expected result, but the judge looks only at the final page |
+
+### Exploration: 30 actions on each of 3 sites
+
+| Site | Proven bugs | Suspected | Warnings | Checked by hand |
+|---|---|---|---|---|
+| demoqa.com | 0 | 0 | 24 (10 distinct) | 9 true a11y issues (logo without alt, unnamed logo link, 4 unlabelled practice-form fields, unlabelled Permanent Address, unnamed table select and search button). **1 false**: the console error comes from Nightshift's own ad blocker aborting DoubleClick's script (no error with ads allowed) |
+| opensource-demo.orangehrmlive.com | 0 | 1, **false** | 46 | "Recruitment page is blank": it was still loading (its APIs took ~15 s) and rendered on the next step. 23 a11y lines (5 distinct: no `lang`, unnamed icon buttons, unlabelled checkboxes and inputs, unnamed social links), all true. 23 slow-request timings, true (the demo was slow that day) |
+| automationintesting.online | 0 | 1, **false** | 16 | "Login had no effect": the page already showed "Invalid credentials" from the first click. Nightshift spent 12 of its 30 actions on that button. 3 distinct a11y issues, true. 5 HTTP 400/401s, true, but they are the site's correct reply to bad input Nightshift sent on purpose |
+
+**Exploration result:** 0 proven bugs (so no false proven bugs either), 2 suspected bugs, both wrong. Accessibility warnings are reliable (every distinct one true); everything else is noise or self-inflicted.
+
+### What this says
+
+- **The proof rule holds on unseen sites: 0 false passes.** When Nightshift says a flow works, it does.
+- **It cries wolf on unusual UI.** One working flow in three failed. On the sites it was built against, that was 0 in 28. That 28/28 number does not carry over to new kinds of page.
+- **Exploration finds accessibility gaps, not functional bugs.** Its two suspected bugs were a slow load and an error message it had already caused.
+
+### Fix list (not done: the run had to stay unchanged)
+
+In order of false alarms removed:
+1. Give the judge the text of dialogs that appeared (2).
+2. Let the key-term rule accept negated clauses and numeric ranges (2).
+3. Leave invisible elements out of the text the judge reads (1).
+4. Offer `<a>` elements with click handlers but no `href` (1).
+5. Focus a partly covered field at a visible point (1).
+6. Accept a refused click ("covered by another element") as evidence (1).
+7. Don't warn about console errors for requests Nightshift aborted itself.
+8. Exploration: wait for the network before calling a page blank; don't call a repeat click "no effect" when the page still shows the first click's result; move on after 3 identical dead clicks, not 12.
+
+These pages are now seen. Once these fixes go in, the playground becomes tuning data, and measuring the fixes honestly needs a new blind set.

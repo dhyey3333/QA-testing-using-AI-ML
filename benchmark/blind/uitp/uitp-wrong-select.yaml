@@ -1,0 +1,8 @@
+# Blind test, UI Testing Playground. Right verdict: fail.
+name: uitp-wrong-select
+url: http://uitestingplayground.com/select
+steps:
+- choose Python as the programming language
+expect:
+- 'the language status says Selected: Java'
+max_steps: 8

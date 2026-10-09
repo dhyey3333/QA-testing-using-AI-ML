@@ -1,0 +1,8 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-alerts
+url: http://uitestingplayground.com/alerts
+steps:
+- press the Confirm button and answer OK
+expect:
+- a follow-up alert says Yes
+max_steps: 6

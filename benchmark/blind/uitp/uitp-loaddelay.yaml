@@ -1,0 +1,9 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-loaddelay
+url: http://uitestingplayground.com/home
+steps:
+- open the Load Delay page from the home page
+- press the button on that page once it has loaded
+expect:
+- the Load Delay page shows a button named Button Appearing After Delay and it can be pressed
+max_steps: 8

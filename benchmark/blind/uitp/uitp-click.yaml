@@ -1,0 +1,8 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-click
+url: http://uitestingplayground.com/click
+steps:
+- press the Button That Ignores DOM Click Event button
+expect:
+- the button turns green
+max_steps: 6

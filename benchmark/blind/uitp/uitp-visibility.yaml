@@ -1,0 +1,8 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-visibility
+url: http://uitestingplayground.com/visibility
+steps:
+- press the Hide button
+expect:
+- none of the other buttons (Removed, Zero Width, Overlapped, Opacity 0, Visibility Hidden, Display None, Offscreen) can be seen any more
+max_steps: 6

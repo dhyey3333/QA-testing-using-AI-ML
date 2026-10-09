@@ -1,0 +1,9 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-hiddenlayers
+url: http://uitestingplayground.com/hiddenlayers
+steps:
+- press the green button
+- press the green button again
+expect:
+- after the first press the green button is covered by a blue button, so it cannot be pressed a second time
+max_steps: 8

@@ -1,0 +1,8 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-classattr
+url: http://uitestingplayground.com/classattr
+steps:
+- press the blue primary button
+expect:
+- an alert says the primary button was pressed
+max_steps: 6

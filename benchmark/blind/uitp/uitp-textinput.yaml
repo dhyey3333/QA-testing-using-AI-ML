@@ -1,0 +1,11 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-textinput
+url: http://uitestingplayground.com/textinput
+steps:
+- type the new name into the field
+- press the button below the field
+expect:
+- the button's label changes to the new name
+data:
+  new_name: Nightshift Test
+max_steps: 8

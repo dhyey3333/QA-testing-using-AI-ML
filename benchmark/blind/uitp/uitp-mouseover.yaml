@@ -1,0 +1,8 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-mouseover
+url: http://uitestingplayground.com/mouseover
+steps:
+- click the Click me link two times
+expect:
+- the page says the link was clicked 2 times
+max_steps: 8

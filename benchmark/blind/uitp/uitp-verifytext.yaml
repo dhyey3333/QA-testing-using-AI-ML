@@ -1,0 +1,8 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-verifytext
+url: http://uitestingplayground.com/verifytext
+steps:
+- read the page
+expect:
+- the page shows the text Welcome UserName!
+max_steps: 4

@@ -1,0 +1,9 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-animation
+url: http://uitestingplayground.com/animation
+steps:
+- press Start Animation
+- once the animation has finished, click the Moving Target button
+expect:
+- the status label shows the Moving Target's class, and the class does not contain spin
+max_steps: 10

@@ -1,0 +1,10 @@
+# Blind test, UI Testing Playground. Right verdict: pass.
+name: uitp-frames
+url: http://uitestingplayground.com/frames
+steps:
+- press the Edit button in the outer frame
+- press the Edit button in the inner frame
+expect:
+- 'the outer frame says Button pressed: Edit'
+- 'the inner frame says Button pressed: Edit'
+max_steps: 10
