@@ -121,6 +121,8 @@ def listen(page: Page, url: str, sink: Sink, js_errors: str = "fail") -> None:
     origin = _origin(url)
 
     def on_page_error(error) -> None:
+        if not same_site(page.url, url):
+            return  # another site's script error, after a link led there: not this app's bug
         message = f"uncaught JS error: {_first_line(error.message)}"
         if js_errors == "warn":
             warn(sink, f"{message} (a warning only: js_errors is warn)")
@@ -161,6 +163,10 @@ def listen(page: Page, url: str, sink: Sink, js_errors: str = "fail") -> None:
         # as the site's. The site's own failed requests still count.
         if AD_REQUEST_RE.match(where):
             return
+        # The page has left the app (a Facebook or Twitter link in the footer). Found exploring a
+        # practice site: facebook.com's own console error was filed as one of the site's findings.
+        if not same_site(page.url, url):
+            return
         warn(sink, f"console: {message.text[:300]}")
 
     def on_dialog(dialog) -> None:
@@ -191,6 +197,17 @@ def check_page(page: Page, sink: Sink, seen: set[str]) -> None:
         return
     for issue in issues:
         warn(sink, f"{issue} on {key}")
+
+
+def same_site(page_url: str, app_url: str) -> bool:
+    """Is the page part of the app under test? The same host, or one is a subdomain of the other,
+    ignoring "www." (a site that redirects example.com to www.example.com or app.example.com is
+    still itself). A blank or browser page (about:blank, data:) counts as the app's."""
+    page_host = (urlsplit(page_url).hostname or "").removeprefix("www.")
+    app_host = (urlsplit(app_url).hostname or "").removeprefix("www.")
+    if not page_host or not app_host:
+        return True
+    return page_host == app_host or page_host.endswith("." + app_host) or app_host.endswith("." + page_host)
 
 
 def _origin(url: str) -> tuple[str, str]:

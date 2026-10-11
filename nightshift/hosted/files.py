@@ -27,6 +27,8 @@ _SPEC_NAME_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,59}")
 _SECRET_NAME_RE = re.compile(r"[A-Z_][A-Z0-9_]{0,63}")
 _ENV_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _DATA_LINE_RE = re.compile(r"\s*([A-Za-z0-9_]+)\s*[=:]\s*(.*?)\s*$")
+# Data names whose values must come from Secrets, never typed into a run's settings.
+_SECRET_KEY_RE = re.compile(r"(^|_)(password|passwd|passcode|pass|pwd|secret|token|api_?key|otp|pin|cvv)(_|$)", re.IGNORECASE)
 # What the form edits. Anything else in a spec (an inbox, a session, API requests) is kept as it was.
 _FORM_KEYS = ("name", "url", "steps", "goal", "expect", "data", "max_steps", "js_errors")
 
@@ -168,6 +170,32 @@ class ProjectFiles:
         if not _SPEC_NAME_RE.fullmatch(name):
             raise StoreError("a spec file name uses lowercase letters, digits and dashes")
         return self.specs / f"{name}.yaml"
+
+    def run_data(self, text: str) -> list[list[str]]:
+        """Test data for an exploration, from lines like "username: tester1" or "password: ${SHOP_PASSWORD}".
+
+        A password or key must be a ${SECRET}: the run's record keeps what was typed here, and the
+        secret's value is filled in only inside the run (cli._explore). Found exploring a practice site:
+        with no way to log in, the exploration never got past the login page.
+        """
+        pairs = []
+        for line in (text or "").splitlines():
+            if not line.strip():
+                continue
+            match = _DATA_LINE_RE.fullmatch(line)
+            if not match:
+                raise StoreError(f'test data is one "name: value" per line; this line isn\'t: {line.strip()[:60]}')
+            key, value = match[1], match[2]
+            if _SECRET_KEY_RE.search(key) and value and not _ENV_RE.fullmatch(value):
+                raise StoreError(f"put the {key} under Settings → Secrets and write ${{NAME}} here, so it is never "
+                                 "stored with the run")
+            missing = [name for name in _ENV_RE.findall(value) if name not in self.secret_names()]
+            if missing:
+                raise StoreError(f"set the secret {missing[0]} under Settings → Secrets first")
+            pairs.append([key, value[:200]])
+        if len(pairs) > 10:
+            raise StoreError("at most 10 lines of test data")
+        return pairs
 
     # --- secrets ------------------------------------------------------------------
 

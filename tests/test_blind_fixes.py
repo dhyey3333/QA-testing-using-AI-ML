@@ -5,6 +5,8 @@ blind-fixes.html, repeat-login.html and late-content.html. The blind pages thems
 used here; they measure the fixes, they don't shape them.
 """
 
+import pytest
+
 from nightshift.actions import Action, execute
 from nightshift.explore import explore
 from nightshift.judge import bounds_in, verify
@@ -185,3 +187,60 @@ def test_explore_does_not_report_a_page_that_was_still_loading(browser, base_url
     result = explore(browser, f"{base_url}/lab/late-content.html", explorer, out_dir=tmp_path / "explore", budget=4)
     assert not [f for f in result.findings if f.severity == "suspected"]
     assert result.steps[0].outcome.startswith("not reported: the page was still loading")
+
+
+# --- found exploring Buggy Cars: another site's errors, and logging in to explore -----------
+
+def test_same_site_ignores_www_and_subdomains_but_not_other_hosts():
+    from nightshift.checks import same_site
+
+    assert same_site("https://www.example.com/a", "https://example.com/")
+    assert same_site("https://app.example.com/a", "https://www.example.com/")
+    assert not same_site("https://www.facebook.com/x", "https://buggy.justtestit.org/")
+    assert same_site("about:blank", "https://example.com/")
+
+
+def test_errors_on_another_site_a_link_led_to_are_not_the_apps(browser, base_url, tmp_path):
+    spec = Spec(name="lab", url=f"{base_url}/lab/offsite-start.html", steps=("open the other site",),
+                expect=("the noisy page is shown",), max_steps=4)
+    model = ScriptedModel([("click", "Other site")], evidence=["Noisy page"])
+    result = run_spec(browser, spec, model, out_dir=tmp_path / "offsite")
+    assert result.verdict == "pass", result.reason  # its uncaught exception would have failed the run
+    assert not [w for w in result.warnings if "noisy" in w], result.warnings
+
+
+def test_explore_data_fills_secrets_from_the_environment(monkeypatch):
+    from nightshift.cli import explore_data
+    from nightshift.spec import SpecError
+
+    monkeypatch.setenv("SHOP_PASSWORD", "fake-pass-1")
+    assert explore_data(["username=tester1", "password=${SHOP_PASSWORD}"]) == {
+        "username": "tester1", "password": "fake-pass-1"}
+    monkeypatch.delenv("SHOP_PASSWORD")
+    with pytest.raises(SpecError, match="SHOP_PASSWORD is not set"):
+        explore_data(["password=${SHOP_PASSWORD}"])
+
+
+def test_the_web_apps_explore_data_keeps_passwords_as_secret_names(tmp_path):
+    from nightshift.hosted.files import ProjectFiles
+    from nightshift.hosted.jobs import Runner
+    from nightshift.hosted.store import Store, StoreError
+
+    files = ProjectFiles(tmp_path, "buggy")
+    files.set_secret("BUGGY_PASS", "fake-pass-1")
+    assert files.run_data("username: tester1\npassword: ${BUGGY_PASS}\npincode: 560001\n") == [
+        ["username", "tester1"], ["password", "${BUGGY_PASS}"], ["pincode", "560001"]]
+    with pytest.raises(StoreError, match="under Settings → Secrets"):
+        files.run_data("password: fake-pass-1")
+    with pytest.raises(StoreError, match="set the secret OTHER_PASS"):
+        files.run_data("password: ${OTHER_PASS}")
+    with pytest.raises(StoreError, match="one \"name: value\" per line"):
+        files.run_data("just some words")
+    store = Store(tmp_path / "db.sqlite")
+    try:
+        command = Runner(store, tmp_path)._explore_command(
+            {"url": "https://buggy.example.test/", "steps": 20, "focus": "", "data": [["password", "${BUGGY_PASS}"]]},
+            tmp_path / "out")
+    finally:
+        store.close()
+    assert command[-2:] == ["--data", "password=${BUGGY_PASS}"] and "fake-pass-1" not in " ".join(command)

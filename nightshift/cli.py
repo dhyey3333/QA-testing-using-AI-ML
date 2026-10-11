@@ -43,7 +43,7 @@ from .report import pr_comment, write_history, write_junit, write_run_index
 from .result import RunResult
 from .runner import RunOptions, browser_pool, device_options, expand_targets, open_browser, run_with_retries
 from .sessions import Sessions
-from .spec import Spec, SpecError, goal_spec_yaml, load_spec, load_specs
+from .spec import Spec, SpecError, goal_spec_yaml, load_spec, load_specs, _expand_env
 from .traceability import build_matrix, write_test_cases, write_traceability
 
 DEFAULT_RECORDINGS = Path(".nightshift/recordings")
@@ -489,8 +489,16 @@ def _print_verdict(result: RunResult) -> None:
 
 # --- explore --------------------------------------------------------------------
 
+def explore_data(items: list[str]) -> dict[str, str]:
+    """--data for explore. ${NAME} in a value is read from the environment, as in a spec: the web
+    app passes "password=${SHOP_PASSWORD}" and the secret itself in the environment, so a password
+    never shows in a process list. (Only here: `run --goal` saves its data into a spec file, which
+    must keep the ${NAME}.)"""
+    return {key: _expand_env(value, Path("--data")) for key, value in _pairs(items).items()}
+
+
 def _explore(args: argparse.Namespace) -> int:
-    data = _pairs(args.data)
+    data = explore_data(args.data)
     avoid = tuple(w.strip() for w in args.avoid.split(",") if w.strip()) if args.avoid is not None else DEFAULT_AVOID
     options = _options(args)
     model = _model()

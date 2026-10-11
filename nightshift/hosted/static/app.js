@@ -522,6 +522,8 @@ function runsTab(section, slug, data, busy) {
           <label>Actions <span class="hint">how many clicks it may use</span><input name="steps" type="number" min="5" max="60" value="25"></label>
           <label>Focus on <span class="hint">optional</span><input name="focus" placeholder="the checkout"></label>
         </div>
+        <label>Test data <span class="hint">optional: a test account to log in with. One "name: value" per line; a password must be a secret from Settings, written as \${NAME}</span>
+          <textarea name="data" rows="3" class="mono" placeholder="username: tester1&#10;password: \${SHOP_PASSWORD}"></textarea></label>
         <p class="error" role="alert"></p>
         <div class="actions"><button type="submit" ${busy ? "disabled" : ""}>${icon("compass")}Explore</button></div>
       </form>

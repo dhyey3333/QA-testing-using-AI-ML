@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Lab: a link to another site</title></head>
+<body>
+  <!-- Test fixture: a footer-style link to another site (localhost instead of 127.0.0.1, so a
+       different host), whose page logs a console error and throws. Neither is this app's bug. -->
+  <h1>Our shop</h1>
+  <a id="other">Other site</a>
+  <script>
+    document.getElementById('other').href = `http://localhost:${location.port}/lab/noisy.html`;
+  </script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Lab: another site's noisy page</title></head>
+<body>
+  <!-- Test fixture: stands in for a social site's page that logs errors. -->
+  <h1>Noisy page</h1>
+  <script>
+    console.error('noisy third-party error');
+    setTimeout(() => { throw new Error('noisy third-party exception'); }, 0);
+  </script>
+</body>
+</html>

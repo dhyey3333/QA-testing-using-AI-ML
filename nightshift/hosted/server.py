@@ -337,7 +337,8 @@ class App:
                 raise HttpError(400, "steps must be a number") from None
             if not 5 <= steps <= 60:
                 raise HttpError(400, "steps must be between 5 and 60")
-            params = {"url": url, "steps": steps, "focus": str(body.get("focus", "")).strip()[:200]}
+            params = {"url": url, "steps": steps, "focus": str(body.get("focus", "")).strip()[:200],
+                      "data": files.run_data(str(body.get("data", "")))}
             run_id = self.runner.enqueue(project, "explore", user["id"], params)
             return 201, {"run": self._run_view(project, files, self.store.run(run_id))}
         if rest == "POST /runs":

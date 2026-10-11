@@ -29,7 +29,7 @@ from playwright.sync_api import Browser, Page
 from playwright.sync_api import Error as PlaywrightError
 
 from .actions import EXPLORE_KINDS, ActionFailed, InvalidAction, execute, settle, track_network, validate_action
-from .checks import check_page, listen
+from .checks import check_page, listen, same_site
 from .model import Model, ModelError, usage_snapshot
 from .observe import Observation, block_ads, observe, screenshot, watch_form_validation
 from .prompts import Context, format_element, mask
@@ -161,7 +161,8 @@ class _Explorer:
         self.limit = 2 * self.enough
         for index in range(1, budget + 1):
             observation = observe(self.page)
-            check_page(self.page, self.result, self.seen_pages)
+            if same_site(observation.url, self.spec.url):  # another site's accessibility gaps aren't the app's
+                check_page(self.page, self.result, self.seen_pages)
             fingerprint = observation.fingerprint()
             if steps and steps[-1].outcome == PENDING:
                 steps[-1].outcome = "changed" if fingerprint != last_fingerprint else "no change"
