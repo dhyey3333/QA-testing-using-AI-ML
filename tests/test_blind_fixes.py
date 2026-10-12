@@ -288,3 +288,26 @@ def test_the_page_reports_its_alert_boxes(browser, base_url):
         assert observe(page).messages == ("Get a candy ;)",)
     finally:
         context.close()
+
+
+def test_a_query_routed_store_has_one_page_per_route_not_one_page_in_all():
+    # Found exploring TutorialsNinja (OpenCart): every page is /index.php?route=...
+    from nightshift.checks import page_key
+
+    store = "https://tutorialsninja.com/demo/index.php"
+    assert page_key(f"{store}?route=checkout/cart") != page_key(f"{store}?route=information/contact")
+    assert page_key(f"{store}?route=product/product&product_id=40") == page_key(f"{store}?product_id=43&route=product/product")
+    assert page_key(f"{store}?route=product/search&search=%3Cb%3E") == page_key(f"{store}?route=product/search&search=mac")
+    assert page_key("https://x.test/shop?utm_source=mail") == "/shop"
+    assert page_key("https://x.test/app#/orders?id=4") == "/app#/orders"
+
+
+def test_a_success_message_does_not_send_an_it_saved_report_back(browser, base_url, tmp_path):
+    explorer = ScriptedModel([
+        ("type", "Age", "42"), ("click", "Save"),
+        ("raw", {"action": "report", "title": "Age is saved without asking to confirm", "details": "scripted"}),
+        ("raw", {"action": "done", "reason": "seen enough"}),
+    ])
+    result = explore(browser, f"{base_url}/lab/profile-form.html", explorer, out_dir=tmp_path / "explore", budget=6)
+    report = next(s for s in result.steps if s.description.startswith("REPORT"))
+    assert report.outcome == "reported"  # "Profile saved" agrees with the claim

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from typing import Protocol
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page
@@ -195,10 +195,37 @@ def listen(page: Page, url: str, sink: Sink, js_errors: str = "fail") -> None:
     page.on("dialog", on_dialog)
 
 
+# Query values that are what someone typed or where they came from, never which page this is.
+_FREE_TEXT_KEYS = {"search", "q", "query", "s", "keyword", "keywords", "term", "filter_name", "tag", "email",
+                   "return", "redirect", "next", "ref", "fbclid", "gclid", "sid", "session", "token"}
+_ROUTE_VALUE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_./-]{0,60}")
+
+
+def page_key(url: str) -> str:
+    """Which page of the site a URL is: its path, the query values that name a page, and the #route.
+
+    Found exploring a store built on OpenCart, where every page is /index.php and the query says which
+    (?route=checkout/cart, ?route=product/product&product_id=40): the whole store counted as one page,
+    the explorer was sent back to the start six times for spending "too long" on it, and only one
+    page got accessibility checks. A query value that reads like a name (route=checkout/cart) is part
+    of the page; a number (product_id=40) is not, so every product page is one kind of page; and what
+    people type or tracking tags never are.
+    """
+    parts = urlsplit(url)
+    kept = []
+    for pair in sorted(p for p in parts.query.split("&") if p):
+        key, _, value = pair.partition("=")
+        lowered = key.lower()
+        if lowered.startswith("utm_") or lowered in _FREE_TEXT_KEYS:
+            continue
+        kept.append(f"{key}={value}" if _ROUTE_VALUE_RE.fullmatch(unquote(value)) else key)
+    fragment = parts.fragment.split("?")[0]
+    return parts.path + (f"?{'&'.join(kept)}" if kept else "") + (f"#{fragment}" if fragment else "")
+
+
 def check_page(page: Page, sink: Sink, seen: set[str]) -> None:
     """Accessibility and broken-image checks, once per distinct page in a run."""
-    parts = urlsplit(page.url)
-    key = f"{parts.path}#{parts.fragment}"
+    key = page_key(page.url)
     if key in seen:
         return
     seen.add(key)

@@ -30,7 +30,7 @@ from playwright.sync_api import Browser, Page
 from playwright.sync_api import Error as PlaywrightError
 
 from .actions import EXPLORE_KINDS, ActionFailed, InvalidAction, execute, settle, track_network, validate_action
-from .checks import check_page, listen, same_site
+from .checks import check_page, listen, page_key, same_site
 from .model import Model, ModelError, usage_snapshot
 from .observe import Observation, block_ads, observe, screenshot, watch_form_validation
 from .prompts import Context, format_element, mask
@@ -42,6 +42,8 @@ from .spec import Spec
 # A report that says something went through ("the bad age was accepted and saved").
 _SUCCESS_CLAIM_RE = re.compile(r"\b(accept(s|ed)?|sav(e|es|ed)|allow(s|ed)?|succe\w*|went through|"
                                r"(no|without) (an? )?(error|validation)|not (validated|rejected))\b", re.IGNORECASE)
+# A message that says it worked.
+_SUCCESS_MESSAGE_RE = re.compile(r"\b(success\w*|saved|updated|added|modified|thank\w*|welcome|done|sent)\b", re.IGNORECASE)
 LOADING_WAIT_MS = 15_000  # how long a report on a sparse page waits for the page to finish loading
 
 DEFAULT_AVOID = ("delete", "remove account", "close account", "deactivate", "log out", "logout",
@@ -250,9 +252,12 @@ class _Explorer:
                 # practice site: a profile save was refused with a red "Get a candy ;)" message, and the
                 # agent reported that the bad age "was accepted and saved". It hears about the message once.
                 claim = f"{action.title or ''} {action.details or ''}"
-                if new_messages and _SUCCESS_CLAIM_RE.search(claim) and claim not in self.challenged:
+                # Only a box that could be a refusal: "Success: you have modified your cart" backs the
+                # claim up (found on a store built on OpenCart, where it sent a report back for nothing).
+                refusals = [m for m in new_messages if not _SUCCESS_MESSAGE_RE.search(m)]
+                if refusals and _SUCCESS_CLAIM_RE.search(claim) and claim not in self.challenged:
                     self.challenged.add(claim)
-                    shown = "; ".join(f'"{m}"' for m in new_messages[:3])
+                    shown = "; ".join(f'"{m}"' for m in refusals[:3])
                     step.outcome = (f"not reported yet: right after your last action the page showed {shown}. "
                                     "If that is the app refusing it, report what the page really did")
                     self.log(_step_line(step))
@@ -468,9 +473,7 @@ def _evidence_link(finding: Finding) -> str:
     return f"step {finding.step}" if finding.step else ""
 
 
-def _page_key(url: str) -> str:
-    parts = urlsplit(url)
-    return parts.path + (f"#{parts.fragment.split('?')[0]}" if parts.fragment else "")
+_page_key = page_key  # one rule for which page a URL is, shared with the page checks (checks.py)
 
 
 def _origin(url: str) -> tuple[str, str]:

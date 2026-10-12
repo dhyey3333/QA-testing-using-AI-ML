@@ -345,7 +345,7 @@ _OBSERVE_JS = r"""
   const messages = [];
   for (const el of deepAll(MESSAGE)) {
     if (!isVisible(el)) continue;
-    const message = clean(el.innerText);
+    const message = clean(el.innerText).replace(/\s*[×✕✖]$/, '');  // a close button's "×" isn't the message
     if (message && message.length <= 200 && !messages.includes(message)) messages.push(message);
     if (messages.length >= 8) break;
   }
