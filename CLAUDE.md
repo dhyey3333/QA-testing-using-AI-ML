@@ -18,7 +18,7 @@ Design reasoning: `docs/DECISIONS.md`.
 - `uv sync`, `uv run pytest` (about 2 minutes)
 - `uv run python -m demo_shop [--bugs NAME,... | all] [--variant redesign] [--list-bugs]` (port 5180); `uv run python -m holdout.server [--bugs ...]` (port 5190)
 - `uv run nightshift run specs/ [--headed] [--no-vision] [--base-url URL] [--retries N] [--device NAME] [--video] [--junit PATH]`
-- `uv run nightshift explore URL [--steps N] [--focus TEXT] [--data k=v]`
+- `uv run nightshift explore URL [--steps N] [--focus TEXT] [--data k=v] [--sign-up]` (`--sign-up`: first signs up a throwaway account, `explore.throwaway_account`, and explores as it; practice sites only; the web app's Explore form has the same checkbox)
 - `uv run nightshift generate --story TEXT [--from discovered.json] [--url URL]`
 - `uv run nightshift export specs/`, `uv run nightshift report`, `uv run nightshift init`
 - `uv run nightshift validate reqs.md --url URL [--data k=v] [--design-only] [--redesign R5,R6] [--from discovered.json | --explore-steps N]`: requirements -> designed test cases (specs/requirements/) -> run -> traceability.html, defects.html, test-cases.csv

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Lab: a comment box</title></head>
+<body>
+  <!-- Test fixture: Post on an empty box says "body can't be blank" and the message stays until the
+       next Post, like a blog app's comment form. A working form. -->
+  <h1>An article</h1>
+  <textarea id="comment" aria-label="Write a comment"></textarea>
+  <button id="post">Post Comment</button>
+  <ul id="errors" class="error-messages"></ul>
+  <div id="comments"></div>
+  <script>
+    document.getElementById('post').addEventListener('click', () => {
+      const text = document.getElementById('comment').value.trim();
+      const errors = document.getElementById('errors');
+      if (!text) { errors.innerHTML = "<li role='alert'>body can't be blank</li>"; return; }
+      errors.innerHTML = '';
+      document.getElementById('comments').innerHTML += `<p>${text.replace(/</g, '&lt;')}</p>`;
+      document.getElementById('comment').value = '';
+    });
+  </script>
+</body>
+</html>

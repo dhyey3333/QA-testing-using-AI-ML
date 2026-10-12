@@ -243,7 +243,7 @@ def test_exploring_a_website_from_the_web_app_needs_no_tests(hosted):
     while (run := staff.get(f"/api/projects/{slug}").json()["runs"][0])["status"] in ("queued", "running"):
         assert time.time() < deadline
         time.sleep(0.5)
-    assert seen == {"url": "https://academybugs.com/", "steps": 20, "focus": "the cart", "data": []}
+    assert seen == {"url": "https://academybugs.com/", "steps": 20, "focus": "the cart", "data": [], "sign_up": False}
     assert (run["status"], run["trigger"], run["target"]) == ("done", "explore", "https://academybugs.com/")
     assert run["message"] == "1 bug proven, 1 suspected, 2 warnings"
     assert staff.get(run["links"]["report"]).text == "<h1>explored</h1>" and "findings" in run["links"]

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Lab: open sign-up</title></head>
+<body>
+  <!-- Test fixture: a site with open sign-up. A valid username, email and an 8+ character password
+       make the account and log you in; the member area is only there after that. Fake data only. -->
+  <form id="signup">
+    <h1>Sign up</h1>
+    <label>Username <input name="username" required></label>
+    <label>Email <input name="email" type="email" required></label>
+    <label>Password <input name="password" type="password" minlength="8" required></label>
+    <button type="submit">Create account</button>
+  </form>
+  <section id="member" hidden>
+    <h1 id="welcome"></h1>
+    <a href="#settings">Settings</a>
+  </section>
+  <script>
+    document.getElementById('signup').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const form = event.target;
+      form.hidden = true;
+      document.getElementById('welcome').textContent = `Welcome, ${form.username.value}`;
+      document.getElementById('member').hidden = false;
+    });
+  </script>
+</body>
+</html>

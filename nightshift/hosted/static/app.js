@@ -524,6 +524,8 @@ function runsTab(section, slug, data, busy) {
         </div>
         <label>Test data <span class="hint">optional: a test account to log in with. One "name: value" per line; a password must be a secret from Settings, written as \${NAME}</span>
           <textarea name="data" rows="3" class="mono" placeholder="username: tester1&#10;password: \${SHOP_PASSWORD}"></textarea></label>
+        <label class="check"><input name="sign_up" type="checkbox" value="1"> Sign up a throwaway test account first
+          <span class="hint">for practice sites with open sign-up and no login above: it makes up a name and an example.com address. Never on a client's live site.</span></label>
         <p class="error" role="alert"></p>
         <div class="actions"><button type="submit" ${busy ? "disabled" : ""}>${icon("compass")}Explore</button></div>
       </form>

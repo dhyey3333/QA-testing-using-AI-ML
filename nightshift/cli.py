@@ -109,6 +109,9 @@ def main(argv: list[str] | None = None) -> int:
     exp.add_argument("url")
     exp.add_argument("--steps", type=int, default=40, help="action budget (default: 40)")
     exp.add_argument("--focus", default="", help='what to concentrate on, e.g. "the checkout"')
+    exp.add_argument("--sign-up", action="store_true",
+                     help="first sign up a throwaway account (made-up name, an example.com address) and explore as "
+                          "that user; for practice sites with open sign-up, never a client's live site")
     exp.add_argument("--data", action="append", default=[], metavar="KEY=VALUE", help="test data it may type, repeatable")
     exp.add_argument("--avoid", help=f"comma-separated words it must never click (default: {', '.join(DEFAULT_AVOID)})")
     _common(exp)
@@ -506,7 +509,7 @@ def _explore(args: argparse.Namespace) -> int:
     try:
         with open_browser(headed=args.headed, browser=args.browser) as browser:
             result = explore(browser, args.url, model, out_dir=out_dir, budget=args.steps, data=data,
-                             focus=args.focus, avoid=avoid, options=options, log=_log(args))
+                             focus=args.focus, avoid=avoid, options=options, log=_log(args), sign_up=args.sign_up)
     finally:
         model.close()
     print(f"\n{result.count('bug')} bugs proven, {result.count('suspected')} suspected, {result.count('warning')} warnings "

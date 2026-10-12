@@ -311,3 +311,78 @@ def test_a_success_message_does_not_send_an_it_saved_report_back(browser, base_u
     result = explore(browser, f"{base_url}/lab/profile-form.html", explorer, out_dir=tmp_path / "explore", budget=6)
     report = next(s for s in result.steps if s.description.startswith("REPORT"))
     assert report.outcome == "reported"  # "Profile saved" agrees with the claim
+
+
+# --- found exploring Conduit and Buggy Cars: no login, so nothing past the sign-up page ---------
+
+def test_a_throwaway_account_is_made_up_fresh_and_reaches_nobody():
+    from nightshift.explore import throwaway_account
+
+    first, second = throwaway_account(), throwaway_account()
+    assert first["username"] != second["username"] and first["password"] != second["password"]
+    assert first["email"] == f"{first['username']}@example.com"
+    assert len(first["password"]) >= 12 and any(c.isupper() for c in first["password"])
+    assert any(c.isdigit() for c in first["password"]) and "!" in first["password"]
+
+
+def test_exploring_with_sign_up_makes_an_account_first_and_explores_as_it(browser, base_url, tmp_path):
+    seen = {}
+
+    class Watching(ScriptedModel):
+        def decide(self, context):
+            seen["focus"] = context.spec.steps[0]
+            seen["data"] = dict(context.spec.data)
+            seen["text"] = context.observation.text
+            return super().decide(context)
+
+    explorer = Watching([("type", "Username", "{{username}}"), ("type", "Email", "{{email}}"),
+                         ("type", "Password", "{{password}}"), ("click", "Create account"),
+                         ("raw", {"action": "done", "reason": "seen the member area"})])
+    result = explore(browser, f"{base_url}/lab/signup.html", explorer, out_dir=tmp_path / "explore", budget=8,
+                     sign_up=True, focus="the settings")
+    username = result.test_account["username"]
+    assert seen["focus"].startswith("first create a new account") and seen["focus"].endswith("Then focus on: the settings")
+    assert seen["data"]["username"] == username and seen["data"]["email"] == f"{username}@example.com"
+    assert f"Welcome, {username}" in seen["text"]  # it got in as the made-up account
+    from nightshift.prompts import mask
+    assert "Welcome, {{username}}" in mask(seen["text"], seen["data"])  # and the model sees only the placeholder
+    findings = (tmp_path / "explore" / "findings.md").read_text(encoding="utf-8")
+    assert f"Signed up a throwaway account to explore as: {username}" in findings
+    assert seen["data"]["password"] not in findings and seen["data"]["password"] not in (
+        tmp_path / "explore" / "explore.json").read_text(encoding="utf-8")
+
+
+def test_a_login_in_the_test_data_wins_over_a_made_up_one(browser, base_url, tmp_path):
+    explorer = ScriptedModel([("raw", {"action": "done", "reason": "seen enough"})])
+    result = explore(browser, f"{base_url}/lab/signup.html", explorer, out_dir=tmp_path / "explore", budget=2,
+                     sign_up=True, data={"username": "agency-tester", "password": "fake-pass-1"})
+    assert result.test_account["username"] == "agency-tester"
+
+
+def test_the_web_app_passes_sign_up_to_the_exploration(tmp_path):
+    from nightshift.hosted.jobs import Runner
+    from nightshift.hosted.store import Store
+
+    store = Store(tmp_path / "db.sqlite")
+    try:
+        command = Runner(store, tmp_path)._explore_command(
+            {"url": "https://practice.example.test/", "steps": 20, "focus": "", "data": [], "sign_up": True},
+            tmp_path / "out")
+    finally:
+        store.close()
+    assert "--sign-up" in command
+
+
+def test_a_failure_reported_right_after_typing_goes_back_to_submit_first(browser, base_url, tmp_path):
+    # Found exploring Conduit: Post on an empty comment, type a comment, report "unable to post" without
+    # pressing Post again.
+    explorer = ScriptedModel([
+        ("click", "Post Comment"), ("type", "Write a comment", "A real comment"),
+        ("raw", {"action": "report", "title": "Unable to post comment despite providing text", "details": "scripted"}),
+        ("click", "Post Comment"),
+        ("raw", {"action": "done", "reason": "seen enough"}),
+    ])
+    result = explore(browser, f"{base_url}/lab/comment.html", explorer, out_dir=tmp_path / "explore", budget=8)
+    report = next(s for s in result.steps if s.description.startswith("REPORT"))
+    assert report.outcome.startswith('not reported yet: your last action typed into "Write a comment"')
+    assert not [f for f in result.findings if f.severity == "suspected"]

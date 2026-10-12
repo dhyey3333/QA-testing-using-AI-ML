@@ -253,6 +253,8 @@ class Runner:
                    "--out", str(out), "--quiet"]
         if params.get("focus"):
             command += ["--focus", str(params["focus"])]
+        if params.get("sign_up"):
+            command.append("--sign-up")
         for key, value in params.get("data") or []:
             # A secret goes in as ${NAME}; the run fills it from its environment (the project's secrets).
             command += ["--data", f"{key}={value}"]

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -42,6 +43,20 @@ from .spec import Spec
 # A report that says something went through ("the bad age was accepted and saved").
 _SUCCESS_CLAIM_RE = re.compile(r"\b(accept(s|ed)?|sav(e|es|ed)|allow(s|ed)?|succe\w*|went through|"
                                r"(no|without) (an? )?(error|validation)|not (validated|rejected))\b", re.IGNORECASE)
+# A report that something didn't work ("unable to post the comment").
+_FAILURE_CLAIM_RE = re.compile(r"\b(unable|cannot|can't|not (posted|saved|submitted|sent|added|created|updated)|"
+                               r"fail(s|ed|ure)?|doesn't (work|post|save|submit))\b", re.IGNORECASE)
+
+
+def _typed_since_submit(steps: list[Step]) -> str:
+    """The field the last action typed into, when that was the last thing done; "" otherwise."""
+    for earlier in reversed(steps):
+        if earlier.action is None or earlier.action.kind in ("report", "wait", "scroll"):
+            continue
+        return earlier.target_label or "a field" if earlier.action.kind == "type" else ""
+    return ""
+
+
 # A message that says it worked.
 _SUCCESS_MESSAGE_RE = re.compile(r"\b(success\w*|saved|updated|added|modified|thank\w*|welcome|done|sent)\b", re.IGNORECASE)
 LOADING_WAIT_MS = 15_000  # how long a report on a sparse page waits for the page to finish loading
@@ -80,22 +95,44 @@ class ExploreResult:
     app_errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     moved_on: list[str] = field(default_factory=list)  # pages left because they'd had their share of actions
+    test_account: dict[str, str] = field(default_factory=dict)  # the throwaway account it signed up, never its password
 
     def count(self, severity: str) -> int:
         return sum(finding.severity == severity for finding in self.findings)
 
 
+def throwaway_account() -> dict[str, str]:
+    """A made-up account for one exploration: a random username, an address at example.com (reserved:
+    mail to it reaches nobody) and a password with the upper case, digit and symbol most forms ask for."""
+    username = f"ns{secrets.token_hex(4)}"
+    return {"username": username, "email": f"{username}@example.com", "password": f"Ns{secrets.token_urlsafe(9)}7!",
+            "first_name": "Nightshift", "last_name": "Tester"}
+
+
+SIGN_UP_FOCUS = ("first create a new account on the site's sign-up page with the test data ({{username}}, {{email}}, "
+                 "{{password}}, and {{first_name}} / {{last_name}} if it asks), valid and complete; log in with it "
+                 "if the site doesn't log you in; then explore what a logged-in user can do")
+
+
 def explore(
     browser: Browser, url: str, model: Model, *, out_dir: Path, budget: int = 40,
     data: dict[str, str] | None = None, focus: str = "", avoid: tuple[str, ...] = DEFAULT_AVOID,
-    options: RunOptions | None = None, log: Log | None = None,
+    options: RunOptions | None = None, log: Log | None = None, sign_up: bool = False,
 ) -> ExploreResult:
+    """`sign_up`: on a site with open sign-up and no login given, first make a throwaway account
+    (throwaway_account) and explore as that user. Found on two practice sites: without a login the
+    exploration never got past the sign-up and login pages, where the bugs weren't."""
     options = options or RunOptions()
     log = log or (lambda line: None)
     out_dir.mkdir(parents=True, exist_ok=True)
-    spec = Spec(name="explore", url=url, steps=(focus,) if focus else (), expect=(), data=dict(data or {}),
-                max_steps=budget)
+    data = dict(data or {})
     result = ExploreResult(url=url, model=model.name, out_dir=str(out_dir))
+    if sign_up:
+        for key, value in throwaway_account().items():
+            data.setdefault(key, value)  # a login given in the test data wins
+        result.test_account = {"username": data["username"], "email": data["email"]}
+        focus = SIGN_UP_FOCUS + (f". Then focus on: {focus}" if focus else "")
+    spec = Spec(name="explore", url=url, steps=(focus,) if focus else (), expect=(), data=data, max_steps=budget)
 
     usage_before = usage_snapshot(model)
     context = browser.new_context(**{"viewport": VIEWPORT, **options.context})
@@ -252,6 +289,16 @@ class _Explorer:
                 # practice site: a profile save was refused with a red "Get a candy ;)" message, and the
                 # agent reported that the bad age "was accepted and saved". It hears about the message once.
                 claim = f"{action.title or ''} {action.details or ''}"
+                # "It failed" when nothing was sent: found exploring a blog app, the agent pressed Post on an
+                # empty comment ("body can't be blank"), typed a comment, then reported that posting it failed,
+                # with the old message still on screen. It never pressed Post again.
+                typed = _typed_since_submit(steps[:-1])
+                if typed and _FAILURE_CLAIM_RE.search(claim) and claim not in self.challenged:
+                    self.challenged.add(claim)
+                    step.outcome = (f'not reported yet: your last action typed into "{typed}" and nothing has been '
+                                    "submitted since. Submit it first, then report what the page does")
+                    self.log(_step_line(step))
+                    continue
                 # Only a box that could be a refusal: "Success: you have modified your cart" backs the
                 # claim up (found on a store built on OpenCart, where it sent a report back for nothing).
                 refusals = [m for m in new_messages if not _SUCCESS_MESSAGE_RE.search(m)]
@@ -421,6 +468,9 @@ def findings_markdown(result: ExploreResult) -> str:
              f"{len(result.steps)} actions, {len(result.pages)} pages, {result.duration_s:.0f}s. Stopped: {result.stopped}.", ""]
     if result.moved_on:
         lines += [f"Moved on after their share of actions: {', '.join(result.moved_on)}.", ""]
+    if result.test_account:
+        lines += [f"Signed up a throwaway account to explore as: {result.test_account['username']} "
+                  f"({result.test_account['email']}). Its password was made up for this run and not kept.", ""]
     sections = [("bug", "Bugs the browser proved"), ("suspected", "Suspected by the agent (check by hand)"),
                 ("warning", "Warnings")]
     for severity, heading in sections:
