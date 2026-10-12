@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Lab: a framework-caught crash</title></head>
+<body>
+  <!-- Test fixture: what Angular 2 logs when a link goes to a route that doesn't exist. The
+       framework catches the crash, so nothing reaches the browser as an uncaught error. -->
+  <h1>Cars</h1>
+  <button id="go">Open broken page</button>
+  <script>
+    document.getElementById('go').addEventListener('click', () => {
+      console.error("EXCEPTION: Error: Uncaught (in promise): Error: Cannot match any routes: 'broken'");
+      console.error('STACKTRACE:');
+      console.error("Error: Uncaught (in promise): Error: Cannot match any routes: 'broken'\n    at l (main.js:1:2)");
+      console.error("Unhandled Promise rejection: Cannot match any routes: 'broken' ; Zone: angular ; Task: Promise.then");
+    });
+  </script>
+</body>
+</html>

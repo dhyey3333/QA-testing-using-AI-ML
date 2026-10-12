@@ -244,3 +244,47 @@ def test_the_web_apps_explore_data_keeps_passwords_as_secret_names(tmp_path):
     finally:
         store.close()
     assert command[-2:] == ["--data", "password=${BUGGY_PASS}"] and "fake-pass-1" not in " ".join(command)
+
+
+# --- found exploring Buggy Cars logged in: framework crashes, and an "it saved" that wasn't -----
+
+def test_a_framework_caught_crash_is_one_bug_in_exploring_and_a_warning_in_a_test(browser, base_url, tmp_path):
+    explorer = ScriptedModel([("click", "Open broken page"), ("raw", {"action": "done", "reason": "seen enough"})])
+    result = explore(browser, f"{base_url}/lab/framework-error.html", explorer, out_dir=tmp_path / "explore", budget=4)
+    crashes = [f.title for f in result.findings if f.severity == "bug"]
+    assert crashes == ["app error: Cannot match any routes: 'broken'"], [f.title for f in result.findings]
+    assert not [f for f in result.findings if "STACKTRACE" in f.title]
+
+    spec = Spec(name="lab", url=f"{base_url}/lab/framework-error.html", steps=("open the broken page",),
+                expect=("the cars page is shown",), max_steps=4)
+    run = run_spec(browser, spec, ScriptedModel([("click", "Open broken page")], evidence=["Cars"]),
+                   out_dir=tmp_path / "run")
+    assert run.verdict == "pass", run.reason  # a test's verdict doesn't change
+    assert "app error: Cannot match any routes: 'broken'" in run.warnings
+
+
+def test_an_it_saved_report_goes_back_once_when_an_error_box_just_appeared(browser, base_url, tmp_path):
+    explorer = ScriptedModel([
+        ("type", "Age", "not-a-number"), ("click", "Save"),
+        ("raw", {"action": "report", "title": "Age field accepts and saves non-numeric input", "details": "scripted"}),
+        ("raw", {"action": "report", "title": "A non-numeric age is refused with the message Get a candy ;)",
+                 "details": "instead of saying the age must be a number"}),
+        ("raw", {"action": "done", "reason": "seen enough"}),
+    ])
+    result = explore(browser, f"{base_url}/lab/profile-form.html", explorer, out_dir=tmp_path / "explore", budget=8)
+    reports = [s for s in result.steps if s.description.startswith("REPORT")]
+    assert reports[0].outcome.startswith('not reported yet: right after your last action the page showed "Get a candy ;)"')
+    assert [f.title for f in result.findings if f.severity == "suspected"] == [
+        "A non-numeric age is refused with the message Get a candy ;)"]
+
+
+def test_the_page_reports_its_alert_boxes(browser, base_url):
+    context = browser.new_context()
+    try:
+        page = context.new_page()
+        page.goto(f"{base_url}/lab/profile-form.html")
+        assert observe(page).messages == ()
+        page.click("#save")
+        assert observe(page).messages == ("Get a candy ;)",)
+    finally:
+        context.close()

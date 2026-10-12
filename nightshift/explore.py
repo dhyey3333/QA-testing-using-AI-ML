@@ -18,6 +18,7 @@ It also writes discovered.json, a map of the pages it found, which
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -38,6 +39,9 @@ from .result import PENDING, Step
 from .runner import INVALID_LIMIT, STUCK_REPEATS, VIEWPORT, RunOptions, _step_line, _stuck, adopt_new_tab
 from .spec import Spec
 
+# A report that says something went through ("the bad age was accepted and saved").
+_SUCCESS_CLAIM_RE = re.compile(r"\b(accept(s|ed)?|sav(e|es|ed)|allow(s|ed)?|succe\w*|went through|"
+                               r"(no|without) (an? )?(error|validation)|not (validated|rejected))\b", re.IGNORECASE)
 LOADING_WAIT_MS = 15_000  # how long a report on a sparse page waits for the page to finish loading
 
 DEFAULT_AVOID = ("delete", "remove account", "close account", "deactivate", "log out", "logout",
@@ -150,17 +154,22 @@ class _Explorer:
         self.failed_images = failed_images if failed_images is not None else {}
         self.home_key = _page_key(spec.url)
         self.page_actions: dict[str, int] = {}  # actions spent on each page
+        self.challenged: set[str] = set()  # reports already sent back once because of a message on the page
         self.enough = self.limit = 0
 
     def run(self, budget: int) -> None:
         steps = self.result.steps
         last_fingerprint = ""
         invalid_streak = 0
+        previous_messages: tuple[str, ...] = ()
         # About a fifth of the budget is enough to check one page or form; twice that, and it moves on.
         self.enough = max(5, budget // 5)
         self.limit = 2 * self.enough
         for index in range(1, budget + 1):
             observation = observe(self.page)
+            # Alert and validation boxes that appeared since the last look, i.e. after the last action.
+            new_messages = [m for m in observation.messages if m not in previous_messages]
+            previous_messages = observation.messages
             if same_site(observation.url, self.spec.url):  # another site's accessibility gaps aren't the app's
                 check_page(self.page, self.result, self.seen_pages)
             fingerprint = observation.fingerprint()
@@ -201,7 +210,7 @@ class _Explorer:
             shot = screenshot(self.page)
             (self.out_dir / shot_name).write_bytes(shot)
             context = Context(self.spec, observation, tuple(steps), shot if self.options.send_screenshot else None,
-                              mode="explore", notes=self._notes(budget - index + 1, here))
+                              mode="explore", notes=self._notes(budget - index + 1, here, observation.messages, new_messages))
             started = time.perf_counter()
             try:
                 raw = self.model.decide(context)
@@ -235,6 +244,17 @@ class _Explorer:
             if action.kind == "report":
                 if self._was_loading(observation):
                     step.outcome = "not reported: the page was still loading and has more on it now; look again"
+                    self.log(_step_line(step))
+                    continue
+                # "It saved" while a box the last action brought up says otherwise. Found exploring a
+                # practice site: a profile save was refused with a red "Get a candy ;)" message, and the
+                # agent reported that the bad age "was accepted and saved". It hears about the message once.
+                claim = f"{action.title or ''} {action.details or ''}"
+                if new_messages and _SUCCESS_CLAIM_RE.search(claim) and claim not in self.challenged:
+                    self.challenged.add(claim)
+                    shown = "; ".join(f'"{m}"' for m in new_messages[:3])
+                    step.outcome = (f"not reported yet: right after your last action the page showed {shown}. "
+                                    "If that is the app refusing it, report what the page really did")
                     self.log(_step_line(step))
                     continue
                 step.outcome = "reported"
@@ -287,6 +307,10 @@ class _Explorer:
                 answer = f"HTTP {status}" if status else "the request failed"
                 return Finding("bug", f"broken image: {path} ({answer})", step=step, url=where, screenshot=shot,
                                details=f"on {page}: the page shows a picture the server didn't deliver ({answer})")
+        if warning.startswith("app error: "):
+            return Finding("bug", warning, step=step, url=where, screenshot=shot,
+                           details="the site's own code crashed; its framework caught the error and logged it to the "
+                                   f"console instead of showing it: {warning.removeprefix('app error: ')}")
         if warning.startswith("mislabelled field: ") and text:
             title, _, marks = text.partition(" (")
             return Finding("bug", title, step=step, url=where, screenshot=shot,
@@ -352,7 +376,8 @@ class _Explorer:
             "text": mask(observation.text, self.spec.data)[:800],
         }
 
-    def _notes(self, actions_left: int, here: str = "") -> str:
+    def _notes(self, actions_left: int, here: str = "", messages: tuple[str, ...] = (),
+               new_messages: list[str] | tuple[str, ...] = ()) -> str:
         pages = "\n".join(f'- {key} "{page["title"]}"' for key, page in self.result.pages.items())
         found = "\n".join(f"- {f.title}" for f in self.result.findings if f.severity != "warning")
         used = self.page_actions.get(here, 0)
@@ -363,8 +388,11 @@ class _Explorer:
             this_page += ". You have checked this page enough: move on to a part of the site you haven't visited"
         covered = f"\n\nALREADY COVERED (don't go back unless following a new lead): {', '.join(self.result.moved_on)}" \
             if self.result.moved_on else ""
+        shown = "\n".join(f'- "{m}"' + (" (new, after your last action)" if m in new_messages else "")
+                          for m in messages)
         return "\n\n".join([
             f"AVOID (never click these): {', '.join(self.avoid) or '(nothing)'}",
+            f"MESSAGES THE PAGE SHOWS (alerts, errors, notices):\n{shown or '(none)'}",
             f"PAGES VISITED ({len(self.result.pages)}):\n{pages or '(none yet)'}",
             f"FINDINGS SO FAR:\n{found or '(none yet)'}",
             this_page + "." + covered,

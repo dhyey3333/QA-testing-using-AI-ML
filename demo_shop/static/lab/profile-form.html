@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Lab: a profile form with an odd error</title></head>
+<body>
+  <!-- Test fixture: saving a non-numeric age is refused with a red box whose words don't say
+       "error" (like a practice site's "Get a candy ;)"). Fake data only. -->
+  <h1>Profile</h1>
+  <label>Age <input id="age"></label>
+  <button id="save">Save</button>
+  <div id="box"></div>
+  <script>
+    document.getElementById('save').addEventListener('click', () => {
+      const box = document.getElementById('box');
+      if (/^\d+$/.test(document.getElementById('age').value)) {
+        box.className = 'alert alert-success';
+        box.textContent = 'Profile saved';
+      } else {
+        box.className = 'alert alert-danger';
+        box.textContent = 'Get a candy ;)';
+      }
+    });
+  </script>
+</body>
+</html>

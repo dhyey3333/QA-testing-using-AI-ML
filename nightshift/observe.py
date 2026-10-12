@@ -338,7 +338,18 @@ _OBSERVE_JS = r"""
   }
   const shown = fields.length ? '\n' + fields.slice(0, 40).join('\n') : '';
   text = text.slice(0, 20000 - shown.length) + shown;  // the page's text gives way, not the fields
-  return { url: location.href, title: document.title, text, scrollY: Math.round(scrollY), elements };
+  // Status boxes on the page: alerts, toasts, validation messages. Exploring checks an "it saved"
+  // report against the ones that appeared after the last action (explore.py).
+  const MESSAGE = '[role="alert"], [role="status"], [aria-live="assertive"], .alert, .error, .errors, .toast, '
+    + '.notification, .invalid-feedback, .text-danger, .error-message, .validation-message, .flash';
+  const messages = [];
+  for (const el of deepAll(MESSAGE)) {
+    if (!isVisible(el)) continue;
+    const message = clean(el.innerText);
+    if (message && message.length <= 200 && !messages.includes(message)) messages.push(message);
+    if (messages.length >= 8) break;
+  }
+  return { url: location.href, title: document.title, text, scrollY: Math.round(scrollY), elements, messages };
 }
 """.replace("/*DEEP*/", DEEP_JS)
 
@@ -418,6 +429,7 @@ class Observation:
     text: str
     elements: tuple[Element, ...]
     scroll_y: int = 0
+    messages: tuple[str, ...] = ()  # alert, toast and validation boxes the page shows (their text is in `text` too)
 
     def element(self, element_id: int) -> Element | None:
         return next((e for e in self.elements if e.id == element_id), None)
@@ -463,6 +475,7 @@ def observe(page: Page, max_elements: int = MAX_ELEMENTS) -> Observation:
         text=text,
         elements=tuple(elements),
         scroll_y=raw["scrollY"],
+        messages=tuple(raw.get("messages") or ()),
     )
 
 

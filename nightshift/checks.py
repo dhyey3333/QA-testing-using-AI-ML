@@ -12,6 +12,7 @@ doesn't fail a checkout test.
 
 from __future__ import annotations
 
+import re
 from typing import Protocol
 from urllib.parse import urlsplit
 
@@ -167,7 +168,17 @@ def listen(page: Page, url: str, sink: Sink, js_errors: str = "fail") -> None:
         # practice site: facebook.com's own console error was filed as one of the site's findings.
         if not same_site(page.url, url):
             return
-        warn(sink, f"console: {message.text[:300]}")
+        text = message.text or ""
+        if text.strip() == "STACKTRACE:":
+            return  # Angular 2 logs this header line alone before the stack: noise, not a message
+        # Angular, React and Vue catch the app's own crashes and log them instead of letting them
+        # reach the browser, so they never count as uncaught JS errors. Found exploring a practice
+        # site: a link to a route that doesn't exist crashed the app as four console lines, filed as
+        # four warnings. One crash from the site's own code becomes one "app error" line.
+        if _APP_CRASH_RE.search(text.strip().split("\n")[0]) and (not where or same_site(where, url)):
+            warn(sink, f"app error: {crash_core(text)}")
+            return
+        warn(sink, f"console: {text[:300]}")
 
     def on_dialog(dialog) -> None:
         # Playwright dismisses dialogs by default, which silently cancels confirm() flows.
@@ -197,6 +208,22 @@ def check_page(page: Page, sink: Sink, seen: set[str]) -> None:
         return
     for issue in issues:
         warn(sink, f"{issue} on {key}")
+
+
+# What frameworks log when they catch the app's own crash.
+_APP_CRASH_RE = re.compile(r"Uncaught \(in promise\)|Unhandled Promise rejection|^EXCEPTION:|^ERROR Error|"
+                           r"Cannot match any routes|The above error occurred in|Minified React error|"
+                           r"\[Vue warn\]: Error in")
+_CRASH_PREFIX_RE = re.compile(r"^(?:\s*(?:EXCEPTION:|ERROR\b|Unhandled Promise rejection:|Uncaught \(in promise\):?|"
+                              r"Error:))+\s*")
+
+
+def crash_core(text: str) -> str:
+    """The error itself, without the framework's wrapping: "EXCEPTION: Error: Uncaught (in promise):
+    Error: Cannot match any routes: 'broken'" and "Unhandled Promise rejection: Cannot match any
+    routes: 'broken' ; Zone: angular ; ..." are both "Cannot match any routes: 'broken'"."""
+    line = text.strip().split("\n")[0].split(" ; Zone:")[0]
+    return (_CRASH_PREFIX_RE.sub("", line).strip() or line.strip())[:200]
 
 
 def same_site(page_url: str, app_url: str) -> bool:
