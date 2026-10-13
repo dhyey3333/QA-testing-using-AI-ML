@@ -615,3 +615,17 @@ blamed the app. Each fix is the narrowest one that would have caught its case, m
 - Exploring: a 12-character throwaway password (a demo allowed no more), a password the agent makes
   up is written as ********, the AVOID list's elements aren't offered at all, and blank or browser
   pages get no accessibility checks.
+
+## D57. What blind set 4 found
+Three narrow fixes, each with a lab-page test (`tests/test_blind4_fixes.py`, `lab/set4-fixes.html`):
+- Text counts as moved off the page only if it is off the page even after scrolling the panels it sits
+  in (user-scrollable ones: overflow auto or scroll). A message at the top of a scrolled inner panel is
+  on the page; one at left: -9999px still isn't. (Text clipped by an overflow: hidden box was read
+  before and still is; that is a separate question.)
+- A draggable with no name is named by its picture: alt text, or the image's file name without its
+  build hash ("selenium logo (picture)"). Text targets match a part of a word only from 4 characters
+  ("Se" is in half the words on a page), and three "nothing shows that text" refusals are the tester
+  couldn't test, never a dead control (in exploring, no finding).
+- Field lines say a field's state: "[field] Nickname: empty (disabled)", "(read-only)", and a disabled
+  tick box gets "[field] Cabbage: not checked (disabled)". Judge rule 7 says these can prove a state.
+  Password and file fields never show what they hold.

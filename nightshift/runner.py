@@ -31,7 +31,8 @@ from urllib.parse import urljoin, urlsplit
 from playwright.sync_api import Browser, Page, sync_playwright
 from playwright.sync_api import Error as PlaywrightError
 
-from .actions import TEST_KINDS, ActionFailed, InvalidAction, execute, settle, track_network, validate_action
+from .actions import (TEST_KINDS, TEXT_NOT_FOUND, ActionFailed, InvalidAction, execute, settle, track_network,
+                      validate_action)
 from .checks import check_page, listen, page_key
 from .inbox import (DYNAMIC, InboxError, extract_code, extract_link, inbox_for, phone_number, recipient,
                     sms_inbox_for, wait_for_email)
@@ -509,6 +510,12 @@ class _Run:
                 return self.overrule(f"{self.failed_at[1]} (reproduced after going back)", observation,
                                      screenshot(self.page))
             if stuck := _stuck(steps):
+                if TEXT_NOT_FOUND in steps[-1].outcome:
+                    # Looking three times for text that isn't on the page is the tester's mistake, not a dead
+                    # control. Found on a practice site (blind set 4): the model guessed "Se" for an unnamed
+                    # logo, and three refusals were filed as a bug in the app.
+                    return self.cannot_test(f"it couldn't find what to act on ({steps[-1].outcome.removeprefix('failed: ')})",
+                                            observation, screenshot(self.page))
                 if (gaps := self._unfinished_form(steps[-1])) and "form" not in self.asked:
                     # Not a dead button yet: its form has empty fields or unticked boxes. Found on a
                     # public demo site: "Register" pressed four times with "Password Confirm" empty and

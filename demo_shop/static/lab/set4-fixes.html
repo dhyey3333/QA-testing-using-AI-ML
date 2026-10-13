@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Set 4 fixes lab</title>
+<style>
+  body { font-family: sans-serif; margin: 24px; }
+  #panel { height: 200px; overflow: auto; border: 1px solid #999; width: 320px; }
+  #pic { width: 70px; height: 70px; position: relative; user-select: none; }
+  #pic img { width: 64px; height: 64px; pointer-events: none; }
+  .zone { width: 260px; height: 80px; border: 2px solid #118ab2; margin: 8px 0; display: flex; align-items: center; justify-content: center; }
+</style>
+</head>
+<body>
+<h1>Set 4 fixes lab</h1>
+
+<h2>A scrolled panel</h2>
+<div id="panel">
+  <p id="done">Mission done</p>
+  <div style="height: 1200px"></div>
+  <button type="button" id="go">Go</button>
+</div>
+<p style="position: absolute; left: -9999px">Off the page</p>
+
+<h2>An unnamed picture to drag</h2>
+<div class="ui-draggable" id="pic"><img src="/lab/img/kulhad-logo-3f9a1c2b7d.svg"></div>
+<div class="zone" id="logo-zone">Drop the logo here</div>
+
+<h2>Fields</h2>
+<label>Nickname <input id="nick" disabled placeholder="Disabled input here..."></label>
+<input id="code" value="ABC-123" readonly aria-label="Coupon">
+<label><input type="radio" name="veg" value="cabbage" disabled> Cabbage</label>
+<label><input type="radio" name="veg" value="pumpkin"> Pumpkin</label>
+<input type="submit" value="Send" disabled>
+
+<script>
+  const panel = document.getElementById('panel');
+  panel.scrollTop = panel.scrollHeight;  // scrolled down to the button, the message far above
+  // Mouse-driven dragging, the way jQuery UI does it.
+  const pic = document.getElementById('pic');
+  let start = null;
+  pic.addEventListener('mousedown', (e) => { start = { x: e.clientX, y: e.clientY }; e.preventDefault(); });
+  document.addEventListener('mousemove', (e) => {
+    if (start) pic.style.transform = `translate(${e.clientX - start.x}px, ${e.clientY - start.y}px)`;
+  });
+  document.addEventListener('mouseup', (e) => {
+    if (!start) return;
+    start = null;
+    const t = document.getElementById('logo-zone').getBoundingClientRect();
+    if (e.clientX >= t.left && e.clientX <= t.right && e.clientY >= t.top && e.clientY <= t.bottom) {
+      document.getElementById('logo-zone').textContent = 'Logo dropped';
+    }
+  });
+</script>
+</body>
+</html>

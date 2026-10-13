@@ -200,6 +200,19 @@ _OBSERVE_JS = r"""
     if (handler || getComputedStyle(el).cursor === 'pointer') add(el, el, { role: 'link' });
   }
 
+  // A picture with no alt text, named by its file: ".../selenium-logo-c1d6f4654a.png" is "selenium logo
+  // (picture)". Found on a practice site (blind set 4): the thing to drag was an unnamed logo, never offered.
+  const pictureName = (el) => {
+    const img = el.tagName === 'IMG' ? el : el.querySelector('img');
+    if (!img) return '';
+    const named = clean(img.getAttribute('alt') || img.getAttribute('title'));
+    if (named) return named;
+    let file = (img.getAttribute('src') || '').split(/[?#]/)[0].split('/').pop() || '';
+    try { file = decodeURIComponent(file); } catch (e) { /* a malformed name stays as it is */ }
+    const name = clean(file.replace(/\.[a-z0-9]+$/i, '').replace(/[-_.][0-9a-f]{8,}$/i, '').replace(/[-_.]+/g, ' '));
+    return name && !file.startsWith('data:') ? `${name.slice(0, 60)} (picture)` : 'picture';
+  };
+
   // Things a person can see are clickable or draggable but the selectors above can't: a <div> or <span>
   // the page gives a pointer cursor, a Bootstrap trigger, something marked draggable. Found on two
   // practice sites (blind set 3): a shop's "Add to cart" is a <div> with a pointer cursor and a pop-up's
@@ -218,9 +231,9 @@ _OBSERVE_JS = r"""
     if (!isVisible(el) || inside(el)) continue;
     const r = el.getBoundingClientRect();
     if (r.width * r.height > innerWidth * innerHeight * 0.4) continue;  // a whole panel, not one control
-    const label = labelOf(el);
+    const label = labelOf(el) || (draggable ? pictureName(el) : '');
     if (!label || label.length > 80) continue;
-    add(el, el, { role: draggable ? 'draggable' : 'button' });
+    add(el, el, { role: draggable ? 'draggable' : 'button', label });
     added++;
   }
 
@@ -334,13 +347,30 @@ _OBSERVE_JS = r"""
         if (!walker.parentNode()) return null;
       }
     };
+    // Moved off the page (left: -9999px) is hidden; scrolled up or left out of a panel a person can scroll
+    // back is not. Found on a practice site (blind set 4): a success message at the top of a scrolled inner
+    // panel was 418 px above the screen, the window itself unscrolled, and the judge never saw it.
+    const offPage = (el, r) => {
+      if (!(r.width > 0 && r.height > 0)) return false;
+      if (r.left + scrollX >= pageWidth) return true;
+      if (r.right + scrollX > 0 && r.bottom + scrollY > 0) return false;
+      let dx = scrollX, dy = scrollY;
+      for (let node = el.parentElement; node && node !== document.body && node !== document.documentElement;
+           node = node.parentElement) {
+        if (!node.scrollTop && !node.scrollLeft) continue;
+        const ns = getComputedStyle(node);
+        if (/auto|scroll/.test(ns.overflowY)) dy += node.scrollTop;
+        if (/auto|scroll/.test(ns.overflowX)) dx += node.scrollLeft;
+      }
+      return r.right + dx <= 0 || r.bottom + dy <= 0;
+    };
     let el = walker.nextNode();
     while (el && budget-- > 0) {
       const s = getComputedStyle(el);
       const r = el.getBoundingClientRect();
       const gone = s.opacity === '0'
         || ((r.width <= 1 || r.height <= 1) && /hidden|clip/.test(s.overflowX + s.overflowY) && el.textContent.trim() !== '')
-        || (r.width > 0 && r.height > 0 && (r.right + scrollX <= 0 || r.bottom + scrollY <= 0 || r.left + scrollX >= pageWidth))
+        || offPage(el, r)
         || (el.matches(CONTROL) && r.width >= 4 && r.height >= 4 && r.bottom > 0 && r.right > 0
             && r.top < innerHeight && r.left < innerWidth && covered(el, r));
       if (gone) {
@@ -375,12 +405,28 @@ _OBSERVE_JS = r"""
   // What a form field holds isn't page text either, so "the quantity shows 2" could never be quoted.
   // Found on a practice shop: the judge saw the 2 and still had to fail the test. Visible fields with
   // a value become lines it can quote. Passwords never do; typed test data is masked like any text.
-  const NO_VALUE = ['hidden', 'password', 'checkbox', 'radio', 'submit', 'button', 'reset', 'image', 'file'];
+  // A disabled or read-only field says so, whether or not it holds anything: found on a practice site
+  // (blind set 4), "the first text box is disabled" was true and the judge had nothing to quote for it.
+  const BUTTONS = ['submit', 'button', 'reset', 'image'];
   const fields = [];
   for (const el of deepAll('input, select, textarea')) {
-    if (NO_VALUE.includes(el.type) || !isVisible(el)) continue;
-    const value = el.tagName === 'SELECT' ? clean(el.selectedOptions[0]?.text) : clean(el.value);
-    if (value) fields.push(`[field] ${labelOf(el) || el.name || 'field'}: ${value.slice(0, 120)}`);
+    if (el.type === 'hidden' || BUTTONS.includes(el.type)) continue;
+    const tick = toggle(el);
+    const state = el.disabled ? ' (disabled)' : el.readOnly && !tick ? ' (read-only)' : '';
+    if (tick) {
+      // A tick box gets a line only for its state; its label stands in when the box itself is hidden.
+      if (state && (isVisible(el) || [...(el.labels || [])].some(isVisible))) {
+        fields.push(`[field] ${labelOf(el) || el.name || 'field'}: ${el.checked ? 'checked' : 'not checked'}${state}`);
+      }
+      continue;
+    }
+    if (!isVisible(el)) continue;
+    const secret = el.type === 'password' || el.type === 'file';  // their contents never become text
+    const value = secret ? '' : el.tagName === 'SELECT' ? clean(el.selectedOptions[0]?.text) : clean(el.value);
+    if (value || state) {
+      const shown = value ? value.slice(0, 120) : secret && el.value ? 'filled' : 'empty';
+      fields.push(`[field] ${labelOf(el) || el.name || 'field'}: ${shown}${state}`);
+    }
   }
   const shown = fields.length ? '\n' + fields.slice(0, 40).join('\n') : '';
   text = text.slice(0, 20000 - shown.length) + shown;  // the page's text gives way, not the fields

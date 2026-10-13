@@ -283,16 +283,20 @@ def execute(page: Page, action: Action, data: dict[str, str], target: Locator | 
             raise ActionFailed(_short_reason(again)) from None
 
 
+TEXT_NOT_FOUND = "nothing visible on the page shows the text"
+
+
 def text_locator(page: Page, text: str) -> Locator:
-    """The first visible element showing `text`: an exact match first, then one that contains it.
-    For things the page draws as plain boxes, which observe() can't tell are controls."""
-    for exact in (True, False):
+    """The first visible element showing `text`: an exact match first, then one that contains it (for a
+    text of 4 characters or more: "Se" is in half the words on a page). For things the page draws as plain
+    boxes, which observe() can't tell are controls."""
+    for exact in (True, False) if len(text.strip()) >= 4 else (True,):
         matches = page.get_by_text(text, exact=exact)
         with contextlib.suppress(PlaywrightError):
             for i in range(min(matches.count(), 10)):
                 if matches.nth(i).is_visible():
                     return matches.nth(i)
-    raise ActionFailed(f'nothing visible on the page shows the text "{text}"')
+    raise ActionFailed(f'{TEXT_NOT_FOUND} "{text}"; use an id from ELEMENTS, or text you can see on the page')
 
 
 RETRY_PAUSE_MS = 1_000

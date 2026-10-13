@@ -31,8 +31,8 @@ from urllib.parse import urlsplit
 from playwright.sync_api import Browser, Page
 from playwright.sync_api import Error as PlaywrightError
 
-from .actions import (EXPLORE_KINDS, ActionFailed, InvalidAction, element_locator, execute, settle, track_network,
-                      validate_action)
+from .actions import (EXPLORE_KINDS, TEXT_NOT_FOUND, ActionFailed, InvalidAction, element_locator, execute, settle,
+                      track_network, validate_action)
 from .checks import check_page, listen, page_key, same_site
 from .model import Model, ModelError, usage_snapshot
 from .observe import Observation, block_ads, observe, screenshot, watch_form_validation
@@ -238,6 +238,8 @@ class _Explorer:
                     # thing. Found on a hotel demo: Login with empty fields showed "Invalid credentials",
                     # the repeats changed nothing, and a working button was reported as dead.
                     self.log(f"    {steps[-1].description} worked the first time; repeating it shows nothing new")
+                elif TEXT_NOT_FOUND in steps[-1].outcome:
+                    self.log("    it kept looking for text that isn't on the page: the agent's mistake, not a bug")
                 else:
                     self._add(Finding("suspected", stuck, step=steps[-1].index, url=observation.url,
                                       screenshot=steps[-1].screenshot))
