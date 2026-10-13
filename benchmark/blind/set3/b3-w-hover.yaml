@@ -1,0 +1,8 @@
+# Blind set 3. Right verdict: pass. (needs a hover, which Nightshift doesn't have)
+name: b3-w-hover
+url: https://webdriveruniversity.com/Actions/index.html
+steps:
+- move the mouse over Hover Over Me First!
+expect:
+- a link named Link 1 appears
+max_steps: 6

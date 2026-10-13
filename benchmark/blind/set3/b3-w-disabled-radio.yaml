@@ -1,0 +1,8 @@
+# Blind set 3. Right verdict: pass. (the state is only in the page's markup)
+name: b3-w-disabled-radio
+url: https://webdriveruniversity.com/Dropdown-Checkboxes-RadioButtons/index.html
+steps:
+- read the Selected & Disabled section
+expect:
+- the Cabbage radio button is disabled
+max_steps: 4

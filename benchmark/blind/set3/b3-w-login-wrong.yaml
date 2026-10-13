@@ -1,0 +1,11 @@
+# Blind set 3. Right verdict: pass.
+name: b3-w-login-wrong
+url: https://webdriveruniversity.com/Login-Portal/index.html
+steps:
+- log in with the username and password from the test data
+expect:
+- an alert says validation failed
+data:
+  username: someone
+  password: wrong-pass-1
+max_steps: 8

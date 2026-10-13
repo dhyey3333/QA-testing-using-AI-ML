@@ -1,0 +1,10 @@
+# Blind set 3. Right verdict: pass.
+name: b3-s-submit
+url: https://www.selenium.dev/selenium/web/web-form.html
+steps:
+- type hello into the Text input
+- press Submit
+expect:
+- the page says Form submitted
+- the page says Received!
+max_steps: 6

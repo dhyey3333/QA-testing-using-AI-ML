@@ -1,0 +1,14 @@
+# Blind set 3. Right verdict: pass.
+name: b3-w-contact-bad-email
+url: https://webdriveruniversity.com/Contact-Us/contactus.html
+steps:
+- fill in the contact form with the test data
+- press SUBMIT
+expect:
+- 'the page says Error: Invalid email address'
+data:
+  first_name: Asha
+  last_name: Rao
+  email: not-an-email
+  comments: Hello from a test
+max_steps: 10

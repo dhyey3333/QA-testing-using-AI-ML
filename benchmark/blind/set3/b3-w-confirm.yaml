@@ -1,0 +1,8 @@
+# Blind set 3. Right verdict: pass.
+name: b3-w-confirm
+url: https://webdriveruniversity.com/Popup-Alerts/index.html
+steps:
+- press the CLICK ME! button under JavaScript Confirm Box and answer OK
+expect:
+- the page says You pressed OK!
+max_steps: 6

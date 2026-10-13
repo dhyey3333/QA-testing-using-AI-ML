@@ -1,0 +1,8 @@
+# Blind set 3. Right verdict: pass. (needs drag and drop, which Nightshift doesn't have)
+name: b3-w-drag-drop
+url: https://webdriveruniversity.com/Actions/index.html
+steps:
+- drag the DRAG ME TO MY TARGET! box onto the DROP HERE! box
+expect:
+- the target says Dropped!
+max_steps: 6

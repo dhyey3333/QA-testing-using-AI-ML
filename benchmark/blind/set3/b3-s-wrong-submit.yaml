@@ -1,0 +1,9 @@
+# Blind set 3. Right verdict: fail.
+name: b3-s-wrong-submit
+url: https://www.selenium.dev/selenium/web/web-form.html
+steps:
+- type hello into the Text input
+- press Submit
+expect:
+- the page says Form rejected
+max_steps: 6

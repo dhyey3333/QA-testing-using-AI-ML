@@ -1,0 +1,8 @@
+# Blind set 3. Right verdict: pass.
+name: b3-w-ajax-loader
+url: https://webdriveruniversity.com/Ajax-Loader/index.html
+steps:
+- wait for the loader to finish, then press CLICK ME!
+expect:
+- a popup says Well Done For Waiting....!!!
+max_steps: 10

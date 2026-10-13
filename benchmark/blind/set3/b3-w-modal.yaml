@@ -1,0 +1,8 @@
+# Blind set 3. Right verdict: pass.
+name: b3-w-modal
+url: https://webdriveruniversity.com/Popup-Alerts/index.html
+steps:
+- press the CLICK ME! button under Modal Popup
+expect:
+- a popup says We can inject and use JavaScript code if all else fails!
+max_steps: 6

@@ -1,0 +1,9 @@
+# Blind set 3. Right verdict: pass.
+name: b3-t-add-two
+url: https://demo.playwright.dev/todomvc/
+steps:
+- add a todo buy milk
+- add a todo walk the dog
+expect:
+- the counter says 2 items left
+max_steps: 8

@@ -1,0 +1,9 @@
+# Blind set 3. Right verdict: pass.
+name: b3-c-build3-multiply
+url: https://testsheepnz.github.io/BasicCalculator.html
+steps:
+- choose 3 in the Build dropdown
+- multiply 3 by 4
+expect:
+- the answer is 12
+max_steps: 10

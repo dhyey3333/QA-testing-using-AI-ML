@@ -1,0 +1,8 @@
+# Blind set 3. Right verdict: pass. (needs a double-click, which Nightshift doesn't have)
+name: b3-w-double-click
+url: https://webdriveruniversity.com/Actions/index.html
+steps:
+- double-click the Double Click Me! box
+expect:
+- the Double Click Me! box changes colour
+max_steps: 6

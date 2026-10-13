@@ -1,0 +1,8 @@
+# Blind set 3. Right verdict: pass.
+name: b3-w-dropdown-grape
+url: https://webdriveruniversity.com/Dropdown-Checkboxes-RadioButtons/index.html
+steps:
+- read the Selected & Disabled section
+expect:
+- Grape is the selected choice in the fruit dropdown
+max_steps: 4

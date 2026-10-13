@@ -1,0 +1,9 @@
+# Blind set 3. Right verdict: pass.
+name: b3-c-proto-add
+url: https://testsheepnz.github.io/BasicCalculator.html
+steps:
+- choose Prototype in the Build dropdown
+- add 2 and 3
+expect:
+- the answer is 5
+max_steps: 10

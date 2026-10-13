@@ -1,0 +1,9 @@
+# Blind set 3. Right verdict: fail. (a planted bug: build 8 answers -4)
+name: b3-c-build8-subtract
+url: https://testsheepnz.github.io/BasicCalculator.html
+steps:
+- choose 8 in the Build dropdown
+- subtract 2 from 6
+expect:
+- the answer is 4
+max_steps: 10

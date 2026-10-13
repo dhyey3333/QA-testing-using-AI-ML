@@ -1,0 +1,8 @@
+# Blind set 3. Right verdict: fail.
+name: b3-w-wrong-alert
+url: https://webdriveruniversity.com/Popup-Alerts/index.html
+steps:
+- press the CLICK ME! button under JavaScript Alert
+expect:
+- an alert says Hello world
+max_steps: 6

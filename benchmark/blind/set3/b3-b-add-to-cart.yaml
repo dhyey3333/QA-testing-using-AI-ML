@@ -1,0 +1,9 @@
+# Blind set 3. Right verdict: pass.
+name: b3-b-add-to-cart
+url: https://bstackdemo.com/
+steps:
+- add the iPhone 12 to the bag
+expect:
+- the bag lists iPhone 12
+- the subtotal is $ 799.00
+max_steps: 8

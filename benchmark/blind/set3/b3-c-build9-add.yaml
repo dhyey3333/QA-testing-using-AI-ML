@@ -1,0 +1,9 @@
+# Blind set 3. Right verdict: fail. (a planted bug: build 9 hides the second number box)
+name: b3-c-build9-add
+url: https://testsheepnz.github.io/BasicCalculator.html
+steps:
+- choose 9 in the Build dropdown
+- add 2 and 3
+expect:
+- the answer is 5
+max_steps: 10

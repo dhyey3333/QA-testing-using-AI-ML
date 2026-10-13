@@ -1,0 +1,10 @@
+# Blind set 3. Right verdict: pass.
+name: b3-w-todo-add
+url: https://webdriveruniversity.com/To-Do-List/index.html
+steps:
+- type the new item into the Add new todo box and press Enter
+expect:
+- the list includes the new item
+data:
+  item: Feed the owl
+max_steps: 6

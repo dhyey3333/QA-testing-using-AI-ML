@@ -1,0 +1,11 @@
+# Blind set 3. Right verdict: pass. (the site publishes this demo login on its sign-in page; set BSTACK_PASSWORD to the password it shows)
+name: b3-b-sign-in
+url: https://bstackdemo.com/
+steps:
+- sign in with the username and password from the test data (the sign-in page lists them)
+expect:
+- the page shows the signed-in username demouser
+data:
+  username: demouser
+  password: ${BSTACK_PASSWORD}
+max_steps: 10

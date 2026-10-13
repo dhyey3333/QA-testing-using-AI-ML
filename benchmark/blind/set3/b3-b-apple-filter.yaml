@@ -1,0 +1,8 @@
+# Blind set 3. Right verdict: pass.
+name: b3-b-apple-filter
+url: https://bstackdemo.com/
+steps:
+- choose the Apple vendor filter
+expect:
+- the page says 9 Product(s) found.
+max_steps: 6

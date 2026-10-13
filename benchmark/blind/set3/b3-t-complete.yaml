@@ -1,0 +1,12 @@
+# Blind set 3. Right verdict: pass.
+name: b3-t-complete
+url: https://demo.playwright.dev/todomvc/
+steps:
+- add a todo buy milk
+- add a todo walk the dog
+- mark buy milk as done
+- open the Completed filter
+expect:
+- the counter says 1 item left
+- the Completed list shows buy milk and not walk the dog
+max_steps: 12

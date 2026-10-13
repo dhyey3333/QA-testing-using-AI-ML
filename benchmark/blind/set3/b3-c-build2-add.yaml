@@ -1,0 +1,9 @@
+# Blind set 3. Right verdict: fail. (a planted bug: build 2 joins the numbers and answers 23)
+name: b3-c-build2-add
+url: https://testsheepnz.github.io/BasicCalculator.html
+steps:
+- choose 2 in the Build dropdown
+- add 2 and 3
+expect:
+- the answer is 5
+max_steps: 10

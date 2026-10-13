@@ -1,0 +1,14 @@
+# Blind set 3. Right verdict: pass.
+name: b3-w-contact-ok
+url: https://webdriveruniversity.com/Contact-Us/contactus.html
+steps:
+- fill in the contact form with the test data
+- press SUBMIT
+expect:
+- the page says Thank You for your Message!
+data:
+  first_name: Asha
+  last_name: Rao
+  email: asha.rao@example.com
+  comments: Hello from a test
+max_steps: 10
