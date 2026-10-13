@@ -691,3 +691,22 @@ and the drag pass; the two pages that throw on load pass with the error reported
    draggable picture is offered (f-drag).
 4. A line for a field's state (disabled, read-only) the judge can quote (f-enabled; weak proofs in
    sets 2 and 3).
+
+## Set 4's three fixes (D57, 2026-10-13, later)
+
+The user asked for the three things set 4 found (the judge's "says" hole, found on the set 3 recheck,
+stays open). Commit 9bc9602, 7 new tests, 299 pass.
+
+- **Rechecked on the three set-4 pages that failed** (seen, so a check, not a score): all three pass now,
+  with real proof. qp-covered quotes "Mission accomplished"; f-drag drags "selenium logo (picture)"
+  onto the box and quotes "Dropped!"; f-enabled quotes "[field] Disabled input here...: empty (disabled)".
+- **No regressions** (judge rule 7 and the page text changed, so all three benchmarks were re-run):
+
+| | Before (7e21155) | After (9bc9602) |
+|---|---|---|
+| Shop: planted bugs / false alarms | 23/23, 0/13 | **23/23, 0/13** |
+| Clinic (holdout): bugs / false alarms | 8/8, 1/5 | **8/8, 1/5** (the same cancel-appointment) |
+| Public sites: pass / fail / environment | 27 / 0 / 4 | **26 / 0 / 3, and 2 flaky** (both a site timing out, then passing on retry) |
+
+A fair score for these needs blind set 5. Still open: the judge accepting a quote that doesn't say what
+a lowercase "says ..." expectation states (the one false pass).
