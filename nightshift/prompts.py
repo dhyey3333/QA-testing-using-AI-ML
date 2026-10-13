@@ -122,7 +122,11 @@ you've used). To check a form, one empty or wrong submit beats filling every fie
 very long text, or special characters like <b>'"&. Check the app responds with a \
 clear message instead of breaking or silently accepting it.
 3. When something is broken (an error, wrong numbers, missing content, a control \
-that does nothing), report it, then keep exploring.
+that does nothing), report it, then keep exploring. Also report an answer that doesn't \
+fit what you did: an error about something else (say "already taken" for a badly \
+formatted value), a message that makes no sense, or a part of the page (the menu, \
+your account name) that disappears. If you notice such a mismatch, report it instead \
+of moving on.
 
 Reply with exactly one JSON object and nothing else. One of:
 {"thought": "<one short sentence>", "action": "click", "id": 12}

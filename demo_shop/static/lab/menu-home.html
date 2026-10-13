@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Lab: a menu that disappears</title></head>
+<body>
+  <!-- Test fixture: saving the settings breaks the app's state and the menu goes, leaving the logo
+       (like a blog app after saving an empty email). The checkout page never has a menu: that's fine. -->
+  <header>
+    <nav id="menu">
+      <a href="/lab/menu-home.html">Shop</a>
+      <a href="/lab/menu-home.html" class="item">Home</a>
+      <a href="/lab/menu-home.html#profile" class="item">Profile</a>
+      <a href="/lab/menu-home.html#settings" class="item">Settings</a>
+    </nav>
+  </header>
+  <h1>Your settings</h1>
+  <button id="save">Save settings</button>
+  <a href="/lab/menu-checkout.html">Go to checkout</a>
+  <script>
+    document.getElementById('save').addEventListener('click', () => {
+      document.querySelectorAll('#menu .item').forEach((link) => link.remove());
+    });
+  </script>
+</body>
+</html>

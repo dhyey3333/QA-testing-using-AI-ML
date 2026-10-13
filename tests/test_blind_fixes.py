@@ -386,3 +386,20 @@ def test_a_failure_reported_right_after_typing_goes_back_to_submit_first(browser
     report = next(s for s in result.steps if s.description.startswith("REPORT"))
     assert report.outcome.startswith('not reported yet: your last action typed into "Write a comment"')
     assert not [f for f in result.findings if f.severity == "suspected"]
+
+
+# --- found exploring Conduit: the menu vanished after a settings save, and nobody said -------------
+
+def test_a_page_that_loses_its_menu_is_flagged(browser, base_url, tmp_path):
+    explorer = ScriptedModel([("click", "Save settings"), ("raw", {"action": "done", "reason": "seen enough"})])
+    result = explore(browser, f"{base_url}/lab/menu-home.html", explorer, out_dir=tmp_path / "explore", budget=4)
+    flagged = [f for f in result.findings if f.severity == "suspected"]
+    assert [f.title for f in flagged] == [
+        "the site's menu disappeared (Home, Profile, Settings no longer shown on /lab/menu-home.html)"]
+    assert flagged[0].details.startswith('right after: click [') and "only Shop" in flagged[0].details
+
+
+def test_a_page_that_never_had_a_menu_is_not_flagged(browser, base_url, tmp_path):
+    explorer = ScriptedModel([("click", "Go to checkout"), ("raw", {"action": "done", "reason": "seen enough"})])
+    result = explore(browser, f"{base_url}/lab/menu-home.html", explorer, out_dir=tmp_path / "explore", budget=4)
+    assert not [f for f in result.findings if "menu" in f.title]

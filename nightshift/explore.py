@@ -194,6 +194,8 @@ class _Explorer:
         self.home_key = _page_key(spec.url)
         self.page_actions: dict[str, int] = {}  # actions spent on each page
         self.challenged: set[str] = set()  # reports already sent back once because of a message on the page
+        self.menus: dict[str, tuple[str, ...]] = {}  # the fullest menu each page has shown
+        self.menu_lost = False
         self.enough = self.limit = 0
 
     def run(self, budget: int) -> None:
@@ -217,6 +219,7 @@ class _Explorer:
                 self.log(_step_line(steps[-1]))
             last_fingerprint = fingerprint
             self._collect(observation)
+            self._check_menu(observation)
 
             if stuck := _stuck(steps):
                 if self._worked_before(steps):
@@ -383,6 +386,30 @@ class _Explorer:
             settle(self.page)
         except PlaywrightError:
             pass
+
+    def _check_menu(self, observation: Observation) -> None:
+        """A page that showed the site's menu before and now shows none of it.
+
+        Found exploring a blog app: after saving the settings with an empty email, the home and profile
+        pages lost Home, New Article and Settings, leaving only the logo, and the agent never noticed.
+        Only a page compared with its own earlier visit counts: some pages (a checkout) never have a menu.
+        """
+        if not same_site(observation.url, self.spec.url):
+            return
+        key = page_key(observation.url)
+        before, now = self.menus.get(key, ()), observation.menu
+        if len(before) >= 3 and len(now) <= 1 and set(now) <= set(before) and not self.menu_lost:
+            self.menu_lost = True
+            cause = self.result.steps[-1] if self.result.steps else None
+            missing = [label for label in before if label not in now]
+            self._add(Finding(
+                "suspected", f"the site's menu disappeared ({', '.join(missing[:5])} no longer shown on {key})",
+                details=(f"right after: {cause.description}. " if cause else "")
+                + f"Earlier, {key} showed {', '.join(before[:6])} in its menu; now it shows "
+                + (f"only {now[0]}" if now else "none of it") + ". The app may have lost its state (a broken session "
+                "or a half logout).", step=cause.index if cause else None, url=observation.url))
+        if len(now) > len(before):
+            self.menus[key] = now
 
     @staticmethod
     def _worked_before(steps: list[Step]) -> bool:

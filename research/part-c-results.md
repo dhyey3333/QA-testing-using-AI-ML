@@ -521,3 +521,25 @@ comparison available.
 - Timing-critical steps (press Stop at 75%): the model is too slow; a "wait until the page shows X"
   action would fix it.
 - Blind set 2 is now seen too. The next measurement needs blind set 3, written before any change.
+
+## Exploring new practice sites by hand (2026-10-11 to 10-13)
+
+Each run checked finding by finding against its screenshots and the site. Every fix below has a test.
+
+| Site | What exploring found | Nightshift problem it showed, and the fix |
+|---|---|---|
+| Buggy Cars | Raw "UsernameExistsException" on sign-up; a link to a route that crashes the Angular app; the profile's age field answers "Get a candy ;)" | Facebook's console error filed as the site's (other sites' errors now ignored); no way to log in from the web app (Explore takes test data, passwords as secrets); the crash came as 4 warnings (now 1 proven bug); the agent called a refused save "accepted" (error boxes are read; such a report goes back once) |
+| TutorialsNinja (OpenCart) | No real bugs (a stock demo store); real accessibility gaps (icon-only buttons) | The whole store counted as one page because pages differ only by ?route= (fixed); a by-design stock warning reported as a bug (still open) |
+| Conduit | With a throwaway account: "email has already been taken" for a non-email (another account saved "invalid-email"); saving an empty email or an empty article title loses the site's menu; an empty title is ignored without a message | No login (exploring can now sign up its own throwaway account, opt-in); "unable to post" reported without pressing Post (goes back once to submit first); it noticed the wrong message but didn't report it, and never noticed the lost menu |
+
+The last row led to an explore prompt change (report answers that don't fit what you did) and a
+code check (a page that showed the site's menu before and now shows none of it). Measured:
+
+| | Before | After |
+|---|---|---|
+| Conduit, logged in | 0 reported; 2 real bugs missed | 3 reported, all real (wrong email message, menu lost after an empty title, empty title ignored silently) |
+| Clean demo shop, 2 explorations each | 0 reported | 3 reported: 2 real flaws never planted (the email-code form accepts an empty or malformed address and says it emailed it), 1 judgment call ("Wrong email or password" for a malformed email, a common security choice) |
+
+So the prompt raises what exploring reports, mostly real, with some judgment calls to review.
+Test runs are unaffected (it is the exploring prompt only; the shop, clinic and public benchmarks
+use the test prompt).

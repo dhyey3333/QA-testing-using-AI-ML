@@ -571,3 +571,21 @@ What an agency would hit first in a security review:
 - Deleting a client or a whole agency's data, each confirmed by typing its name.
 - `/healthz` for an uptime monitor: no login, counts only.
 The deploy kit became deploy/server: any Ubuntu 24.04 server, not only Oracle's.
+
+## D55. What exploring learned from real practice sites
+Exploring Buggy Cars, TutorialsNinja and Conduit, with every finding checked by hand, showed where
+it was blind, and each gap got the narrowest fix that would have caught it:
+- Signals only count on the app's own site, and an app's framework-caught crash (Angular, React,
+  Vue log it instead of throwing) is one proven bug in exploring, still a warning in a test.
+- A page is its path plus the query values that name it (route=checkout/cart), so OpenCart-style
+  sites aren't one page; numbers, search words and tracking tags still don't count.
+- Logging in: the web app's Explore takes test data (a password must be a ${SECRET}), and `--sign-up`
+  makes a throwaway account (example.com address, random password never kept). Opt-in, because
+  on a client's live site it would create junk accounts.
+- Reports are checked against the page in code before they count: a sparse page that is still
+  loading, "it saved" while a new refusal box shows, "it failed" right after typing with nothing
+  submitted. Each sends the report back once, with the reason.
+- A page that showed the site's menu before and now shows none of it is flagged (compared with its
+  own earlier visit, since some pages never have a menu).
+- The exploring prompt now asks for answers that don't fit what was done (a wrong error message, a
+  vanished menu). Measured before and after in research/part-c-results.md: more reported, mostly real.

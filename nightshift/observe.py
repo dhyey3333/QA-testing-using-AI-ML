@@ -349,7 +349,15 @@ _OBSERVE_JS = r"""
     if (message && message.length <= 200 && !messages.includes(message)) messages.push(message);
     if (messages.length >= 8) break;
   }
-  return { url: location.href, title: document.title, text, scrollY: Math.round(scrollY), elements, messages };
+  // The site's menu: links and buttons in its nav or header. Exploring notices when it vanishes.
+  const menu = [];
+  for (const el of deepAll('nav a, nav button, header a, header button, [role="navigation"] a, [role="navigation"] button')) {
+    if (!isVisible(el)) continue;
+    const label = labelOf(el);
+    if (label && label.length <= 40 && !menu.includes(label)) menu.push(label);
+    if (menu.length >= 20) break;
+  }
+  return { url: location.href, title: document.title, text, scrollY: Math.round(scrollY), elements, messages, menu };
 }
 """.replace("/*DEEP*/", DEEP_JS)
 
@@ -430,6 +438,7 @@ class Observation:
     elements: tuple[Element, ...]
     scroll_y: int = 0
     messages: tuple[str, ...] = ()  # alert, toast and validation boxes the page shows (their text is in `text` too)
+    menu: tuple[str, ...] = ()  # labels of the links and buttons in the page's nav or header
 
     def element(self, element_id: int) -> Element | None:
         return next((e for e in self.elements if e.id == element_id), None)
@@ -476,6 +485,7 @@ def observe(page: Page, max_elements: int = MAX_ELEMENTS) -> Observation:
         elements=tuple(elements),
         scroll_y=raw["scrollY"],
         messages=tuple(raw.get("messages") or ()),
+        menu=tuple(raw.get("menu") or ()),
     )
 
 
