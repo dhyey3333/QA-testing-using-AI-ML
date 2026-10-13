@@ -254,12 +254,13 @@ def test_explore_proves_broken_images_and_mislabelled_fields(browser, base_url, 
 
 
 def test_explore_moves_on_after_a_pages_share_of_actions(browser, base_url, tmp_path):
-    # An agent that would fill a long form forever: after twice its share it is sent back to the start.
-    fill = [("type", f"Field {i % 12 + 1}", "x") for i in range(20)]
+    # An agent that would fill a long form forever: filling each of its 12 fields once is free (that is
+    # filling the form in), then after twice its share of re-typing it is sent back to the start.
+    fill = [("type", f"Field {i % 12 + 1}", "x") for i in range(30)]
     explorer = ScriptedModel([("click", "Long form"), *fill])
-    result = explore(browser, base_url + "/lab/explore-lab.html", explorer, out_dir=tmp_path / "explore", budget=30)
+    result = explore(browser, base_url + "/lab/explore-lab.html", explorer, out_dir=tmp_path / "explore", budget=40)
     assert result.moved_on == ["/lab/explore-long.html"]
-    assert len([s for s in result.steps if s.description.startswith("type")]) == 12  # 2 x max(5, 30 // 5)
+    assert len([s for s in result.steps if s.description.startswith("type")]) == 12 + 16  # free fill + 2 x (40 // 5)
     assert "Moved on after their share of actions" in (tmp_path / "explore" / "findings.md").read_text(encoding="utf-8")
 
 

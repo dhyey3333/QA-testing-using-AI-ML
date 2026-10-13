@@ -103,15 +103,21 @@ class ExploreResult:
 
 def throwaway_account() -> dict[str, str]:
     """A made-up account for one exploration: a random username, an address at example.com (reserved:
-    mail to it reaches nobody) and a password with the upper case, digit and symbol most forms ask for."""
+    mail to it reaches nobody), a password with the upper case, digit and symbol most forms ask for,
+    and a plainly fake postal address and phone. Found on a pet-shop demo whose sign-up also wants an
+    address, city, state, ZIP, country and phone: with only a name and an email the agent filled the
+    form a field at a time and never got in."""
     username = f"ns{secrets.token_hex(4)}"
     return {"username": username, "email": f"{username}@example.com", "password": f"Ns{secrets.token_urlsafe(9)}7!",
-            "first_name": "Nightshift", "last_name": "Tester"}
+            "first_name": "Nightshift", "last_name": "Tester", "address": "1 Test Street", "city": "Bengaluru",
+            "state": "Karnataka", "zip": "560001", "country": "India", "phone": "9999999999"}
 
 
-SIGN_UP_FOCUS = ("first create a new account on the site's sign-up page with the test data ({{username}}, {{email}}, "
-                 "{{password}}, and {{first_name}} / {{last_name}} if it asks), valid and complete; log in with it "
-                 "if the site doesn't log you in; then explore what a logged-in user can do")
+SIGN_UP_FOCUS = ("first create a new account on the site's sign-up page. Fill EVERY field the form has, valid and "
+                 "complete, from the test data ({{username}}, {{email}}, {{password}}, {{first_name}}, {{last_name}}, "
+                 "{{address}}, {{city}}, {{state}}, {{zip}}, {{country}}, {{phone}}), and anything else with a sensible "
+                 "made-up value; log in with it if the site doesn't log you in; then explore what a logged-in user can "
+                 "do. Test bad input after you are in, not on the way in")
 
 
 def explore(
@@ -195,6 +201,7 @@ class _Explorer:
         self.page_actions: dict[str, int] = {}  # actions spent on each page
         self.challenged: set[str] = set()  # reports already sent back once because of a message on the page
         self.menus: dict[str, tuple[str, ...]] = {}  # the fullest menu each page has shown
+        self.filled: dict[str, set[str]] = {}  # fields typed into on each page (the first fill is free)
         self.menu_lost = False
         self.enough = self.limit = 0
 
@@ -246,7 +253,6 @@ class _Explorer:
                 self.log(f"    moved on: {self.page_actions[here]} actions on {here} is its share")
                 self._go_home()
                 continue
-            self.page_actions[here] = self.page_actions.get(here, 0) + 1
 
             shot_name = f"step-{index:02d}.jpg"
             shot = screenshot(self.page)
@@ -274,6 +280,14 @@ class _Explorer:
 
             element = observation.element(action.id) if action.id is not None else None
             label = element.label if element else ""
+            # Typing into a field for the first time on a page is filling the form, not exploring it, so
+            # it doesn't use up the page's share; typing it again (bad input) and clicking do. Found on a
+            # pet-shop demo: a 12-field sign-up used the whole share, and the account was never saved.
+            first_fill = action.kind == "type" and label and label not in self.filled.setdefault(here, set())
+            if first_fill:
+                self.filled[here].add(label)
+            else:
+                self.page_actions[here] = self.page_actions.get(here, 0) + 1
             step = Step(index, action, action.describe(label), thought=str(raw.get("thought") or "").strip()[:300],
                         model_ms=_ms_since(started), screenshot=shot_name, target_label=label)
             steps.append(step)

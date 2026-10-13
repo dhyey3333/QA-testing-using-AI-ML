@@ -543,3 +543,15 @@ code check (a page that showed the site's menu before and now shows none of it).
 So the prompt raises what exploring reports, mostly real, with some judgment calls to review.
 Test runs are unaffected (it is the exploring prompt only; the shop, clinic and public benchmarks
 use the test prompt).
+
+### JPetStore (2026-10-13)
+- **Real bug, proven by the browser:** registering without an address answers HTTP 500 with the
+  whole Java stack trace on the page (tables, columns, the SQL insert): a crash and an information
+  leak. The agent's two suspected reports were the same crash with a different empty field.
+- It showed two gaps in `--sign-up`: the throwaway account had no postal address or phone, and the
+  12-field form used up the page's share of actions before Save. Now the account carries a plainly
+  fake address and phone, the instruction says to fill every field, and typing into a field for the
+  first time on a page doesn't count toward the share (re-typing and clicking still do).
+- After both: signed up, logged in, account and orders pages, cart, checkout and a confirmed order:
+  13 pages in 30 actions, no false alarms. A card number of "123" was accepted, but the page itself
+  says "Use a fake number!", so that is the demo's design, rightly not reported.
