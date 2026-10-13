@@ -555,3 +555,74 @@ use the test prompt).
 - After both: signed up, logged in, account and orders pages, cart, checkout and a confirmed order:
   13 pages in 30 actions, no false alarms. A card number of "123" was accepted, but the page itself
   says "Use a fake number!", so that is the demo's design, rightly not reported.
+
+## Blind set 3 (2026-10-13)
+
+Written and committed (bb41004) before running, after the practice-site fixes (D55), on five sites
+Nightshift had never run on: WebDriverUniversity, Playwright's TodoMVC, the BrowserStack demo shop,
+Selenium's test form and TestSheepNZ's calculator (numbered builds with planted bugs). 30 specs, each
+right verdict checked by hand in a plain browser first: 22 working flows, 3 planted bugs, 5 wrong
+expectations. Run once. Every verdict and screenshot checked by hand.
+
+| | Blind set 2 | Blind set 3 |
+|---|---|---|
+| Verdicts right | 26 / 28 (93%) | **21 / 30 (70%)** |
+| False passes | 0 (18 passes) | **0** (13 passes, all checked) |
+| Working flows passed | 18 / 20 | 13 / 22 |
+| Working flows failed as a bug | 1 / 20 | 6 / 22 (2 on real page crashes, see below) |
+| Working flows it couldn't finish | 1 / 20 | 3 / 22 |
+| Planted bugs caught | 1 / 1 | **3 / 3**, each with the right reason (23 for 2+3, -4 for 6-2, the missing second box) |
+| Wrong expectations failed | 8 / 8 | **5 / 5**, each for the right reason |
+| Median time per test | 9 s | 17 s |
+
+The 9 working flows it got wrong:
+
+| Spec | What happened | Cause |
+|---|---|---|
+| t-clear-completed | **False bug**: "the list is empty" | TodoMVC's per-item checkboxes are invisible inputs styled through their label, so they aren't offered. The agent used "Mark all as complete", cleared both, and blamed the app. Its own reason names its wrong action |
+| t-complete | Couldn't finish | Same hidden checkboxes; while looking for them the model's replies stopped being valid JSON, 3 in a row |
+| b-add-to-cart | Couldn't finish | "Add to cart" is a clickable `div`, not offered. The agent clicked the nearest button instead, a heart the site labels "delete" |
+| w-modal | Couldn't finish | The Modal Popup button is a `span` opened by Bootstrap, not offered; 6 unusable replies |
+| b-sign-in | **False bug**: "404 on /login/" | The username and password are searchable dropdowns (react-select): it typed but never picked the option. The retry typed a made-up address, /login/, and filed its 404 |
+| w-double-click | **False bug** | Not offered, and no double-click action (expected when written) |
+| w-drag-drop | **False bug** | Not offered, and no drag action (expected when written) |
+| w-ajax-loader | Fail: "uncaught JS error: Unexpected token '<'" | **The error is real**: the page throws it on load in a plain browser. The flow still works. Uncaught errors fail a test by design (`js_errors: warn` turns them into warnings) |
+| w-login-wrong | Fail: "uncaught JS error: $ is not defined" | **Real**: the page loads jQuery over http from an https page, the browser blocks it, the page throws. The flow still works |
+
+The hover spec passed: clicking "Hover Over Me First!" leaves the mouse over it, and Link 1 appears.
+Two passes are right but weakly proven: "Cabbage is disabled" was quoted with the label alone, and
+the to-do item was quoted as `{{item}}` (the screenshot shows "Feed the owl").
+
+### Explorations (40 actions each)
+
+| Site | Proven | Suspected | Checked by hand |
+|---|---|---|---|
+| advantageonlineshopping.com, `--sign-up` | 0 | 0 | Signed up, bought a laptop with the demo's own SafePay (made-up details), opened account details. 83 warnings: 60 accessibility (spot-checked with Chrome's accessibility tree: names really empty), 22 slow requests (true, the site was slow), 1 JavaScript TypeError from the site's own code (true) |
+| bstackdemo.com | 0 | 1, **false** | "Reflected XSS in the sign-in error": the typed `<script>` only showed as text in the dropdown's own "Create ..." option; the error says "Invalid Username" (an HTML test input rendered nothing). Stopped after 22 actions: the model kept picking the heart buttons named "delete", which the avoid list blocks. 2 accessibility warnings on about:blank after "go back" left the site are false |
+| zero.webappsecurity.com | 0 | 1, **real** (minor) | The forgotten-password form accepts an empty address and says "Your password will be sent to the following email:" with nothing after it. Confirmed in a plain browser. 12 slow-request warnings, true. It spent about 20 of its actions bouncing between Sign in and More Services |
+
+Gaps the explorations showed: the throwaway password is 16 characters and Advantage allows 12 (the
+agent made up a shorter one, which then shows in the report); an element the avoid list blocks is
+still offered to the model; pages outside the site (about:blank) get accessibility warnings.
+
+### What this says
+- **The proof rule held again: 0 false passes on new sites, 3 of 3 planted bugs caught.**
+- **The big gap is reach, not judgment.** 6 of the 9 misses were things on the page Nightshift
+  doesn't offer as clickable: styled `div`s and `span`s, invisible checkboxes behind their labels,
+  searchable dropdowns. When it can't reach something it guesses, and twice it then blamed the app.
+- Not being able to reach an element is filed as a bug (double-click, drag); it should say it
+  couldn't test. A model that stops replying in JSON is filed as "test needs updating"; it is ours.
+
+### Fix list (not done: the run had to stay unchanged)
+In order of misses removed:
+1. Offer clickable elements that aren't buttons, links or fields (pointer cursor, click handlers), and
+   hidden checkboxes through their visible label (4: add-to-cart, modal, both TodoMVC).
+2. Searchable dropdowns: type, then pick the option (1).
+3. A 404 on an address the agent typed itself isn't the app's bug (1).
+4. Double-click and drag actions (2).
+5. "I can't reach it" is "couldn't test", not a bug; unusable model replies are a tool problem, not
+   "test needs updating"; find why the replies broke (likely cut off while it searched).
+6. Exploring: a throwaway password of at most 12 characters, mask passwords the agent makes up,
+   don't offer avoided elements, no warnings for pages outside the site.
+7. Uncaught JS errors on load (2): they fail by design and both were real. Whether to keep failing
+   or report them and carry on with the steps is a product choice, not decided here.
