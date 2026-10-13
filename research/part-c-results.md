@@ -626,3 +626,68 @@ In order of misses removed:
    don't offer avoided elements, no warnings for pages outside the site.
 7. Uncaught JS errors on load (2): they fail by design and both were real. Whether to keep failing
    or report them and carry on with the steps is a product choice, not decided here.
+
+## After the reach fixes: blind set 4 (2026-10-13, later)
+
+The set-3 fix list was done (D56, commit 7e21155, 22 new tests, 292 pass), including the user's
+decision on JavaScript errors: one thrown while a page loads is reported and the test carries on.
+Blind set 4 (`benchmark/blind/set4`) was written and committed (1a724a8) **before** any of it, on six
+sites never run on: qaplayground.dev, formy-project.herokuapp.com, qa-practice.com, commitquality.com,
+example.cypress.io, demo.automationtesting.in, plus react-select.com's demo. Run once, after the
+fixes; every verdict and the screenshot behind each weakly quoted pass checked by hand.
+
+| | Blind set 3 (before fixes) | Blind set 4 (after fixes) |
+|---|---|---|
+| Verdicts right | 21 / 30 (70%) | **26 / 30 (87%)** |
+| False passes | 0 (13 passes) | **0** (20 passes, all checked) |
+| Working flows passed | 13 / 22 | **20 / 23** |
+| Working flows failed as a bug | 6 / 22 | 3 / 23 |
+| Working flows it couldn't finish | 3 / 22 | **0 / 23** |
+| Wrong expectations failed | 5 / 5 | 6 / 7 (one ran out of steps: an error, not a pass) |
+| Median time per test | 17 s | 11 s |
+
+New on unseen pages: a double-click, two drags (an HTML5 one and a mouse-driven one), two searchable
+dropdowns (select2, react-select), an unnamed menu icon, and five qa-practice.com tests that pass while
+reporting the "handleToggleNavProfile is not defined" error every page of that site throws on load.
+
+The 4 it got wrong, and why (each checked by hand):
+- **qp-covered** (false bug): **a Nightshift bug.** After the click, "Mission accomplished" is on the
+  page, at the top of a scrolled inner panel (418 px above the screen). The check that hides text
+  moved off the page adds the window's scroll but not the panel's, so the judge never saw it.
+- **f-drag** (false bug): the draggable is a picture with no name, so it wasn't offered; the model
+  guessed the text "Se", and three "nothing shows that text" refusals were filed as a dead control.
+  A text lookup that finds nothing is the tester's failure, not the app's.
+- **f-enabled** (false bug): "the first text box is disabled" is true, but the judge gets no line
+  that shows a field's disabled state, and quoting the placeholder was rightly refused.
+- **r-wrong-single** (error): the agent kept clicking instead of failing and ran out of steps.
+
+### No regressions (same model, before → after)
+
+| | Before (215b7fc) | After (7e21155) |
+|---|---|---|
+| Shop: planted bugs / false alarms | 23/23, 0/13 | **23/23, 0/13** |
+| Clinic (holdout): bugs / false alarms | 8/8, 1/5 | **8/8, 1/5** (the same cancel-appointment) |
+| Public sites: pass / fail / environment | 26 / 0 / 4, 1 flaky (the model dropped a call) | **27 / 0 / 4** (OpenCart's bot check; the-internet timing out) |
+
+### Blind set 3 again (seen, so a check of the fixes, not a score)
+
+28/30, up from 21/30: add to cart, the react-select sign-in, both TodoMVC tick-box tests, the modal
+and the drag pass; the two pages that throw on load pass with the error reported. Two wrong:
+- **w-double-click**: the double-click lands (the box turns green), but a colour change leaves the
+  page's text unchanged, so it reads as "no change" and the judge has no text to prove it. Style-only
+  changes can't be proven from text.
+- **w-wrong-contact: a false pass.** The agent skipped the Comments field, the form answered "Error:
+  all fields are required", and the judge accepted that quote as proof of "the page says your message
+  could not be sent". The quote is on the page, but it doesn't say what was expected. The key-term
+  rule only names capitalised words, numbers and quoted text, so an all-lowercase expectation has no
+  terms to check. This hole predates D56 (in the first run the agent filled every field and the test
+  failed correctly), and it is the first false pass seen since the blind tests began.
+
+### Next fix list (not done: set 4 is now seen, and these need blind set 5)
+1. The judge accepts a quote that doesn't say what a "says ..." expectation states: require the
+   message's own words in the evidence (the false pass). Re-run the benchmarks before and after.
+2. Text in a scrolled inner panel counts as on the page (qp-covered).
+3. A text lookup that finds nothing is the tester's failure, never a dead control; an unnamed
+   draggable picture is offered (f-drag).
+4. A line for a field's state (disabled, read-only) the judge can quote (f-enabled; weak proofs in
+   sets 2 and 3).
