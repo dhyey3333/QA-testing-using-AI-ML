@@ -9,7 +9,8 @@ from nightshift.observe import Element, Observation
 class ScriptedModel:
     """Plays a fixed script, finding each element by its label the way a person would.
 
-    Moves: ("click", "label"), ("type", "label", "text"), ("select", "label", "option"), ("raw", {...reply...}).
+    Moves: ("click", "label"), ("type", "label", "text"), ("select", "label", "option"), ("double_click", "label"),
+    ("drag", "label", "label to drop it on"), ("raw", {...reply...}).
     A label may be prefixed with a tag: "button:Log in". When the script runs out
     the agent says pass. The judge quotes `evidence`; with `holds` left as None it
     answers honestly (true only if every quote is on the page), and a bool makes it lie.
@@ -48,6 +49,9 @@ class ScriptedModel:
             reply["text"] = rest[0]
         elif kind == "select":
             reply["value"] = rest[0]
+        elif kind == "drag":
+            to = find(context.observation, rest[0])
+            reply["to"] = to.id if to is not None else rest[0]
         return reply
 
     def judge(self, context):

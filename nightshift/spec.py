@@ -150,8 +150,8 @@ def load_spec(path: Path, expand_env: bool = True) -> Spec:
     if sms_inbox and not sms_inbox.startswith(("http://", "https://")):
         raise SpecError(f"{path}: sms_inbox must be the http(s) URL of a Mailpit-style message API")
     js_errors = str(raw.get("js_errors") or "").lower()
-    if js_errors not in ("", "fail", "warn"):
-        raise SpecError(f"{path}: js_errors must be fail or warn")
+    if js_errors not in ("", "report", "fail", "warn"):
+        raise SpecError(f"{path}: js_errors must be report, fail or warn")
     session_from = str(raw.get("session_from") or "")
     visual = str(raw.get("visual") or "").lower()
     if visual not in ("", "off", "warn", "fail"):

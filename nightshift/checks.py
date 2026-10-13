@@ -1,7 +1,8 @@
 """What the browser can prove without a model.
 
 Two signals fail a run on their own, even when the page looks fine:
-  - an uncaught JavaScript error (unless the spec or run sets js_errors: warn)
+  - an uncaught JavaScript error right after the test acted (one while a page loads is reported and
+    the test carries on; js_errors: fail fails on both, js_errors: warn fails on neither)
   - an HTTP 5xx from the app's own origin
 The rest are warnings a tester would note: console errors, 404s, slow calls,
 dialogs, basic accessibility gaps (unlabelled fields, images without alt text), broken
@@ -15,6 +16,7 @@ from __future__ import annotations
 import re
 from typing import Protocol
 from urllib.parse import unquote, urlsplit
+from weakref import WeakKeyDictionary
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page
@@ -112,14 +114,38 @@ def warn(sink: Sink, message: str) -> None:
         sink.warnings.append(message)
 
 
+# Pages the test has acted on since their document loaded. An uncaught error before that came from the page
+# loading by itself; after it, it follows something the test did.
+_ACTED: WeakKeyDictionary = WeakKeyDictionary()
+
+
+def note_action(page: Page) -> None:
+    """The test is about to act on this page (actions.execute calls this)."""
+    _ACTED[page] = True
+
+
 def listen(page: Page, url: str, sink: Sink, js_errors: str = "fail") -> None:
     """Wire the browser's own signals into `sink` for the life of the page.
 
-    js_errors="warn" turns uncaught JS errors into warnings. Found on a big real shopping
-    site: analytics and ad scripts threw errors in the background on every page, so every
-    test failed on errors no user would notice. The app's 5xx still fail.
+    Uncaught JS errors: "fail" makes every one an app error. "report" (the default for tests, decided
+    2026-10-13) makes one thrown while a page loads, before the test has acted on it, a warning at the
+    top of the report, and the test carries on: its steps and expected results decide. Found on a
+    practice site (blind set 3): two pages threw on load while their flows worked, and both tests failed
+    at once without trying a step. An error right after an action still fails. "warn" makes every one a
+    warning; found on a big real shopping site, whose analytics and ad scripts threw on every page.
+    The app's 5xx still fail.
     """
     origin = _origin(url)
+    _ACTED.setdefault(page, False)
+
+    def on_request(request) -> None:
+        # A new document is on its way: what its scripts throw while it loads is the page's own doing.
+        # (A same-page route change makes no navigation request, so it doesn't count as a new page.)
+        try:
+            if request.is_navigation_request() and request.frame == page.main_frame:
+                _ACTED[page] = False
+        except PlaywrightError:
+            pass
 
     def on_page_error(error) -> None:
         if not same_site(page.url, url):
@@ -127,6 +153,10 @@ def listen(page: Page, url: str, sink: Sink, js_errors: str = "fail") -> None:
         message = f"uncaught JS error: {_first_line(error.message)}"
         if js_errors == "warn":
             warn(sink, f"{message} (a warning only: js_errors is warn)")
+        elif js_errors == "report" and not _ACTED.get(page, False):
+            report = f"uncaught JS error while the page loaded: {_first_line(error.message)} (reported; the test carried on)"
+            if report not in sink.warnings:
+                sink.warnings.insert(0, report)  # first in the list, so it isn't lost among the minor ones
         else:
             sink.app_errors.append(message)
 
@@ -188,6 +218,7 @@ def listen(page: Page, url: str, sink: Sink, js_errors: str = "fail") -> None:
         record_dialog(page, dialog.type, dialog.message, answer)
         dialog.accept()
 
+    page.on("request", on_request)
     page.on("pageerror", on_page_error)
     page.on("response", on_response)
     page.on("requestfinished", on_request_finished)
@@ -225,6 +256,8 @@ def page_key(url: str) -> str:
 
 def check_page(page: Page, sink: Sink, seen: set[str]) -> None:
     """Accessibility and broken-image checks, once per distinct page in a run."""
+    if not page.url.startswith(("http://", "https://")):
+        return  # about:blank after going back past the start, a browser error page: not the app's
     key = page_key(page.url)
     if key in seen:
         return

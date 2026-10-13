@@ -248,8 +248,10 @@ def _run_options(parser: argparse.ArgumentParser) -> None:
                         help="compare each passing test's final screen with its approved look (default: warn on a visual bug)")
     parser.add_argument("--update-visual", action="store_true",
                         help="make this run's final screens the approved looks")
-    parser.add_argument("--js-errors", choices=["fail", "warn"], default="fail",
-                        help="uncaught JS errors fail a test (default), or are only warnings; a spec's js_errors wins")
+    parser.add_argument("--js-errors", choices=["report", "fail", "warn"], default="report",
+                        help="uncaught JS errors: report one thrown while a page loads and carry on, fail on one right "
+                             "after an action (default: report); fail on both (fail); only warn (warn). "
+                             "A spec's js_errors wins")
     parser.add_argument("--client", default="", help="also write client-report.html for this client")
     parser.add_argument("--brand", default="", help="the name the client report is prepared by (your company)")
     parser.add_argument("--logo", type=Path, help="a logo for the client report (PNG, JPEG or SVG)")
@@ -356,7 +358,7 @@ def _execute(specs: list[Spec], args: argparse.Namespace, model: HttpModel) -> t
     specs = sessions.first(specs)  # a spec others start logged in from runs before them
     options = _options(args, judge=not args.no_judge, retries=max(0, args.retries), recordings=store,
                        replay=not args.no_replay, record=not args.no_record,
-                       js_errors=getattr(args, "js_errors", "fail"), sessions=sessions,
+                       js_errors=getattr(args, "js_errors", "report"), sessions=sessions,
                        visual=getattr(args, "visual", "warn"), update_visual=getattr(args, "update_visual", False))
     run_dir = args.out / datetime.now().strftime("%Y%m%d-%H%M%S")
 

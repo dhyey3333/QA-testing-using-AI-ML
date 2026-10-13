@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Load error lab</title>
+</head>
+<body>
+<h1>A page whose script breaks while it loads</h1>
+<!-- The way a practice site broke: a script that needs a library the page never loaded. -->
+<script>notLoadedLibrary.init();</script>
+<button type="button" id="hello">Say hello</button>
+<button type="button" id="break">Break</button>
+<p id="said"></p>
+<script>
+  document.getElementById('hello').addEventListener('click', () => {
+    document.getElementById('said').textContent = 'Hello!';
+  });
+  document.getElementById('break').addEventListener('click', () => {
+    window.missing.call();
+  });
+</script>
+</body>
+</html>

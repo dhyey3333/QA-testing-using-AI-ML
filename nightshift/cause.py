@@ -15,16 +15,23 @@ from .result import RunResult
 
 _RUNS = re.compile(r"(\s*\((failed \d+ of \d+ runs|reproduced after going back)\))+$")  # the runner's notes
 _COVER = re.compile(r"covering it: (<[^>]+>)")
+_LOAD_ERROR = "uncaught JS error while the page loaded: "  # checks.listen, js_errors "report"
+_LOADED = re.compile(r" \(reported; the test carried on\)$")
 
 
 def probable_cause(result: RunResult) -> str:
+    loaded = [_LOADED.sub("", w.removeprefix(_LOAD_ERROR)) for w in result.warnings if w.startswith(_LOAD_ERROR)]
     if result.verdict == "pass":
         if result.visual.get("status") == "visual bug":
             return f"It works, but looks broken: {result.visual.get('what')}"
+        if loaded:
+            return f"It works, but the page's JavaScript threw “{loaded[0]}” while it loaded."
         return ""
     reason = _RUNS.sub("", result.reason)
     api_errors = [w.removeprefix("api error: ") for w in result.warnings if w.startswith("api error: ")]
     also = f" Before that, the app's API refused {api_errors[0]}." if api_errors else ""
+    if loaded:
+        also += f" While the page loaded, its JavaScript threw “{loaded[0]}”."
 
     if result.category == "ENV_ISSUE" or (problem := environment_problem(result)):
         problem = _plain_environment((environment_problem(result) or reason).removeprefix("environment: "))

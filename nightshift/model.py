@@ -116,7 +116,8 @@ class HttpModel:
     def look(self, system: str, user: str, image: bytes, max_tokens: int = 300) -> dict:
         return self._ask(self.judge_config, system, user, image, max_tokens=max_tokens)
 
-    def _ask(self, config: ModelConfig, system: str, text: str, image: bytes | None, max_tokens: int) -> dict:
+    def _ask(self, config: ModelConfig, system: str, text: str, image: bytes | None, max_tokens: int,
+             cut_off_retry: bool = True) -> dict:
         content: list[dict] = [{"type": "text", "text": text}]
         if image is not None:
             encoded = base64.b64encode(image).decode("ascii")
@@ -147,13 +148,25 @@ class HttpModel:
         try:
             payload = response.json()
             message = payload["choices"][0]["message"]["content"]
+            finish = payload["choices"][0].get("finish_reason")
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             raise ModelError("the reply was not an OpenAI-style chat completion") from exc
         usage = payload.get("usage") or {}
         self.usage["calls"] += 1
         self.usage["prompt_tokens"] += int(usage.get("prompt_tokens") or 0)
         self.usage["completion_tokens"] += int(usage.get("completion_tokens") or 0)
-        return parse_json_object(message or "")
+        try:
+            return parse_json_object(message or "")
+        except InvalidAction:
+            if finish != "length":
+                raise
+            # Cut off at the length limit, mid-thought. Found on a practice site (blind set 3): looking for a
+            # button it couldn't see, the model wrote 2,300 characters of "thought" and never got to the
+            # action, three times in a row, and the run ended. Asked once more, with room and a reminder.
+            if cut_off_retry:
+                return self._ask(config, system, text + CUT_OFF_NOTE, image, max_tokens * 2, cut_off_retry=False)
+            raise InvalidAction('your reply was cut off because it was too long: keep "thought" to one short '
+                                "sentence and give the JSON object") from None
 
     def _post(self, config: ModelConfig, body: dict) -> httpx.Response:
         headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else {}
@@ -172,6 +185,8 @@ class HttpModel:
 
 
 BUSY_RETRIES = 5
+CUT_OFF_NOTE = ("\n\nYOUR LAST REPLY WAS CUT OFF because it was too long. Keep \"thought\" to one short sentence, "
+                "then the rest of the JSON object.")
 
 
 def _retry_after(response: httpx.Response, attempt: int) -> float:

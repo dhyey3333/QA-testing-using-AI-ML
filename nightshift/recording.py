@@ -92,6 +92,8 @@ class RecordingStore:
                 continue  # replay settles after every step anyway
             if step.action.id is not None and not step.locators:
                 return None
+            if step.action.to_id is not None:
+                return None  # a drop target known only by this run's element number can't be found again
             steps.append(RecordedStep(step.action, step.description, step.target_label, step.locators))
 
         recording = Recording(

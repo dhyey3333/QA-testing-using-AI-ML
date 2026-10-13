@@ -589,3 +589,29 @@ it was blind, and each gap got the narrowest fix that would have caught it:
   own earlier visit, since some pages never have a menu).
 - The exploring prompt now asks for answers that don't fit what was done (a wrong error message, a
   vanished menu). Measured before and after in research/part-c-results.md: more reported, mostly real.
+
+## D56. Reach: what blind set 3 showed Nightshift couldn't touch
+Six of blind set 3's nine misses were things on the page Nightshift never offered, and twice it then
+blamed the app. Each fix is the narrowest one that would have caught its case, measured on blind set 4
+(written before any of this):
+- Offered as controls: a `div`/`span` the page gives a pointer cursor (where the pointer starts, small,
+  named), a Bootstrap `data-toggle` trigger, anything marked draggable, a see-through checkbox that sits
+  over a drawing of one (named with its row), and a searchable dropdown's choices.
+- `double_click` and `drag`, by element id or by the visible text of a plain box that has no id
+  (`text_locator`). A drag onto a numbered element isn't saved for replay; numbers don't survive.
+- Typing into a searchable dropdown picks the option that is exactly what was typed (or the only one
+  left), and says so; with several left it lists them. Search boxes are left alone.
+- A test's `goto` is limited to addresses its steps name, the start page, the home page and pages
+  already seen: a made-up address is refused before it can become a "404 bug".
+- `stuck` is a verdict: a step the tester can't do is "couldn't test" (error), never "fail", and so is a
+  "fail" that blames the ELEMENTS list. Asked to look again once; the judge can still pass it.
+- A model whose replies are unusable is an environment problem, not "the test needs updating". The
+  replies broke because they were cut off at the token limit mid-thought (`finish_reason: length`),
+  so a cut-off reply is asked for again once, with twice the room and a reminder to be brief.
+- Uncaught JavaScript errors (the user's decision, 2026-10-13): one thrown while a page loads, before
+  the test has acted on it, is reported at the top of the warnings and in the probable cause, and the
+  test carries on; its steps and expected results decide. One right after an action still fails.
+  `js_errors: fail` keeps the old rule, `warn` makes every error a warning.
+- Exploring: a 12-character throwaway password (a demo allowed no more), a password the agent makes
+  up is written as ********, the AVOID list's elements aren't offered at all, and blank or browser
+  pages get no accessibility checks.

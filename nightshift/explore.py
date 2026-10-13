@@ -22,7 +22,8 @@ import re
 import secrets
 import time
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, field
+from contextlib import suppress
+from dataclasses import asdict, dataclass, field, replace
 from html import escape
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -30,7 +31,8 @@ from urllib.parse import urlsplit
 from playwright.sync_api import Browser, Page
 from playwright.sync_api import Error as PlaywrightError
 
-from .actions import EXPLORE_KINDS, ActionFailed, InvalidAction, execute, settle, track_network, validate_action
+from .actions import (EXPLORE_KINDS, ActionFailed, InvalidAction, element_locator, execute, settle, track_network,
+                      validate_action)
 from .checks import check_page, listen, page_key, same_site
 from .model import Model, ModelError, usage_snapshot
 from .observe import Observation, block_ads, observe, screenshot, watch_form_validation
@@ -106,9 +108,10 @@ def throwaway_account() -> dict[str, str]:
     mail to it reaches nobody), a password with the upper case, digit and symbol most forms ask for,
     and a plainly fake postal address and phone. Found on a pet-shop demo whose sign-up also wants an
     address, city, state, ZIP, country and phone: with only a name and an email the agent filled the
-    form a field at a time and never got in."""
+    form a field at a time and never got in. The password is 12 characters: a shop demo allowed no more
+    (blind set 3), and the agent made up a weaker one of its own to get past it."""
     username = f"ns{secrets.token_hex(4)}"
-    return {"username": username, "email": f"{username}@example.com", "password": f"Ns{secrets.token_urlsafe(9)}7!",
+    return {"username": username, "email": f"{username}@example.com", "password": f"Ns{secrets.token_urlsafe(6)}7!",
             "first_name": "Nightshift", "last_name": "Tester", "address": "1 Test Street", "city": "Bengaluru",
             "state": "Karnataka", "zip": "560001", "country": "India", "phone": "9999999999"}
 
@@ -214,7 +217,7 @@ class _Explorer:
         self.enough = max(5, budget // 5)
         self.limit = 2 * self.enough
         for index in range(1, budget + 1):
-            observation = observe(self.page)
+            observation = self._without_avoided(observe(self.page))
             # Alert and validation boxes that appeared since the last look, i.e. after the last action.
             new_messages = [m for m in observation.messages if m not in previous_messages]
             previous_messages = observation.messages
@@ -222,7 +225,8 @@ class _Explorer:
                 check_page(self.page, self.result, self.seen_pages)
             fingerprint = observation.fingerprint()
             if steps and steps[-1].outcome == PENDING:
-                steps[-1].outcome = "changed" if fingerprint != last_fingerprint else "no change"
+                steps[-1].outcome = ("changed" if fingerprint != last_fingerprint else "no change") \
+                    + (f"; {steps[-1].note}" if steps[-1].note else "")
                 self.log(_step_line(steps[-1]))
             last_fingerprint = fingerprint
             self._collect(observation)
@@ -288,7 +292,14 @@ class _Explorer:
                 self.filled[here].add(label)
             else:
                 self.page_actions[here] = self.page_actions.get(here, 0) + 1
-            step = Step(index, action, action.describe(label), thought=str(raw.get("thought") or "").strip()[:300],
+            to = observation.element(action.to_id) if action.to_id is not None else None
+            # A password the agent made up (not test data) is never written down. Found exploring a shop demo
+            # (blind set 3): the throwaway password was too long for its form, so the agent typed one of its own,
+            # and it showed in the report.
+            secret = bool(element and element.type == "password" and "{{" not in (action.text or ""))
+            step = Step(index, replace(action, text="********") if secret else action,
+                        action.describe(label, to.label if to else "", masked=secret),
+                        thought=str(raw.get("thought") or "").strip()[:300],
                         model_ms=_ms_since(started), screenshot=shot_name, target_label=label)
             steps.append(step)
 
@@ -334,7 +345,7 @@ class _Explorer:
 
             started = time.perf_counter()
             try:
-                execute(self.page, action, self.spec.data)
+                step.note = execute(self.page, action, self.spec.data)
                 settle(self.page)
                 if tab := adopt_new_tab(self.new_tabs, self.spec.url, self.result):
                     self.page = tab
@@ -349,6 +360,18 @@ class _Explorer:
             steps[-1].outcome = "done"
             self.log(_step_line(steps[-1]))
         self._collect(None)  # whatever the last action set off
+
+    def _without_avoided(self, observation: Observation) -> Observation:
+        """What the AVOID list covers isn't offered at all: no number on the screenshot, not in ELEMENTS.
+        Found exploring a practice shop (blind set 3): its favourite buttons are named "delete"; the model
+        picked them again and again, each pick was refused, and the run ended after 22 of its 40 actions."""
+        avoided = {e.id for e in observation.elements if any(w and w.lower() in e.label.lower() for w in self.avoid)}
+        if not avoided:
+            return observation
+        for element_id in avoided:
+            with suppress(PlaywrightError):
+                element_locator(self.page, element_id).evaluate("el => el.removeAttribute('data-ns-id')", timeout=1_000)
+        return replace(observation, elements=tuple(e for e in observation.elements if e.id not in avoided))
 
     def _collect(self, observation: Observation | None) -> None:
         """Turn new browser signals into findings, pinned to the action that caused them."""

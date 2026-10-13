@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Reach lab</title>
+<style>
+  body { font-family: sans-serif; margin: 24px; }
+  .basket-btn { cursor: pointer; display: inline-block; padding: 8px 14px; background: #2d6a4f; color: #fff; }
+  .popup { display: none; border: 1px solid #333; padding: 12px; margin: 8px 0; }
+  .todo li { position: relative; list-style: none; height: 44px; }
+  .todo .tick { position: absolute; left: 0; top: 0; width: 40px; height: 40px; margin: 0; opacity: 0; }
+  .todo label { display: block; padding: 10px 0 10px 50px;
+    background: no-repeat 8px center url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="10" fill="none" stroke="gray"/></svg>'); }
+  .todo li.done label { text-decoration: line-through; }
+  .box { width: 260px; height: 80px; border: 2px dashed #555; display: flex; align-items: center; justify-content: center; margin: 8px 0; }
+  .card { width: 120px; padding: 10px; background: #ffd166; margin: 8px 0; }
+  .zone { width: 260px; height: 80px; border: 2px solid #118ab2; margin: 8px 0; display: flex; align-items: center; justify-content: center; }
+  .my-draggable { width: 120px; padding: 10px; background: #ef476f; color: #fff; position: relative; user-select: none; }
+  .choices { border: 1px solid #aaa; max-width: 260px; }
+  .choices div { padding: 4px 8px; }
+</style>
+</head>
+<body>
+<h1>Reach lab</h1>
+
+<h2>Plain elements that act like buttons</h2>
+<div class="basket-btn" id="basket">Add to basket</div>
+<p id="basket-said"></p>
+<span id="popup-trigger" data-toggle="popup">Open the popup</span>
+<div class="popup" id="popup">Hello from the popup</div>
+
+<h2>To do</h2>
+<ul class="todo">
+  <li><input class="tick" type="checkbox" aria-label="Toggle"><label>buy milk</label></li>
+  <li><input class="tick" type="checkbox"><label>walk the dog</label></li>
+</ul>
+<p id="left">2 items left</p>
+
+<h2>Boxes</h2>
+<div class="box" id="dbl"><b>Double-click this box</b></div>
+<p id="dbl-said"></p>
+<div class="card" id="card" draggable="true">Drag this card</div>
+<div class="zone" id="zone">Drop the card here</div>
+<div class="my-draggable" id="slider">Slide me</div>
+<div class="zone" id="slide-target">Slide target</div>
+
+<h2>Searchable dropdown</h2>
+<input id="city-select-input" role="combobox" aria-autocomplete="list" aria-label="City" placeholder="Choose a city" autocomplete="off">
+<div class="choices" id="choices"></div>
+<p id="chosen">No city chosen</p>
+
+<h2>Account</h2>
+<label>Password <input type="password" id="pw"></label>
+<button type="button" id="delete">Delete account</button>
+
+<script>
+  document.getElementById('basket').addEventListener('click', () => {
+    document.getElementById('basket-said').textContent = 'Added to basket';
+  });
+  document.getElementById('popup-trigger').addEventListener('click', () => {
+    document.getElementById('popup').style.display = 'block';
+  });
+  const left = () => {
+    const open = [...document.querySelectorAll('.todo .tick')].filter((t) => !t.checked).length;
+    document.getElementById('left').textContent = `${open} item${open === 1 ? '' : 's'} left`;
+  };
+  document.querySelectorAll('.todo .tick').forEach((tick) => tick.addEventListener('change', () => {
+    tick.closest('li').classList.toggle('done', tick.checked);
+    left();
+  }));
+  document.getElementById('dbl').addEventListener('dblclick', () => {
+    document.getElementById('dbl-said').textContent = 'Box was double-clicked';
+  });
+  // HTML5 drag and drop.
+  document.getElementById('card').addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', 'card'));
+  const zone = document.getElementById('zone');
+  zone.addEventListener('dragover', (e) => e.preventDefault());
+  zone.addEventListener('drop', (e) => { e.preventDefault(); zone.textContent = 'Card dropped'; });
+  // Mouse-driven dragging, the way jQuery UI does it.
+  const slider = document.getElementById('slider');
+  let start = null;
+  slider.addEventListener('mousedown', (e) => { start = { x: e.clientX, y: e.clientY }; });
+  document.addEventListener('mousemove', (e) => {
+    if (start) slider.style.transform = `translate(${e.clientX - start.x}px, ${e.clientY - start.y}px)`;
+  });
+  document.addEventListener('mouseup', (e) => {
+    if (!start) return;
+    start = null;
+    const t = document.getElementById('slide-target').getBoundingClientRect();
+    if (e.clientX >= t.left && e.clientX <= t.right && e.clientY >= t.top && e.clientY <= t.bottom) {
+      document.getElementById('slide-target').textContent = 'Slid onto the target';
+    }
+  });
+  // A searchable dropdown: typing filters, a click on a choice picks it.
+  const cities = ['Pune', 'Patna', 'Mumbai', 'Chennai'];
+  const input = document.getElementById('city-select-input');
+  const list = document.getElementById('choices');
+  input.addEventListener('input', () => {
+    list.innerHTML = '';
+    const typed = input.value.trim().toLowerCase();
+    if (!typed) return;
+    const shown = cities.filter((c) => c.toLowerCase().includes(typed));
+    if (!shown.length) list.innerHTML = '<div role="option">No options</div>';
+    for (const city of shown) {
+      const option = document.createElement('div');
+      option.setAttribute('role', 'option');
+      option.textContent = city;
+      option.addEventListener('click', () => {
+        document.getElementById('chosen').textContent = `Chosen city: ${city}`;
+        input.value = '';
+        list.innerHTML = '';
+      });
+      list.appendChild(option);
+    }
+  });
+</script>
+</body>
+</html>

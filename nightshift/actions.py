@@ -13,6 +13,7 @@ from weakref import WeakKeyDictionary
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Locator, Page
 
+from .checks import note_action
 from .inbox import DYNAMIC
 from .totp import SECRET_KEY as TOTP_SECRET
 from .observe import Observation, frame_of
@@ -21,8 +22,12 @@ ACTION_TIMEOUT_MS = 5_000
 SCROLL_PX = 600
 
 INTERACTIONS = {"click", "type", "select"}  # the ones that need an element id
-BROWSING = INTERACTIONS | {"press", "scroll", "wait", "back", "goto"}
-TEST_KINDS = BROWSING | {"pass", "fail"}
+# The ones that take an element id, or the visible text of something that isn't in the ELEMENTS list. Found
+# on a practice site (blind set 3): a "Double Click Me!" box and a drag-and-drop pair are plain <div>s with
+# nothing that marks them as controls, so they had no id, and there was no double-click or drag at all.
+TARGETED = {"double_click", "drag"}
+BROWSING = INTERACTIONS | TARGETED | {"press", "scroll", "wait", "back", "goto"}
+TEST_KINDS = BROWSING | {"pass", "fail", "stuck"}
 EXPLORE_KINDS = BROWSING | {"report", "done"}
 
 _PLACEHOLDER_RE = re.compile(r"\{\{\s*([A-Za-z0-9_]+)\s*\}\}")
@@ -53,24 +58,38 @@ class Action:
     value: str | None = None  # select: the option to pick
     key: str | None = None  # press
     direction: str | None = None  # scroll
-    reason: str | None = None  # pass / fail / done
+    reason: str | None = None  # pass / fail / done / stuck
     title: str | None = None  # report (explore mode)
     details: str | None = None  # report (explore mode)
+    to_id: int | None = None  # drag: the element to drop it on
+    to_text: str | None = None  # drag: or the visible text of where to drop it
 
     @property
     def signature(self) -> tuple:
-        return (self.kind, self.id, self.text, self.value, self.key, self.direction)
+        return (self.kind, self.id, self.text, self.value, self.key, self.direction, self.to_id, self.to_text)
 
-    def describe(self, label: str = "") -> str:
-        """One readable line, e.g. `click [12] "Add to cart"`. Test data stays as placeholders."""
+    def describe(self, label: str = "", to_label: str = "", masked: bool = False) -> str:
+        """One readable line, e.g. `click [12] "Add to cart"`. Test data stays as placeholders.
+        `masked` hides a value typed into a password field that isn't test data (one the agent made up)."""
         target = ""
         if self.id is not None:
             target = f' [{self.id}] "{label}"' if label else f" [{self.id}]"
         elif label:
             target = f' "{label}"'
+        elif self.kind in TARGETED and self.text:
+            target = f' "{self.text}"'
         match self.kind:
             case "type":
-                return f'type{target} <- "{self.text}"'
+                text = "********" if masked and "{{" not in (self.text or "") else self.text
+                return f'type{target} <- "{text}"'
+            case "double_click":
+                return f"double-click{target}"
+            case "drag":
+                if self.to_id is not None:
+                    onto = f' [{self.to_id}] "{to_label}"' if to_label else f" [{self.to_id}]"
+                else:
+                    onto = f' "{self.to_text}"'
+                return f"drag{target} onto{onto}"
             case "select":
                 return f'select{target} <- "{self.value}"'
             case "press":
@@ -81,7 +100,7 @@ class Action:
                 return "go back"
             case "goto":
                 return f"go to {self.value}"
-            case "pass" | "fail" | "done":
+            case "pass" | "fail" | "done" | "stuck":
                 return f"{self.kind.upper()}: {self.reason}"
             case "report":
                 return f"REPORT: {self.title}"
@@ -102,31 +121,37 @@ def validate_action(
     "element_id" for "id", "option" for "value", "summary" for "reason".
     """
     allowed = set(allowed)
-    kind = str(raw.get("action", "")).strip().lower()
+    kind = str(raw.get("action", "")).strip().lower().replace("-", "_").replace(" ", "_")
+    if kind == "doubleclick":
+        kind = "double_click"
     if kind not in allowed:
         raise InvalidAction(f'unknown action "{kind}"; use one of: {", ".join(sorted(allowed))}')
     fields: dict = {"kind": kind}
 
-    if kind in INTERACTIONS:
-        raw_id = raw.get("id", raw.get("element_id"))
+    raw_id = raw.get("id", raw.get("element_id"))
+    if kind in INTERACTIONS or (kind in TARGETED and raw_id not in (None, "")):
         try:
             element_id = int(raw_id)
         except (TypeError, ValueError):
             raise InvalidAction(f'"{kind}" needs a numeric "id" from the ELEMENTS list') from None
-        element = observation.element(element_id)
-        if element is None:
-            # Found on a public demo site: told only "there is no element [9]", a small model
-            # asked for [9] three times and the run ended. Listing the real controls fixes that.
-            controls = [e for e in observation.elements if e.tag in ("button", "a", "input", "select", "textarea")
-                        or e.role in ("button", "link")][:12]
-            listed = ", ".join(f'[{e.id}] "{e.label[:40]}"' for e in controls)
-            raise InvalidAction(f"there is no element [{element_id}] on this page; ids go from 1 to "
-                                f"{len(observation.elements)}" + (f". Controls: {listed}" if listed else ""))
-        banned = next((word for word in avoid if word and word.lower() in element.label.lower()), None)
-        if banned:
-            raise InvalidAction(f'[{element_id}] "{element.label}" is on the AVOID list ({banned}); pick something else')
+        element = _element(observation, element_id, avoid)
         _check_control(kind, element_id, element)
         fields["id"] = element_id
+    elif kind in TARGETED:
+        text = raw.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise InvalidAction(f'"{kind}" needs an "id" from the ELEMENTS list, or the "text" the thing shows '
+                                "when it has no id")
+        fields["text"] = text.strip()[:200]
+    if kind == "drag":
+        to = raw.get("to", raw.get("target"))
+        if isinstance(to, (int, float)) or (isinstance(to, str) and to.strip().isdigit()):
+            _element(observation, int(to), avoid)
+            fields["to_id"] = int(to)
+        elif isinstance(to, str) and to.strip():
+            fields["to_text"] = to.strip()[:200]
+        else:
+            raise InvalidAction('"drag" needs "to": the id of where to drop it, or the text it shows')
 
     if kind == "type":
         text = raw.get("text")
@@ -166,7 +191,7 @@ def validate_action(
         if direction not in ("up", "down"):
             raise InvalidAction('"scroll" needs "direction": "up" or "down"')
         fields["direction"] = direction
-    elif kind in ("pass", "fail", "done"):
+    elif kind in ("pass", "fail", "done", "stuck"):
         reason = str(raw.get("reason") or raw.get("summary") or "").strip()
         fields["reason"] = reason or "(no reason given)"
     elif kind == "report":
@@ -177,6 +202,22 @@ def validate_action(
         fields["details"] = str(raw.get("details") or "").strip()[:1000]
 
     return Action(**fields)
+
+
+def _element(observation: Observation, element_id: int, avoid: Iterable[str]):
+    element = observation.element(element_id)
+    if element is None:
+        # Found on a public demo site: told only "there is no element [9]", a small model
+        # asked for [9] three times and the run ended. Listing the real controls fixes that.
+        controls = [e for e in observation.elements if e.tag in ("button", "a", "input", "select", "textarea")
+                    or e.role in ("button", "link")][:12]
+        listed = ", ".join(f'[{e.id}] "{e.label[:40]}"' for e in controls)
+        raise InvalidAction(f"there is no element [{element_id}] on this page; ids go from 1 to "
+                            f"{len(observation.elements)}" + (f". Controls: {listed}" if listed else ""))
+    banned = next((word for word in avoid if word and word.lower() in element.label.lower()), None)
+    if banned:
+        raise InvalidAction(f'[{element_id}] "{element.label}" is on the AVOID list ({banned}); pick something else')
+    return element
 
 
 def _check_control(kind: str, element_id: int, element) -> None:
@@ -212,18 +253,23 @@ def element_locator(page: Page, element_id: int) -> Locator:
     return frame_of(page, element_id).locator(f'[data-ns-id="{element_id}"]')
 
 
-def execute(page: Page, action: Action, data: dict[str, str], target: Locator | None = None) -> None:
-    """Run one action. Raises ActionFailed with a short reason the model can read.
+def execute(page: Page, action: Action, data: dict[str, str], target: Locator | None = None) -> str:
+    """Run one action. Raises ActionFailed with a short reason the model can read. Returns a note
+    for the model about something the action did besides the obvious ("" when there is none).
 
     `target` is the element to act on. The agent passes nothing and the element
     observe() numbered is used; replay passes the locator it re-found.
     """
+    if action.kind != "wait":
+        note_action(page)  # from here on, a JavaScript error on this page follows something the test did
     if target is None and action.id is not None:
         target = element_locator(page, action.id)
+    elif target is None and action.kind in TARGETED and action.text:
+        target = text_locator(page, action.text)
     try:
-        _act(page, action, data, target)
+        return _act(page, action, data, target)
     except PlaywrightError as exc:
-        if action.kind not in ("click", "type", "select") or not _transient(exc):
+        if action.kind not in ("click", "type", "select", "double_click", "drag") or not _transient(exc):
             raise ActionFailed(_short_reason(exc)) from None
         # Covered, not visible yet, still animating, re-rendered: a slow page, not a broken one.
         # One more try after a pause, before the model hears it failed. A covered element is first
@@ -232,9 +278,21 @@ def execute(page: Page, action: Action, data: dict[str, str], target: Locator | 
         if "intercepts pointer events" in str(exc):
             _uncover(target)
         try:
-            _act(page, action, data, target)
+            return _act(page, action, data, target)
         except PlaywrightError as again:
             raise ActionFailed(_short_reason(again)) from None
+
+
+def text_locator(page: Page, text: str) -> Locator:
+    """The first visible element showing `text`: an exact match first, then one that contains it.
+    For things the page draws as plain boxes, which observe() can't tell are controls."""
+    for exact in (True, False):
+        matches = page.get_by_text(text, exact=exact)
+        with contextlib.suppress(PlaywrightError):
+            for i in range(min(matches.count(), 10)):
+                if matches.nth(i).is_visible():
+                    return matches.nth(i)
+    raise ActionFailed(f'nothing visible on the page shows the text "{text}"')
 
 
 RETRY_PAUSE_MS = 1_000
@@ -245,7 +303,7 @@ def _transient(exc: PlaywrightError) -> bool:
     return any(needle in str(exc) for needle in _TRANSIENT)
 
 
-def _act(page: Page, action: Action, data: dict[str, str], target: Locator | None) -> None:
+def _act(page: Page, action: Action, data: dict[str, str], target: Locator | None) -> str:
     match action.kind:
         case "click":
             opens_tab = _opens_new_tab(target)
@@ -254,7 +312,12 @@ def _act(page: Page, action: Action, data: dict[str, str], target: Locator | Non
             if opens_tab:
                 _wait_for_new_tab(page, tabs_before)
         case "type":
-            _type(page, target, fill_placeholders(action.text, data))
+            return _type(page, target, fill_placeholders(action.text, data))
+        case "double_click":
+            target.dblclick(timeout=ACTION_TIMEOUT_MS)
+        case "drag":
+            to = element_locator(page, action.to_id) if action.to_id is not None else text_locator(page, action.to_text)
+            target.drag_to(to, timeout=ACTION_TIMEOUT_MS)
         case "select":
             _select(target, action.value)
         case "press":
@@ -271,6 +334,7 @@ def _act(page: Page, action: Action, data: dict[str, str], target: Locator | Non
             if urlsplit(url).netloc != urlsplit(page.url).netloc:
                 raise ActionFailed(f"the link goes to another site ({urlsplit(url).netloc}); not following it")
             page.goto(url, wait_until="domcontentloaded", timeout=15_000)
+    return ""
 
 
 # The boxes of a one-time-code input, in order (the same rule as observe.py); [] for any other field.
@@ -345,23 +409,82 @@ def _uncover(target: Locator) -> bool:
         return False
 
 
-def _type(page: Page, target: Locator, text: str) -> None:
+def _type(page: Page, target: Locator, text: str) -> str:
     """Get `text` into the field the way a person would end up with it there."""
     if len(text) > 1 and _fill_code_boxes(target, text):
-        return
+        return ""
     _uncover(target)
     target.fill(text, timeout=ACTION_TIMEOUT_MS)
-    if not any(c.isdigit() for c in text):
-        return
+    if any(c.isdigit() for c in text):
+        try:
+            value = target.input_value(timeout=1_000)
+        except PlaywrightError:
+            return ""  # not a form field (contenteditable): nothing to read back
+        if _digits(value) != _digits(text):
+            # A field that formats as you type ("98765 43210", "4111 1111 1111 1111") rewrote or dropped
+            # the value fill() set all at once. Typed key by key, like a person, its script keeps up.
+            target.fill("", timeout=ACTION_TIMEOUT_MS)
+            target.press_sequentially(text, delay=30, timeout=ACTION_TIMEOUT_MS + 60 * len(text))
+    return _pick_choice(page, target, text)
+
+
+# A searchable dropdown (react-select, select2, an ARIA combobox): typing only filters its list, and the
+# value counts once an option is picked. Search boxes are left alone: picking their suggestion is a search.
+_COMBOBOX_JS = r"""
+(el) => {
+  const attr = (name) => (el.getAttribute(name) || '').toLowerCase();
+  const hint = [el.id, el.getAttribute('class'), el.name, attr('placeholder'), attr('aria-label')].join(' ').toLowerCase();
+  if (/select/.test(hint)) return true;
+  if (el.type === 'search' || /search/.test(hint)) return false;
+  return attr('role') === 'combobox' || ['list', 'both'].includes(attr('aria-autocomplete'));
+}
+"""
+# The options it shows now, in its own document. "No options", "Loading..." and a creatable
+# select's 'Create "..."' are not choices.
+_CHOICES_JS = r"""
+(el) => [...el.ownerDocument.querySelectorAll(
+    '[role="option"], [role="treeitem"], [id*="-option-"]')]
+  .filter((o) => {
+    const r = o.getBoundingClientRect();
+    const text = (o.innerText || '').trim();
+    return r.width > 0 && r.height > 0 && text && o.getAttribute('aria-disabled') !== 'true'
+      && !/^(no options|no results|no matches|loading|searching)/i.test(text) && !/^create\s/i.test(text);
+  })
+"""
+CHOICES_WAIT_MS = 1_000
+
+
+def _pick_choice(page: Page, target: Locator, typed: str) -> str:
+    """After typing into a searchable dropdown, pick the option that is exactly what was typed (or the
+    only one left), as a person would. Found on a practice shop (blind set 3): its sign-in has two of
+    them; the agent typed the username and password, never picked them, and the login failed."""
     try:
-        value = target.input_value(timeout=1_000)
+        if not target.evaluate(_COMBOBOX_JS, timeout=ACTION_TIMEOUT_MS):
+            return ""
     except PlaywrightError:
-        return  # not a form field (contenteditable): nothing to read back
-    if _digits(value) != _digits(text):
-        # A field that formats as you type ("98765 43210", "4111 1111 1111 1111") rewrote or dropped
-        # the value fill() set all at once. Typed key by key, like a person, its script keeps up.
-        target.fill("", timeout=ACTION_TIMEOUT_MS)
-        target.press_sequentially(text, delay=30, timeout=ACTION_TIMEOUT_MS + 60 * len(text))
+        return ""
+    want = " ".join(typed.split()).casefold()
+    deadline = time.monotonic() + CHOICES_WAIT_MS / 1000
+    while True:
+        handle = target.evaluate_handle(_CHOICES_JS, timeout=ACTION_TIMEOUT_MS)
+        try:
+            props = handle.get_properties()
+            choices = [props[key].as_element() for key in sorted((k for k in props if k.isdigit()), key=int)]
+            texts = [" ".join((c.inner_text() or "").split()) for c in choices]
+            if choices or time.monotonic() > deadline:
+                exact = [c for c, t in zip(choices, texts) if t.casefold() == want]
+                pick = exact[0] if len(exact) == 1 else choices[0] if len(choices) == 1 and want in texts[0].casefold() else None
+                if pick is not None:
+                    shown = texts[choices.index(pick)]
+                    pick.click(timeout=ACTION_TIMEOUT_MS)
+                    return f'picked "{shown}" from the list the field opened'
+                if choices:
+                    listed = ", ".join(f'"{t}"' for t in texts[:8])
+                    return f"the field opened a list of choices ({listed}); click the one you mean"
+                return ""
+        finally:
+            handle.dispose()
+        page.wait_for_timeout(100)
 
 
 def _fill_code_boxes(target: Locator, code: str) -> bool:

@@ -96,6 +96,12 @@ def export_playwright(spec: Spec, recording: Recording) -> str:
                 lines.append(f"  await {target}.fill({value_ts(action.text or '')});")
             case "select":
                 lines.append(f"  await {target}.selectOption({{ label: {js(action.value or '')} }});")
+            case "double_click":
+                source = target or f"page.getByText({js(action.text or '')}).first()"
+                lines.append(f"  await {source}.dblclick();")
+            case "drag":
+                source = target or f"page.getByText({js(action.text or '')}).first()"
+                lines.append(f"  await {source}.dragTo(page.getByText({js(action.to_text or '')}).first());")
             case "press":
                 lines.append(f"  await page.keyboard.press({js(action.key or '')});")
             case "scroll":

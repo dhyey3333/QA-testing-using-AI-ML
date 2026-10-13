@@ -42,6 +42,7 @@ class Step:
     screenshot: str | None = None  # file name inside the run folder
     target_label: str = ""  # the element's label when it was acted on
     locators: list[dict] = field(default_factory=list)  # how to find that element again (see locators.py)
+    note: str = ""  # what the action did besides the obvious, e.g. picked an option from a searchable dropdown
 
     def history_line(self) -> str:
         return f"{self.index}. {self.description} -> {self.outcome}"

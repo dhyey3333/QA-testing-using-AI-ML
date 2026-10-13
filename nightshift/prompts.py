@@ -40,6 +40,8 @@ Reply with exactly one JSON object and nothing else. One of:
 {"thought": "<one short sentence>", "action": "click", "id": 12}
 {"thought": "...", "action": "type", "id": 4, "text": "{{email}}"}
 {"thought": "...", "action": "select", "id": 7, "value": "Pune"}
+{"thought": "...", "action": "double_click", "id": 5}
+{"thought": "...", "action": "drag", "id": 3, "to": 8}
 {"thought": "...", "action": "press", "key": "Enter"}
 {"thought": "...", "action": "scroll", "direction": "down"}
 {"thought": "...", "action": "back"}
@@ -47,6 +49,7 @@ Reply with exactly one JSON object and nothing else. One of:
 {"thought": "...", "action": "wait"}
 {"thought": "...", "action": "pass", "reason": "<what you see that proves each expected result>"}
 {"thought": "...", "action": "fail", "reason": "<the bug, written like a bug report title>"}
+{"thought": "...", "action": "stuck", "reason": "<the step you can't do, and why>"}
 
 Rules:
 1. Use only ids from the current ELEMENTS list. They change from turn to turn.
@@ -69,6 +72,11 @@ e.g. 2031-01-31 or 14:30.
 was not sent because of that field. Pressing submit again changes nothing.
 10. A cookie banner, sign-up popup or ad that covers the page is not part of the test and \
 not a bug: close it (its ×, Close, No thanks or Reject button, or press Escape) and carry on.
+11. Something you can see that has no id in ELEMENTS (a plain box or picture) can still be \
+double-clicked or dragged by the text it shows: {"action": "double_click", "text": "Double \
+click me"}, {"action": "drag", "text": "Drag me", "to": "Drop here"}.
+12. If a step needs something none of these actions can do, reply "stuck": the test \
+couldn't be done, which is not a bug in the app. Never "fail" because of the ELEMENTS list.
 """
 
 JUDGE_PROMPT = """\
@@ -132,6 +140,8 @@ Reply with exactly one JSON object and nothing else. One of:
 {"thought": "<one short sentence>", "action": "click", "id": 12}
 {"thought": "...", "action": "type", "id": 4, "text": "..."}
 {"thought": "...", "action": "select", "id": 7, "value": "..."}
+{"thought": "...", "action": "double_click", "id": 5}
+{"thought": "...", "action": "drag", "id": 3, "to": 8}
 {"thought": "...", "action": "press", "key": "Enter"}
 {"thought": "...", "action": "scroll", "direction": "down"}
 {"thought": "...", "action": "back"}
@@ -145,6 +155,8 @@ Rules:
 4. Don't report the same problem twice (see FINDINGS SO FAR).
 5. A dropdown (a select element, shown with options=[...]) needs the "select" action \
 with one of its options. A date or time field needs "type", e.g. 2031-01-31 or 14:30.
+6. Something you can see that has no id (a plain box or picture) can still be \
+double-clicked or dragged by its text: {"action": "drag", "text": "Drag me", "to": "Drop here"}.
 """
 
 GENERATE_PROMPT = """\

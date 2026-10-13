@@ -47,8 +47,10 @@ _OBSERVE_JS = r"""
   const SELECTOR = [
     'a[href]', 'button', 'input', 'select', 'textarea', 'summary',
     '[role="button"]', '[role="link"]', '[role="checkbox"]', '[role="radio"]',
-    '[role="tab"]', '[role="menuitem"]', '[role="switch"]', '[role="option"]',
+    '[role="tab"]', '[role="menuitem"]', '[role="switch"]', '[role="option"]', '[role="treeitem"]',
     '[contenteditable="true"]', '[onclick]', '[tabindex]:not([tabindex="-1"])',
+    // A searchable dropdown's choices (react-select numbers them "react-select-2-option-0" and gives no role).
+    '[id*="-option-"]',
   ].join(',');
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
 
@@ -136,6 +138,14 @@ _OBSERVE_JS = r"""
     found.push({ el, target, extra, inView: r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth });
   };
   const toggle = (el) => el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio');
+  // The line of text a control sits on, for one with no name of its own (or only a generic one).
+  const rowText = (el) => {
+    for (let node = el.parentElement, depth = 0; node && depth < 3; node = node.parentElement, depth++) {
+      const text = clean((node.innerText || '').split('\n').find((line) => clean(line)) || '');
+      if (text) return text.slice(0, 80);
+    }
+    return '';
+  };
   for (const el of deepAll(SELECTOR)) {
     const r = el.getBoundingClientRect();
     if (isVisible(el) && !(toggle(el) && (r.width < 4 || r.height < 4))) {
@@ -147,6 +157,16 @@ _OBSERVE_JS = r"""
       // reported broken in every benchmark run, on every model.
       const label = [...(el.labels || [])].find(isVisible);
       if (label) add(el, label);
+      else if (r.width >= 8 && r.height >= 8 && (!el.checkVisibility || el.checkVisibility())
+               && getComputedStyle(el).visibility !== 'hidden') {
+        // No label to stand in for it, but the see-through input itself sits on top of what is drawn
+        // and takes the click. Found on a to-do app (blind set 3): each item's tick box is an
+        // invisible 40px input over a picture of one, so it was never offered; the agent pressed
+        // "Mark all as complete" instead and blamed the app for clearing both items. Named with the item
+        // it ticks: their own names were a generic "Toggle Todo".
+        const own = labelOf(el), row = rowText(el);
+        add(el, el, { label: own && row && !row.toLowerCase().includes(own.toLowerCase()) ? `${own} — ${row}` : own || row });
+      }
     }
   }
 
@@ -180,6 +200,30 @@ _OBSERVE_JS = r"""
     if (handler || getComputedStyle(el).cursor === 'pointer') add(el, el, { role: 'link' });
   }
 
+  // Things a person can see are clickable or draggable but the selectors above can't: a <div> or <span>
+  // the page gives a pointer cursor, a Bootstrap trigger, something marked draggable. Found on two
+  // practice sites (blind set 3): a shop's "Add to cart" is a <div> with a pointer cursor and a pop-up's
+  // button is a <span data-toggle="modal">; neither was offered, and three working tests failed. Only
+  // where the pointer starts (the cursor is inherited), small enough to be a control, and named.
+  let looked = 0, added = 0;
+  for (const el of deepAll('div, span, li, p, img, svg, i, label, td, h1, h2, h3, h4, h5, h6, figure, section, article')) {
+    if (++looked > 4000 || added >= 30) break;
+    if (taken.has(el) || (el.tagName === 'LABEL' && el.control && taken.has(el.control))) continue;
+    const s = getComputedStyle(el);
+    const cls = el.getAttribute('class') || '';
+    const draggable = el.getAttribute('draggable') === 'true' || /(^|[\s_-])draggable/i.test(cls)
+      || s.cursor === 'move' || s.cursor === 'grab';
+    const pointer = s.cursor === 'pointer' && (!el.parentElement || getComputedStyle(el.parentElement).cursor !== 'pointer');
+    if (!draggable && !pointer && !el.hasAttribute('data-toggle') && !el.hasAttribute('data-bs-toggle')) continue;
+    if (!isVisible(el) || inside(el)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width * r.height > innerWidth * innerHeight * 0.4) continue;  // a whole panel, not one control
+    const label = labelOf(el);
+    if (!label || label.length > 80) continue;
+    add(el, el, { role: draggable ? 'draggable' : 'button' });
+    added++;
+  }
+
   // One-time-code boxes: four to eight one-character inputs side by side. Nightshift types the whole
   // code into the first one and spreads it over the boxes (actions.py), so that is what the model is told.
   const narrow = (i) => i.tagName === 'INPUT' && ['text', 'tel', 'number', 'password'].includes(i.type)
@@ -202,8 +246,10 @@ _OBSERVE_JS = r"""
   // with that label (a product card, a table row), named by its heading or first text line.
   const PRICE = /^(rs\.?|inr|₹|\$|€|£)?\s*[\d.,]+\s*(rs\.?|inr|₹|\$|€|£)?$/i;
   const itemName = (el, label) => {
-    const same = (node) => [...node.querySelectorAll(SELECTOR)]
-      .some((other) => other !== el && isVisible(other) && labelOf(other).toLowerCase() === label);
+    // Every offered control counts, not only the selector's: a shop's "Add to cart" <div>s (offered for
+    // their pointer cursor) were all named after the whole catalogue's heading.
+    const same = (node) => found.some(({ el: other }, j) => other !== el && node.contains(other)
+      && labels[j].toLowerCase() === label);
     let item = null;
     for (let node = el.parentElement, depth = 0; node && node !== document.body && depth < 8;
          node = node.parentElement, depth++) {
@@ -226,7 +272,7 @@ _OBSERVE_JS = r"""
     const id = firstId + i;  // an iframe's elements are numbered after the page's
     target.setAttribute('data-ns-id', String(id));
     const tag = el.tagName.toLowerCase();
-    let label = labels[i];
+    let label = labels[i] || (toggle(el) ? rowText(el) : '');
     const field = ['select', 'textarea'].includes(tag)
       || (tag === 'input' && !['submit', 'button', 'reset', 'image'].includes(el.type));
     if (label && counts[label.toLowerCase()] > 1 && !field) {

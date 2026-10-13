@@ -8,6 +8,7 @@
                    tester could not follow them
     ENV_ISSUE      nothing was tested: the site or a gateway in front of it was down,
                    a bot check stood in the way, or the model could not be reached
+                   or its replies were unusable (that is the tester's problem, not the test's)
 
 Found on public demo sites: a Cloudflare 522 (the site's own server never answered)
 and a bot-check page were both reported as app failures. An environment problem is
@@ -37,7 +38,7 @@ _ENV_PAGE = re.compile(
     r"pardon our interruption|request unsuccessful\. incapsula",
     re.IGNORECASE,
 )
-_ENV_REASON = re.compile(r"net::ERR_|page\.goto:|model call failed|judge call failed", re.IGNORECASE)
+_ENV_REASON = re.compile(r"net::ERR_|page\.goto:|model call failed|judge call failed|unusable replies", re.IGNORECASE)
 
 
 def environment_problem(result: RunResult) -> str:

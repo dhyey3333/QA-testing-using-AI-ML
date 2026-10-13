@@ -7,7 +7,8 @@ One run:
   2. Otherwise the agent reads the page, picks one action, acts, and repeats until
      it says pass or fail.
   3. A pass counts only once the judge has proven every expected result on the
-     page (judge.py) and the browser saw no uncaught JS error or 5xx on the way.
+     page (judge.py) and the browser saw no 5xx, and no uncaught JS error right after
+     an action, on the way (one thrown while a page loads is reported, see checks.listen).
 With retries on, a failure is re-run by a fresh agent before it is reported.
 """
 
@@ -25,12 +26,13 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urljoin, urlsplit
 
 from playwright.sync_api import Browser, Page, sync_playwright
 from playwright.sync_api import Error as PlaywrightError
 
 from .actions import TEST_KINDS, ActionFailed, InvalidAction, execute, settle, track_network, validate_action
-from .checks import check_page, listen
+from .checks import check_page, listen, page_key
 from .inbox import (DYNAMIC, InboxError, extract_code, extract_link, inbox_for, phone_number, recipient,
                     sms_inbox_for, wait_for_email)
 from .export import write_export
@@ -70,7 +72,9 @@ class RunOptions:
     record: bool = True
     video: bool = False
     context: dict = field(default_factory=dict)  # extra browser-context options, e.g. a device profile
-    js_errors: str = "fail"  # "warn": uncaught JS errors are warnings, not failures (a spec's js_errors wins)
+    # Uncaught JS errors (a spec's js_errors wins): "report" fails on one right after an action and reports one
+    # thrown while a page loads; "fail" fails on both; "warn" makes both warnings (checks.listen).
+    js_errors: str = "report"
     block_ads: bool = True  # ad networks' requests never load (observe.block_ads)
     visual: str = "warn"  # the visual check with saved paths: off | warn | fail (a spec's visual wins)
     update_visual: bool = False  # make this run's final screens the approved ones
@@ -490,7 +494,8 @@ class _Run:
             check_page(self.page, self.result, self.seen_pages)
             fingerprint = observation.fingerprint()
             if steps and steps[-1].outcome == PENDING:
-                steps[-1].outcome = "changed" if fingerprint != last_fingerprint else "no change"
+                steps[-1].outcome = ("changed" if fingerprint != last_fingerprint else "no change") \
+                    + (f"; {steps[-1].note}" if steps[-1].note else "")
                 self.log(_step_line(steps[-1]))
             last_fingerprint = fingerprint
 
@@ -526,6 +531,7 @@ class _Run:
                 raw = self.model.decide(context)
                 action = validate_action(raw, observation, self.spec.data, TEST_KINDS)
                 self._check_typed_value(action, observation)
+                self._check_goto(action)
             except ModelError as exc:
                 return "error", f"model call failed: {exc}"
             except InvalidAction as exc:
@@ -541,9 +547,23 @@ class _Run:
 
             element = observation.element(action.id) if action.id is not None else None
             label = element.label if element else ""
-            step = Step(index, action, action.describe(label), thought=str(raw.get("thought") or "").strip()[:300],
+            to = observation.element(action.to_id) if action.to_id is not None else None
+            description = action.describe(label, to.label if to else "", masked=bool(element and element.type == "password"))
+            step = Step(index, action, description, thought=str(raw.get("thought") or "").strip()[:300],
                         model_ms=_ms_since(started), screenshot=shot_name, target_label=label)
             steps.append(step)
+
+            if action.kind == "stuck" or (action.kind == "fail" and _TOOL_BLAME.search(action.reason or "")):
+                if "stuck" not in self.asked and len(steps) + 2 <= self.spec.max_steps:
+                    self.asked.add("stuck")
+                    step.outcome = ("not yet: before giving up, look again. Is it in ELEMENTS under another name, "
+                                    "further down the page (scroll), or something you can reach by its text with "
+                                    "double_click or drag? If you really can't do the step, say stuck again")
+                    self.log(_step_line(step))
+                    continue
+                step.outcome = "verdict"
+                self.log(_step_line(step))
+                return self.cannot_test(action.reason or "(no reason given)", observation, shot)
 
             if action.kind in ("pass", "fail"):
                 if (not_yet := self._before_verdict(action)) is not None:
@@ -568,7 +588,7 @@ class _Run:
                 step.locators = describe_target(self.page, action.id, label)
             started = time.perf_counter()
             try:
-                execute(self.page, action, self._data_for(action))
+                step.note = execute(self.page, action, self._data_for(action))
                 settle(self.page)
                 self._follow_new_tab()
             except ActionFailed as exc:
@@ -622,6 +642,33 @@ class _Run:
         if label and earlier is not None:
             raise InvalidAction(f'[{action.id}] "{label}" already got {earlier.action.text} from the test data; '
                                 "type test data as its placeholder, never a made-up value")
+
+    def _check_goto(self, action) -> None:
+        """A test goes only to addresses its steps name, the start page, the site's home, or a page it has
+        already been on. Found on a practice shop (blind set 3): the agent couldn't work the sign-in form,
+        typed a made-up "/login/", and filed the 404 it got as a bug in the app."""
+        if action.kind != "goto" or action.value == "{{email_link}}":
+            return
+        path = action.value or "/"
+        named = " ".join(self.spec.steps)
+        bare = path.rstrip("/")
+        if path in ("/", urlsplit(self.spec.url).path or "/") or (bare and bare in named) \
+                or page_key(urljoin(self.page.url, path)) in self.seen_pages:
+            return
+        raise InvalidAction(f"no step names the address {path}; use the site's own links and buttons. A made-up "
+                            "address that doesn't exist is not a bug in the app")
+
+    def cannot_test(self, reason: str, observation: Observation, shot: bytes) -> tuple[str, str]:
+        """The agent can't do a step with the actions it has: the test couldn't be carried out, which is
+        not a failure of the app (found on a practice site, blind set 3: a box with no id and no
+        double-click was filed as a bug). Unless the judge proves every expected result anyway."""
+        if self.options.judge and not self.result.app_errors:
+            verdict, judged_reason = self.finish(observation, shot)
+            if verdict == "pass":
+                self.result.warnings.insert(0, f"the agent couldn't do a step ({reason}), but the judge proved every "
+                                               "expected result on the page, so the spec passes")
+                return "pass", judged_reason
+        return "error", f"the tester couldn't do a step: {reason}"
 
     def _unfinished_form(self, step: Step) -> str:
         """The empty fields and unticked boxes in the form of the control the agent keeps pressing.
@@ -842,6 +889,13 @@ def _still_shown(quote: str, page: str, expected: str) -> bool:
         return False
     pattern = r"\d+".join(re.escape(part) for part in re.split(r"\d+", normalize(quote)))
     return re.search(pattern, normalize(page)) is not None
+
+
+# A "fail" that blames the tester's own tools, not the app: an element missing from its list, an action it
+# doesn't have. Found on a practice site (blind set 3): two such complaints were filed as bugs.
+_TOOL_BLAME = re.compile(r"\belements? list\b|\bnot (?:in|listed in|offered in|provided in|available in|among) "
+                         r"(?:the )?elements\b|\bas an interactive element\b|\bno (?:way|action) to "
+                         r"(?:double[- ]?click|drag|hover)\b|\bcan(?:not|'t) (?:double[- ]?click|drag|hover)\b", re.I)
 
 
 def _page_key(observation: Observation) -> str:
