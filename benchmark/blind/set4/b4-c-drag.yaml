@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: pass. (needs a drag)
+name: b4-c-drag
+url: https://commitquality.com/practice-drag-and-drop
+steps:
+- drag the Drag me! box onto the big box
+expect:
+- the page says Success!
+max_steps: 6

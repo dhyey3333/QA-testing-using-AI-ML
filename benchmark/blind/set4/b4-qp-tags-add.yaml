@@ -1,0 +1,9 @@
+# Blind set 4. Right verdict: pass.
+name: b4-qp-tags-add
+url: https://qaplayground.dev/apps/tags-input-box/
+steps:
+- type react into the tags box and press Enter
+expect:
+- react is one of the tags
+- the page says 7 tags are remaining
+max_steps: 6

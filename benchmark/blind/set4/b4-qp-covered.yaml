@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: pass.
+name: b4-qp-covered
+url: https://qaplayground.dev/apps/covered/
+steps:
+- click the YOU FOUND ME! button
+expect:
+- the page says Mission accomplished
+max_steps: 6

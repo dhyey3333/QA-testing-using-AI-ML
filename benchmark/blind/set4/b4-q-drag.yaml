@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: pass. (needs a drag; the page throws 'handleToggleNavProfile is not defined' on load and the flow still works; errors on load are reported, not fatal (2026-10-13))
+name: b4-q-drag
+url: https://www.qa-practice.com/elements/dragndrop/boxes
+steps:
+- drag the Drag me box onto Drop here
+expect:
+- the target says Dropped!
+max_steps: 6

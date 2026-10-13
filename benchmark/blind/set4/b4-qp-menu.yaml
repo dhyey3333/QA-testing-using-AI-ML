@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: pass. (the icons have no names; it needs the screenshot)
+name: b4-qp-menu
+url: https://qaplayground.dev/apps/multi-level-dropdown/
+steps:
+- open the dropdown menu from the last icon in the top bar
+expect:
+- the menu shows My Profile and Settings
+max_steps: 6

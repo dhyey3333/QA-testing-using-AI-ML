@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: pass.
+name: b4-c-click
+url: https://commitquality.com/practice-general-components
+steps:
+- press Click me
+expect:
+- the page says Button clicked
+max_steps: 4

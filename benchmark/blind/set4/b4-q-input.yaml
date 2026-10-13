@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: pass. (the page throws 'handleToggleNavProfile is not defined' on load and the flow still works; errors on load are reported, not fatal (2026-10-13))
+name: b4-q-input
+url: https://www.qa-practice.com/elements/input/simple
+steps:
+- type hello into Text string and press Enter
+expect:
+- 'the page says Your input was: hello'
+max_steps: 5

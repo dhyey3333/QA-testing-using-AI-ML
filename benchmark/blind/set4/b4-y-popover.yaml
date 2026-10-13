@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: pass.
+name: b4-y-popover
+url: https://example.cypress.io/commands/actions
+steps:
+- press Click to toggle popover
+expect:
+- a popover says This popover shows up on click
+max_steps: 6

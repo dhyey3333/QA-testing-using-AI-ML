@@ -1,0 +1,9 @@
+# Blind set 4. Right verdict: pass.
+name: b4-qp-budget
+url: https://qaplayground.dev/apps/budget-tracker/
+steps:
+- press NEW ENTRY
+- type 25 as the amount of the new entry
+expect:
+- the total is $25.00
+max_steps: 8

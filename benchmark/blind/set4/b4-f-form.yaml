@@ -1,0 +1,13 @@
+# Blind set 4. Right verdict: pass.
+name: b4-f-form
+url: https://formy-project.herokuapp.com/form
+steps:
+- fill in the form with the test data, and pick any education level, sex and years of experience
+- press Submit
+expect:
+- the page says The form was successfully submitted!
+data:
+  first_name: Asha
+  last_name: Rao
+  job_title: Tester
+max_steps: 14

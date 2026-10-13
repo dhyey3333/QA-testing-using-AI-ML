@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: fail.
+name: b4-c-wrong-click
+url: https://commitquality.com/practice-general-components
+steps:
+- press Click me
+expect:
+- the page says Button double clicked
+max_steps: 4

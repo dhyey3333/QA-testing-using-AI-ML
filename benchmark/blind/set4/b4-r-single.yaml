@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: pass. (a searchable dropdown (react-select))
+name: b4-r-single
+url: https://react-select.com/home
+steps:
+- in the Single example, choose Purple
+expect:
+- the Single dropdown shows Purple
+max_steps: 6

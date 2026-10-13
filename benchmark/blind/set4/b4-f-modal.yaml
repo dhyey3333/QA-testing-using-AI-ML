@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: pass.
+name: b4-f-modal
+url: https://formy-project.herokuapp.com/modal
+steps:
+- press Open modal
+expect:
+- a popup says Some text here
+max_steps: 5

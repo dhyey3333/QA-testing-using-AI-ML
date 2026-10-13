@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: pass.
+name: b4-f-dropdown
+url: https://formy-project.herokuapp.com/dropdown
+steps:
+- press Dropdown button
+expect:
+- the menu lists Autocomplete and Datepicker
+max_steps: 5

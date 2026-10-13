@@ -1,0 +1,9 @@
+# Blind set 4. Right verdict: pass. (the page throws 'handleToggleNavProfile is not defined' on load and the flow still works; errors on load are reported, not fatal (2026-10-13))
+name: b4-q-checkbox
+url: https://www.qa-practice.com/elements/checkbox/single_checkbox
+steps:
+- tick Select me or not
+- press Submit
+expect:
+- 'the page says Selected checkboxes: select me or not'
+max_steps: 6

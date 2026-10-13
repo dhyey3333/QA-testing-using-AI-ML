@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: pass.
+name: b4-qp-tags-remove-all
+url: https://qaplayground.dev/apps/tags-input-box/
+steps:
+- press Remove All
+expect:
+- the page says 10 tags are remaining
+max_steps: 4

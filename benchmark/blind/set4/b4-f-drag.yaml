@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: pass. (needs a drag)
+name: b4-f-drag
+url: https://formy-project.herokuapp.com/dragdrop
+steps:
+- drag the image into the box
+expect:
+- the box says Dropped!
+max_steps: 6

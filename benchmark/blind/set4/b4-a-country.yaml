@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: pass. (a searchable dropdown (select2))
+name: b4-a-country
+url: https://demo.automationtesting.in/Register.html
+steps:
+- choose India in Select Country
+expect:
+- Select Country shows India
+max_steps: 8

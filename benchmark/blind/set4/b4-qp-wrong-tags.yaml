@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: fail. (it says 7)
+name: b4-qp-wrong-tags
+url: https://qaplayground.dev/apps/tags-input-box/
+steps:
+- type react into the tags box and press Enter
+expect:
+- the page says 8 tags are remaining
+max_steps: 6

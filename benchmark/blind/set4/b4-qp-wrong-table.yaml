@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: fail.
+name: b4-qp-wrong-table
+url: https://qaplayground.dev/apps/dynamic-table/
+steps:
+- find Spider-Man in the table
+expect:
+- Spider-Man's real name is Tony Stark
+max_steps: 4

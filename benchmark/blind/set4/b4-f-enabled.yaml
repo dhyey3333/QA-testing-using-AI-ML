@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: pass. (the state is only in the page's markup)
+name: b4-f-enabled
+url: https://formy-project.herokuapp.com/enabled
+steps:
+- read the page
+expect:
+- the first text box is disabled
+max_steps: 4

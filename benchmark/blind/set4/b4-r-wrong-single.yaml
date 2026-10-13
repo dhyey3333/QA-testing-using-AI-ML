@@ -1,0 +1,8 @@
+# Blind set 4. Right verdict: fail. (it shows Ocean before the choice, so only a check of the final state is right)
+name: b4-r-wrong-single
+url: https://react-select.com/home
+steps:
+- in the Single example, choose Purple
+expect:
+- the Single dropdown shows Ocean
+max_steps: 6
