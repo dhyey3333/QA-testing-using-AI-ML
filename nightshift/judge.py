@@ -61,6 +61,47 @@ def is_absence_claim(expected: str) -> bool:
     return bool(_NEGATED_RE.search(expected[: verb.start()] if verb else expected))
 
 
+# Words that carry no meaning of their own in a message ("the page says the item was added to your cart").
+_STOP = {"the", "and", "for", "you", "your", "yours", "was", "were", "has", "have", "had", "been", "are", "with",
+         "that", "this", "these", "those", "from", "its", "will", "can", "could", "would", "should", "shall", "may",
+         "might", "must", "but", "into", "onto", "than", "then", "there", "their", "them", "they", "his", "her",
+         "our", "who", "what", "which", "when", "where", "how", "any", "some", "now", "just", "also", "very", "too",
+         "only", "not", "text", "page", "does", "did", "being"}
+_MESSAGE_NEGATION_RE = re.compile(r"\b(not|no|never|cannot|can't|couldn't|won't|wasn't|weren't|didn't|doesn't|"
+                                  r"isn't|aren't|unable|without)\b", re.IGNORECASE)
+# Verbs that introduce a message, not a value: "shows 2 items" is a count ("Cart (2)" proves it), and names
+# and numbers already have their own rule. Found on the demo shop: with "shows" included, "the header's cart
+# link shows 2 items" and "the header shows a "Log in" link again" failed on a working shop.
+_MESSAGE_VERB_RE = re.compile(r"\b(says|say|saying|reads|read|states)\b", re.IGNORECASE)
+_SAID_NEGATIVE_RE = re.compile(r"\b(not|no|never|cannot|can't|couldn't|won't|didn't|unable|fail|failed|failure|"
+                               r"error|invalid|wrong|denied|rejected|declined|incorrect)\b", re.IGNORECASE)
+
+
+def message_unsaid(expected: str, said: str, proven_absent: bool = False) -> str:
+    """For "<something> says / reads / states <message>": what of the message its evidence never says, or ""
+    when the evidence says it. Found on a practice site (the blind set 3 recheck): for "the page says your
+    message could not be sent" the judge quoted "Error: all fields are required" (a real line, about something
+    else) and the test passed. The key-term rule saw no terms in an all-lowercase message, so nothing stopped it.
+
+    At least half of the message's words must be in the evidence, by their stem ("placed" for "place"), and a
+    negative message ("could not be sent") needs evidence that says something negative, or text the judge
+    proved absent. Paraphrase stays possible; quoting a different message doesn't.
+    """
+    verb = _MESSAGE_VERB_RE.search(expected)
+    if not verb:
+        return ""
+    message = expected[verb.end():]
+    words = list(dict.fromkeys(w for w in re.findall(r"[^\W\d_]{3,}", normalize(message)) if w not in _STOP))
+    tokens = re.findall(r"[^\W_]+", normalize(said))
+    stem = lambda word: word[:4] if len(word) >= 5 else word  # noqa: E731
+    unsaid = [w for w in words if not any(token.startswith(stem(w)) for token in tokens)]
+    if words and len(words) - len(unsaid) < math.ceil(len(words) / 2):
+        return "never says " + ", ".join(f'"{w}"' for w in unsaid)
+    if _MESSAGE_NEGATION_RE.search(message) and not proven_absent and not _SAID_NEGATIVE_RE.search(said):
+        return "never says the negative part (not, unable, failed)"
+    return ""
+
+
 def key_terms(expected: str) -> list[str]:
     """The specific values an expected result names, which its evidence must mention.
 
@@ -231,7 +272,10 @@ def verify(raw: dict, spec: Spec, observation: Observation,
                        if needs_terms else [])
         out_of_bounds = [p for p in (bound_problem(b, [mask(q, spec.data) for q in grounded]) for b in bounds) if p]
         proven = grounded or [q for q in absent if q not in present]
-        if holds and (invented_numbers or present or unmentioned or out_of_bounds or not proven):
+        unsaid = (message_unsaid(expected, " ".join(mask(q, spec.data) for q in grounded),
+                                 proven_absent=bool([q for q in absent if q not in present]))
+                  if needs_terms and grounded else "")
+        if holds and (invented_numbers or present or unmentioned or out_of_bounds or not proven or unsaid):
             if not proven and not missing and not needs_terms:
                 # An absence claim with nothing to check. Small models leave "absent" empty even
                 # after "no evidence given"; telling them exactly what to put there works better.
@@ -250,6 +294,9 @@ def verify(raw: dict, spec: Spec, observation: Observation,
                                 "quote the text that shows it")
             if out_of_bounds and proven and not invented_numbers:
                 problems.append(f"check {index + 1} says it holds but {out_of_bounds[0]}; quote the number that shows it")
+            if unsaid and not (invented_numbers or present or unmentioned or out_of_bounds):
+                problems.append(f"check {index + 1} says it holds but its evidence {unsaid}: quote the text that "
+                                "says what was expected, or say it does not hold")
             holds = False
             why = "the judge could not point to it on the page" + (f" ({why})" if why else "")
         checks.append(Check(expected=expected, evidence=[q for q in evidence if q not in missing], why=why,

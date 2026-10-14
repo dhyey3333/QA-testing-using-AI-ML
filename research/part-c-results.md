@@ -710,3 +710,25 @@ stays open). Commit 9bc9602, 7 new tests, 299 pass.
 
 A fair score for these needs blind set 5. Still open: the judge accepting a quote that doesn't say what
 a lowercase "says ..." expectation states (the one false pass).
+
+## The judge's "says" hole (D59, 2026-10-15)
+
+The one false pass seen in the blind tests (blind set 3 recheck, w-wrong-contact): for "the page says your
+message could not be sent" the judge quoted "Error: all fields are required", and a broken flow passed.
+Now a "says / reads / states" claim needs at least half of its message's words in the quoted evidence (by
+stem), and a negative message needs evidence that says something negative or text proven absent
+(`judge.message_unsaid`, 12 tests). The first version also covered "shows"; it failed two working flows on
+the demo shop ("the header's cart link shows 2 items", proven by "Cart (2)"), so "shows" was left out.
+
+| | Before (D57/D58 code) | After (D59) |
+|---|---|---|
+| Shop: planted bugs / false alarms | 23/23, 0/13 | **23/23, 0/13** (the first version: 2/13) |
+| Clinic (holdout): bugs / false alarms | 8/8, 1/5 | **8/8, 1/5** (the same cancel-appointment) |
+| Public sites: pass / fail / environment | 26 / 0 / 3, 2 flaky | **28 / 0 / 2, 1 flaky** (a site timing out, then passing) |
+| Blind set 3 again (seen) | 28/30, **1 false pass** | **29/30, 0 false passes** (left: the colour-only double-click) |
+| Blind set 4 again (seen) | 26/30 at its blind run; 3 misses fixed since | **28/30**: all 23 working flows pass; 2 wrong expectations ran out of steps (errors, not passes) |
+
+Honestly: in the set 3 rerun the same situation came up (the agent skipped Comments and claimed a pass on
+"Error: all fields are required"), and this time the judge model refused it on its own. The new rule did not
+fire in any of these runs, so it caused no false alarm and caught nothing live; that it catches the recorded
+case is shown by its unit test with the exact quote. It is a backstop for the day the model gets it wrong.

@@ -656,3 +656,22 @@ it), run the cases, and file bugs against them. Nightshift now produces that cha
 - Runs from before sheets existed get theirs the first time the runs list or the run's page shows them,
   from the run's results (and, for tests, the test files as they are now). The runs list links each
   run's sheet ("Excel").
+
+## D59. A "says" claim needs evidence that says it
+The blind set 3 recheck passed a broken flow: for "the page says your message could not be sent" the judge
+quoted "Error: all fields are required", a real line about something else. The quote check proves a quote
+is on the page, and the key-term rule makes a claim's names, numbers and quoted text appear in its evidence;
+an all-lowercase message has none of those, so nothing tied the quote to the claim.
+
+Now, for "<something> says / reads / states <message>", at least half of the message's
+own words (minus filler like "the", "your", "was") must be in the quoted evidence, matched by stem
+("placed" for "place"), and a negative message ("could not be sent") needs evidence that says something
+negative (not, unable, failed, error...) or text the judge proved absent. It is code, not prompt: the
+judge's answer is checked after it is given, and a failing check goes back to the judge once with the
+reason, like every other proof rule (`judge.message_unsaid`). Paraphrase still passes ("Your order has
+been placed" for "the order was placed"); quoting a different message, or the opposite one, doesn't.
+The cost: a test worded far from the page ("the payment failed" for a page that says "Transaction
+declined") now fails until someone rewords it, which is the right way round for a tool whose promise is
+that a pass is proven. "Shows" and "displays" are left out on purpose: they state values ("the cart link
+shows 2 items", proven by "Cart (2)"), and the first version that included them failed two working flows
+on the demo shop.
