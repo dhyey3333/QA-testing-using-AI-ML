@@ -510,7 +510,7 @@ function runsTab(section, slug, data, busy) {
         <div class="muted small">${esc({ manual: "Started by hand", nightly: "Nightly", explore: "Explore", generate: "Generate tests" }[run.trigger] || run.trigger)}${run.target ? ` · ${esc(run.target)}` : ""}</div></td>
       <td class="bar-cell hide-sm">${run.status === "done" && !["explore", "generate"].includes(run.trigger) ? resultBar(run) : ""}<div class="counts small">${countsLine(run)}</div></td>
       <td class="narrow"><div title="${esc(fullTime(run.queued))}">${esc(ago(run.queued))}</div><div class="muted small">${esc(took(run))}</div></td>
-      <td class="narrow"><div class="links">${linkButton(run.links.client_report, "Client report", "report")}${linkButton(run.links.report, "Full report", "file")}${linkButton(run.links.findings, "Findings", "list")}${linkButton(run.links.log, "Log", "log")}</div></td>
+      <td class="narrow"><div class="links">${linkButton(run.links.client_report, "Client report", "report")}${linkButton(run.links.report, "Full report", "file")}${linkButton(run.links.findings, "Findings", "list")}${linkButton(run.links.sheet, "Excel", "file")}${linkButton(run.links.log, "Log", "log")}</div></td>
     </tr>`).join("");
   section.innerHTML = `
     <details class="card panel" id="explore-panel">
@@ -588,6 +588,13 @@ async function runDetail(section, slug, id) {
       ${d.issues.length ? `<span class="muted small">Filed: ${d.issues.map((i) => `<a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.key)}</a>`).join(", ")}</span>` : ""}
     </div>
     ${d.jira && d.slack ? "" : `<p class="muted small">To use Jira or Slack, add under Settings → Secrets: ${[d.jira ? "" : "JIRA_URL, JIRA_PROJECT, JIRA_EMAIL, JIRA_API_TOKEN", d.slack ? "" : "SLACK_WEBHOOK_URL"].filter(Boolean).join("; ")}.</p>`}` : ""}
+    ${r.trigger === "explore" && d.sheet.xlsx ? `<div class="actions">
+      <a class="btn secondary" href="${esc(d.sheet.xlsx)}" download>${icon("file")}Findings (Excel)</a>
+      ${d.sheet.csv ? `<a class="btn secondary" href="${esc(d.sheet.csv)}" download>${icon("file")}CSV</a>` : ""}
+      <button type="button" class="secondary" id="jira" ${d.jira ? "" : "disabled"}>${icon("ticket")}Send to Jira</button>
+      ${d.issues.length ? `<span class="muted small">Filed: ${d.issues.map((i) => `<a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.key)}</a>`).join(", ")}</span>` : ""}
+    </div>
+    ${d.jira ? "" : `<p class="muted small">To send findings to Jira, add under Settings → Secrets: JIRA_URL, JIRA_PROJECT, JIRA_EMAIL, JIRA_API_TOKEN.</p>`}` : ""}
     <h2>What happened</h2>
     ${rows ? `<div class="table-wrap"><table><thead><tr><th></th><th>Test</th><th>Why</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
       : `<div class="card empty">${icon(r.trigger === "explore" ? "compass" : r.trigger === "generate" ? "sparkles" : "clock")}<h3>${

@@ -422,6 +422,48 @@ def test_a_run_from_before_sheets_gets_one_when_its_page_opens(hosted):
     assert "1. buy the coffee" in sheet and "Pass" in sheet and "SHOP_PASSWORD" not in sheet
 
 
+def test_an_old_exploration_gets_its_findings_sheet_and_can_be_sent_to_jira(hosted):
+    from test_jira import FakeJira
+
+    admin = client(hosted, ADMIN)
+    slug = admin.post("/api/projects", json={"client": "Acme"}).json()["project"]["slug"]
+    project = hosted.store.project(slug)
+    files = ProjectFiles(hosted.data, slug)
+    run_id = hosted.store.add_run(project["id"], "explore")
+    folder = files.run_folder(run_id) / "explore-20310105-020000"
+    folder.mkdir(parents=True)
+    (folder / "step-02.jpg").write_bytes(b"jpeg: a screenshot")
+    explore = {"url": "https://shop.test/", "model": "m", "findings": [
+        {"severity": "bug", "title": "HTTP 500 on POST /cart", "details": "", "step": 2, "url": "https://shop.test/cart",
+         "screenshot": "step-02.jpg"},
+        {"severity": "warning", "title": "slow: GET /app.js took 4.1s", "details": "", "step": 1, "url": "https://shop.test/"}],
+        "steps": [{"index": 1, "action": {"kind": "click"}, "description": 'click [3] "Shop"', "outcome": "changed"},
+                  {"index": 2, "action": {"kind": "click"}, "description": 'click [9] "Add to cart"', "outcome": "changed"}]}
+    (folder / "explore.json").write_text(json.dumps(explore), encoding="utf-8")
+    (folder / "findings.md").write_text("# findings", encoding="utf-8")
+    hosted.store.update_run(run_id, status="done", run_dir="explore-20310105-020000")
+
+    runs = admin.get(f"/api/projects/{slug}").json()["runs"]
+    links = next(r["links"] for r in runs if r["id"] == run_id)
+    assert links["sheet"].endswith("/findings.xlsx") and admin.get(links["sheet"]).status_code == 200
+    assert "HTTP 500 on POST /cart" in admin.get(links["csv"]).text
+    assert set(admin.get(f"/api/projects/{slug}/runs/{run_id}").json()["sheet"]) == {"xlsx", "csv"}
+
+    jira = FakeJira(cloud=True)
+    threading.Thread(target=jira.serve_forever, daemon=True).start()
+    try:
+        for name, value in {"JIRA_URL": f"http://127.0.0.1:{jira.server_port}", "JIRA_PROJECT": "SHOP",
+                            "JIRA_EMAIL": "qa@agency.test", "JIRA_API_TOKEN": "fake-token"}.items():
+            admin.put(f"/api/projects/{slug}/secrets/{name}", json={"value": value})
+        sent = admin.post(f"/api/projects/{slug}/runs/{run_id}/jira").json()
+        assert [(f["defect"], f["action"], f["key"]) for f in sent["filed"]] == [("F1", "created", "SHOP-1")]
+        assert jira.issues["SHOP-1"]["fields"]["summary"] == "HTTP 500 on POST /cart"
+        assert "SHOP-1" in admin.get(links["csv"]).text
+    finally:
+        jira.shutdown()
+        jira.server_close()
+
+
 def test_jira_and_slack_use_the_projects_secrets(hosted):
     received = []
 

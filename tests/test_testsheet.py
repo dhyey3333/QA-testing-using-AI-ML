@@ -134,3 +134,56 @@ def test_the_cases_command_writes_the_sheet_before_anything_runs(tmp_path, capsy
     assert cli.main(["cases", str(ROOT / "specs" / "login.yaml"), "--to", str(out)]) == 0
     assert out.exists() and out.with_suffix(".xlsx").exists() and out.with_suffix(".md").exists()
     assert [r["Status"] for r in load_rows(tmp_path)[0]] == ["Not Run"]
+
+
+# --- an exploration's findings ---------------------------------------------------------------
+
+@pytest.fixture
+def explored(browser, base_url, tmp_path):
+    """An exploration of the reach lab that reports one suspected bug after two actions."""
+    from nightshift.explore import explore
+    from scripted import ScriptedModel
+
+    report = {"action": "report", "title": "The basket button says added but the basket stays empty",
+              "details": "I pressed Add to basket; the page said Added to basket; the basket count stayed 0."}
+    model = ScriptedModel([("click", "Add to basket"), ("type", "City", "Pune"), ("raw", report),
+                           ("raw", {"action": "done", "reason": "seen enough"})])
+    result = explore(browser, f"{base_url}/lab/reach.html", model, out_dir=tmp_path / "explore-20261014-101500", budget=6)
+    return Path(result.out_dir)
+
+
+def test_an_exploration_writes_its_findings_as_excel_and_csv(explored):
+    from nightshift.testsheet import FINDING_COLUMNS, FINDINGS
+
+    book = load_workbook(explored / FINDINGS)
+    assert book.sheetnames == ["Findings", "Warnings"]
+    rows = [{c: cell.value for c, cell in zip(FINDING_COLUMNS, row)} for row in book["Findings"].iter_rows(min_row=2)]
+    assert len(rows) == 1
+    finding = rows[0]
+    assert (finding["Finding ID"], finding["Type"]) == ("F1", "Suspected bug")
+    assert finding["Steps to Reproduce"].splitlines() == [
+        f"1. Open {finding['Page']}", '2. Click "Add to basket"', '3. Type "Pune" into "City"']
+    assert finding["Found On"] == "2026-10-14 10:15" and (explored / finding["Screenshot"]).exists()
+    assert book["Findings"].cell(2, FINDING_COLUMNS.index("Type") + 1).fill.fgColor.rgb.endswith("FFEB9C")
+    assert book["Warnings"].max_row >= 2  # the lab page's accessibility gaps, one row per kind
+    with (explored / FINDINGS).with_suffix(".csv").open(encoding="utf-8-sig") as handle:
+        assert [r["Title"] for r in csv.DictReader(handle)] == [finding["Title"]]
+
+
+def test_findings_go_into_jira_as_bugs_with_their_screenshot(explored, jira):  # noqa: F811
+    from nightshift.testsheet import FINDINGS, file_findings_in_jira
+
+    server = jira()
+    config = JiraConfig(url=f"http://127.0.0.1:{server.server_port}", project="SHOP", email="qa@example.test", token="t")
+    filed = file_findings_in_jira(explored, config)
+    assert filed == [("F1", "created", "SHOP-1")]
+    issue = server.issues["SHOP-1"]["fields"]
+    assert issue["summary"] == "[Suspected] The basket button says added but the basket stays empty"
+    assert issue["issuetype"]["name"] == "Bug" and "needs-review" in issue["labels"]
+    assert '# Click "Add to basket"' in issue["description"] and "check it by hand" in issue["description"]
+    assert server.attachments and server.attachments[0][0] == "SHOP-1"
+    row = json.loads((explored / "findings-sheet.json").read_text(encoding="utf-8"))["rows"][0]
+    assert row["Jira Bug"] == "SHOP-1"
+    assert load_workbook(explored / FINDINGS)["Findings"].cell(2, 10).hyperlink.target == f"{config.url}/browse/SHOP-1"
+    assert file_findings_in_jira(explored, config) == [("F1", "already sent", "SHOP-1")]
+    assert len(server.issues) == 1

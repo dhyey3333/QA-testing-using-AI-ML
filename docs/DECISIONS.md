@@ -648,3 +648,11 @@ it), run the cases, and file bugs against them. Nightshift now produces that cha
 - Safety: test data appears by name only, never its value; text that starts like a formula is stored as
   text in the .xlsx and prefixed with an apostrophe in the .csv, so words from a web page can never run
   as a formula when the sheet is opened.
+- Explorations have no test cases, so they write the bug list instead: `findings.xlsx` (a Findings tab
+  with each proven or suspected bug, its page, steps to reproduce written as a person would ("Click
+  "Add to cart""), details, screenshot; a Warnings tab, one row per kind) and `findings.csv`. "Send to
+  Jira" (and `explore --file-jira`) files one Jira bug per finding with its screenshot attached; a
+  suspected one is "[Suspected]" and labelled needs-review; an open one found again gets a comment.
+- Runs from before sheets existed get theirs the first time the runs list or the run's page shows them,
+  from the run's results (and, for tests, the test files as they are now). The runs list links each
+  run's sheet ("Excel").

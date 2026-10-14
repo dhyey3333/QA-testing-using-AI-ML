@@ -38,7 +38,7 @@ from ..defects import analyse, load_results, record_issue
 from ..generate import write_specs
 from ..gherkin import GherkinError, parse_feature
 from ..jira import JiraConfig, JiraError, file_jira_issues
-from ..testsheet import SHEET, send_to_jira, sheet_for_old_run
+from ..testsheet import FINDINGS, SHEET, ensure_sheet, file_findings_in_jira, send_to_jira
 from ..notify import post_slack, slack_payload
 from ..visual import Baselines
 from .files import ProjectFiles
@@ -366,9 +366,12 @@ class App:
         folder = files.run_folder(run["id"]) / run["run_dir"] if run["run_dir"] else None
         has_results = folder is not None and (folder / "summary.json").exists()
         results = load_results(folder) if has_results else []
-        if results and not (folder / SHEET).with_suffix(".json").exists():
-            # A run from before every run wrote its test-case sheet: made the first time its page opens.
-            sheet_for_old_run(folder, results, sorted(files.specs.glob("*.yaml")))
+        explored = folder is not None and (folder / "explore.json").exists()
+        if folder is not None and run["status"] == "done":
+            try:  # a run from before sheets existed gets its sheet now
+                ensure_sheet(folder, sorted(files.specs.glob("*.yaml")))
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
         secrets = files.secrets()
         jira = JiraConfig.from_mapping(secrets)
         if method == "POST" and action == "/accept-visual":
@@ -384,7 +387,9 @@ class App:
             if jira is None:
                 raise HttpError(400, "set JIRA_URL, JIRA_PROJECT, JIRA_EMAIL and JIRA_API_TOKEN under Settings → Secrets first")
             try:
-                if (folder / SHEET).with_suffix(".json").exists():
+                if explored:  # an exploration: one Jira bug per finding
+                    cases, filed = [], file_findings_in_jira(folder, jira)
+                elif (folder / SHEET).with_suffix(".json").exists():
                     # The test-case sheet into Jira: one issue per test case, one per bug, linked (testsheet.py).
                     sent = send_to_jira(folder, jira)
                     cases, filed = sent["cases"], sent["bugs"]
@@ -425,8 +430,9 @@ class App:
                           "duration_s": result.duration_s, "visual": visual, "links": links})
         order = {"fail": 0, "error": 1, "flaky": 2, "pass": 3}
         tests.sort(key=lambda t: (order.get(t["verdict"], 4), t["spec"]))
-        sheet = {kind: f"{base}/{SHEET.with_suffix('.' + kind).name}" for kind in ("xlsx", "csv")
-                 if folder is not None and (folder / SHEET).with_suffix("." + kind).exists()}
+        name = FINDINGS if explored else SHEET
+        sheet = {kind: f"{base}/{name.with_suffix('.' + kind).name}" for kind in ("xlsx", "csv")
+                 if folder is not None and (folder / name).with_suffix("." + kind).exists()}
         return 200, {"run": self._run_view(project, files, run), "tests": tests, "issues": list(issues.values()),
                      "sheet": sheet, "jira": jira is not None, "slack": bool(secrets.get("SLACK_WEBHOOK_URL"))}
 
@@ -532,6 +538,16 @@ class App:
                               ("report", "report.html"), ("findings", "findings.md")):
                 if (folder / name).exists():
                     links[key] = f"{base}/{run['run_dir']}/{name}"
+            if run["status"] == "done":
+                # The run's sheet (test cases, or an exploration's findings), made now for a run from before
+                # sheets existed. A run whose files can't be read just shows no sheet.
+                try:
+                    sheet = ensure_sheet(folder, sorted(files.specs.glob("*.yaml")))
+                except (OSError, ValueError, KeyError, TypeError):
+                    sheet = None
+                if sheet is not None and sheet.exists():
+                    links["sheet"] = f"{base}/{run['run_dir']}/{sheet.name}"
+                    links["csv"] = f"{base}/{run['run_dir']}/{sheet.with_suffix('.csv').name}"
         keep = ("id", "trigger", "status", "queued", "started", "finished", "passed", "failed", "flaky", "errors", "message")
         target = json.loads(run["params"]).get("url", "") if run.get("params") else ""
         return {**{key: run[key] for key in keep}, "links": links, "target": target}

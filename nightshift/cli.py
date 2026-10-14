@@ -44,7 +44,7 @@ from .result import RunResult
 from .runner import RunOptions, browser_pool, device_options, expand_targets, open_browser, run_with_retries
 from .sessions import Sessions
 from .spec import Spec, SpecError, goal_spec_yaml, load_spec, load_specs, _expand_env
-from .testsheet import SHEET, send_to_jira, sheet_rows, write_sheet
+from .testsheet import SHEET, file_findings_in_jira, send_to_jira, sheet_rows, write_sheet
 from .traceability import build_matrix, write_test_cases, write_traceability
 
 DEFAULT_RECORDINGS = Path(".nightshift/recordings")
@@ -114,6 +114,8 @@ def main(argv: list[str] | None = None) -> int:
                      help="first sign up a throwaway account (made-up name, an example.com address) and explore as "
                           "that user; for practice sites with open sign-up, never a client's live site")
     exp.add_argument("--data", action="append", default=[], metavar="KEY=VALUE", help="test data it may type, repeatable")
+    exp.add_argument("--file-jira", action="store_true",
+                     help="file one Jira bug per finding (JIRA_URL, JIRA_PROJECT, JIRA_EMAIL + JIRA_API_TOKEN)")
     exp.add_argument("--avoid", help=f"comma-separated words it must never click (default: {', '.join(DEFAULT_AVOID)})")
     _common(exp)
 
@@ -522,7 +524,18 @@ def _explore(args: argparse.Namespace) -> int:
     print(f"\n{result.count('bug')} bugs proven, {result.count('suspected')} suspected, {result.count('warning')} warnings "
           f"across {len(result.pages)} pages in {len(result.steps)} actions ({result.duration_s:.0f}s). {result.stopped}.")
     print(f"report: {out_dir / 'report.html'}")
-    print(f"findings: {out_dir / 'findings.md'}")
+    print(f"findings: {out_dir / 'findings.md'} (and findings.xlsx, findings.csv)")
+    if getattr(args, "file_jira", False):
+        config = JiraConfig.from_env()
+        if config is None:
+            print("jira: not set up. Set JIRA_URL, JIRA_PROJECT, and JIRA_EMAIL + JIRA_API_TOKEN (Cloud) "
+                  "or JIRA_TOKEN (Data Center).", file=sys.stderr)
+        else:
+            try:
+                for finding_id, action, key in file_findings_in_jira(out_dir, config, log=print):
+                    print(f"jira: finding {finding_id} {action} {key}  {config.url}/browse/{key}")
+            except (JiraError, httpx.HTTPError) as exc:
+                print(f"jira: could not file the findings ({exc})", file=sys.stderr)
     print(f"next: nightshift generate --from {out_dir / 'discovered.json'}")
     return 1 if result.count("bug") else 0
 

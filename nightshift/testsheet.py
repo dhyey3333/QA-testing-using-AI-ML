@@ -12,8 +12,13 @@ Then `nightshift run --file-jira` (or "Send to Jira" in the web app) puts it int
 test case, one per bug (jira.py, no duplicates), each bug linked to its test case, and the ticket keys
 written back into the sheet.
 
-Test data appears by name only ("email, password"), never its value. A cell that starts like a
-formula (= + - @) gets a leading apostrophe, so text from a page can't run as one when opened.
+An exploration has no test cases, so it writes the bug list a tester keeps instead: findings.xlsx (its
+proven and suspected bugs, with steps to reproduce, and a Warnings tab) and findings.csv, and "Send to
+Jira" files one Jira bug per finding, the screenshot attached, the keys written back.
+
+Test data appears by name only ("email, password"), never its value. Text that starts like a formula
+(= + - @) is stored as text in the .xlsx and gets a leading apostrophe in the .csv, so words from a page
+can't run as one when the sheet is opened.
 """
 
 from __future__ import annotations
@@ -27,8 +32,9 @@ from pathlib import Path
 
 import httpx
 
+from .checks import page_key
 from .defects import analyse, load_results, record_issue
-from .jira import JiraConfig, JiraError, _find_open, _issue_type, _post, file_jira_issues
+from .jira import JiraConfig, JiraError, _attach, _find_open, _issue_type, _post, file_jira_issues, to_jira_markup
 from .result import RunResult
 from .spec import Spec
 
@@ -40,7 +46,14 @@ STATUS = {"pass": "Pass", "fail": "Fail", "flaky": "Flaky", "error": "Blocked"} 
 WIDTHS = {"Test Case ID": 24, "Title": 36, "Requirement": 14, "Priority": 10, "Preconditions": 30, "Test Steps": 48,
           "Test Data": 18, "Expected Result": 42, "Actual Result": 48, "Status": 10, "Bug ID": 14,
           "Jira Test Case": 15, "Executed On": 17, "Executed By": 26, "Evidence": 28}
-FILLS = {"Pass": "C6EFCE", "Fail": "FFC7CE", "Flaky": "FFEB9C", "Blocked": "FFEB9C", "Not Run": "D9D9D9"}
+FILLS = {"Pass": "C6EFCE", "Fail": "FFC7CE", "Flaky": "FFEB9C", "Blocked": "FFEB9C", "Not Run": "D9D9D9",
+         "Proven bug": "FFC7CE", "Suspected bug": "FFEB9C"}
+FINDINGS = Path("findings.xlsx")  # an exploration's bug list, beside its explore.json
+FINDING_COLUMNS = ("Finding ID", "Title", "Type", "Page", "Steps to Reproduce", "Details", "Screenshot", "Found On",
+                   "Found By", "Jira Bug")
+WARNING_COLUMNS = ("Warning", "Times", "Pages")
+WIDTHS.update({"Finding ID": 11, "Type": 14, "Page": 36, "Steps to Reproduce": 52, "Details": 52, "Screenshot": 18,
+               "Found On": 17, "Found By": 26, "Jira Bug": 14, "Warning": 70, "Times": 8, "Pages": 60})
 TEST_TYPES = ("Test", "Test Case", "Task", "Story")  # a project without a Test issue type gets Tasks
 
 
@@ -124,51 +137,63 @@ def _actual(result: RunResult | None) -> str:
 
 def write_sheet(rows: list[dict[str, str]], path: Path, jira_url: str = "") -> Path:
     """The sheet as .xlsx, and the same rows as .csv and .json beside it. Returns the .xlsx path."""
+    _save_book(path, [("Test cases", COLUMNS, rows)], jira_url)
+    _save_csv(path.with_suffix(".csv"), COLUMNS, rows)
+    path.with_suffix(".json").write_text(json.dumps({"jira_url": jira_url, "rows": rows}, indent=2, ensure_ascii=False),
+                                         encoding="utf-8")
+    return path
+
+
+_JIRA_COLUMNS = ("Bug ID", "Jira Test Case", "Jira Bug")
+_FILE_COLUMNS = ("Evidence", "Screenshot")
+
+
+def _save_book(path: Path, tabs: list[tuple[str, tuple[str, ...], list[dict]]], jira_url: str) -> None:
+    """A workbook with one formatted tab per (title, columns, rows): bold header, wrapped text, a
+    coloured Status or Type, Jira keys and evidence files as links, the header row frozen."""
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
 
     path.parent.mkdir(parents=True, exist_ok=True)
     book = Workbook()
-    sheet = book.active
-    sheet.title = "Test cases"
-    sheet.append(list(COLUMNS))
-    for cell in sheet[1]:
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = PatternFill("solid", fgColor="1F3864")
-        cell.alignment = Alignment(vertical="center", wrap_text=True)
-    for row in rows:
-        sheet.append([str(row.get(column, "") or "") for column in COLUMNS])
-        line = sheet.max_row
-        for index, column in enumerate(COLUMNS, 1):
-            cell = sheet.cell(line, index)
-            cell.data_type = "s"  # text, always: "=..." from a page is shown, never run as a formula
-            cell.alignment = Alignment(vertical="top", wrap_text=True)
-            value = row.get(column, "")
-            if column == "Status" and value in FILLS:
-                cell.fill = PatternFill("solid", fgColor=FILLS[value])
-                cell.font = Font(bold=True)
-            elif column in ("Bug ID", "Jira Test Case") and value and jira_url:
-                cell.hyperlink = f"{jira_url}/browse/{value.split(',')[0].strip()}"
-                cell.style = "Hyperlink"
+    book.remove(book.active)
+    for title, columns, rows in tabs:
+        sheet = book.create_sheet(title)
+        sheet.append(list(columns))
+        for cell in sheet[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="1F3864")
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+        for row in rows:
+            sheet.append([str(row.get(column, "") or "") for column in columns])
+            line = sheet.max_row
+            for index, column in enumerate(columns, 1):
+                cell = sheet.cell(line, index)
+                cell.data_type = "s"  # text, always: "=..." from a page is shown, never run as a formula
+                value = row.get(column, "")
+                if column in ("Status", "Type") and value in FILLS:
+                    cell.fill = PatternFill("solid", fgColor=FILLS[value])
+                    cell.font = Font(bold=True)
+                elif column in _JIRA_COLUMNS and value and jira_url:
+                    cell.hyperlink = f"{jira_url}/browse/{value.split(',')[0].strip()}"
+                    cell.style = "Hyperlink"
+                elif column in _FILE_COLUMNS and value:
+                    cell.hyperlink = value  # relative: opens from the downloaded run folder
+                    cell.style = "Hyperlink"
                 cell.alignment = Alignment(vertical="top", wrap_text=True)
-            elif column == "Evidence" and value:
-                cell.hyperlink = value  # relative: opens from the downloaded run folder
-                cell.style = "Hyperlink"
-                cell.alignment = Alignment(vertical="top", wrap_text=True)
-    for index, column in enumerate(COLUMNS, 1):
-        sheet.column_dimensions[get_column_letter(index)].width = WIDTHS[column]
-    sheet.freeze_panes = "B2"
-    sheet.auto_filter.ref = sheet.dimensions
+        for index, column in enumerate(columns, 1):
+            sheet.column_dimensions[get_column_letter(index)].width = WIDTHS.get(column, 18)
+        sheet.freeze_panes = "B2"
+        sheet.auto_filter.ref = sheet.dimensions
     book.save(path)
 
-    with path.with_suffix(".csv").open("w", newline="", encoding="utf-8-sig") as handle:  # the BOM: Excel reads ₹
+
+def _save_csv(path: Path, columns: tuple[str, ...], rows: list[dict]) -> None:
+    with path.open("w", newline="", encoding="utf-8-sig") as handle:  # the BOM: Excel reads ₹
         writer = csv.writer(handle)
-        writer.writerow(COLUMNS)
-        writer.writerows([_safe(row.get(column, "")) for column in COLUMNS] for row in rows)
-    path.with_suffix(".json").write_text(json.dumps({"jira_url": jira_url, "rows": rows}, indent=2, ensure_ascii=False),
-                                         encoding="utf-8")
-    return path
+        writer.writerow(columns)
+        writer.writerows([_safe(row.get(column, "")) for column in columns] for row in rows)
 
 
 def _safe(value: str) -> str:
@@ -193,6 +218,139 @@ def write_markdown(rows: list[dict[str, str]], path: Path) -> Path:
             lines += [f"**Actual result:** {row['Actual Result']}", ""]
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
+
+
+def findings_sheet(run_dir: Path, jira_url: str = "") -> Path:
+    """The bug list of the exploration in run_dir, from its explore.json: findings.xlsx (a Findings tab with
+    its proven and suspected bugs, a Warnings tab), findings.csv (the findings) and findings-sheet.json."""
+    data = json.loads((run_dir / "explore.json").read_text(encoding="utf-8"))
+    steps = [s for s in data.get("steps", []) if s.get("action") and s["action"].get("kind") not in ("report", "done")
+             and not str(s.get("outcome", "")).startswith(("invalid", "not reported", "not yet"))]
+    stamp = re.search(r"(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})", run_dir.name)
+    found_on = f"{stamp[1]}-{stamp[2]}-{stamp[3]} {stamp[4]}:{stamp[5]}" if stamp else ""
+    rows, warnings = [], {}
+    for finding in data.get("findings", []):
+        if finding["severity"] == "warning":
+            entry = warnings.setdefault(finding["title"], {"Warning": finding["title"], "Times": 0, "pages": []})
+            entry["Times"] += 1
+            if finding.get("url") and finding["url"] not in entry["pages"]:
+                entry["pages"].append(finding["url"])
+            continue
+        before = [s for s in steps if finding.get("step") is None or s["index"] <= finding["step"]]
+        if finding.get("step") is None:
+            before = []  # it showed while the page loaded
+        repro = [f"Open {data['url']}"] + [_human(s["description"]) for s in before]
+        rows.append({
+            "Finding ID": f"F{len(rows) + 1}",
+            "Title": finding["title"],
+            "Type": "Proven bug" if finding["severity"] == "bug" else "Suspected bug",
+            "Page": finding.get("url", ""),
+            "Steps to Reproduce": "\n".join(f"{i}. {step}" for i, step in enumerate(repro, 1)),
+            "Details": finding.get("details", ""),
+            "Screenshot": finding.get("screenshot") or "",
+            "Found On": found_on,
+            "Found By": f"Nightshift exploring ({data.get('model', '')})",
+            "Jira Bug": "",
+        })
+    warning_rows = [{"Warning": w["Warning"], "Times": str(w["Times"]), "Pages": "\n".join(w["pages"][:5])}
+                    for w in warnings.values()]
+    return write_findings(rows, warning_rows, run_dir, jira_url)
+
+
+def _human(step: str) -> str:
+    """An action as a person writes it in steps to reproduce: no element numbers (they change every turn).
+    'type [4] "Email" <- "x"' is 'Type "x" into "Email"'."""
+    step = re.sub(r"\s*\[\d+\]", "", step).strip()
+    if m := re.fullmatch(r'type(?: "(.*?)")? <- "(.*)"', step, re.S):
+        return f'Type "{m[2]}"' + (f' into "{m[1]}"' if m[1] else "")
+    if m := re.fullmatch(r'select(?: "(.*?)")? <- "(.*)"', step, re.S):
+        return f'Choose "{m[2]}"' + (f' in "{m[1]}"' if m[1] else "")
+    return step[:1].upper() + step[1:]
+
+
+def write_findings(rows: list[dict], warnings: list[dict], run_dir: Path, jira_url: str = "") -> Path:
+    path = run_dir / FINDINGS
+    _save_book(path, [("Findings", FINDING_COLUMNS, rows), ("Warnings", WARNING_COLUMNS, warnings)], jira_url)
+    _save_csv(path.with_suffix(".csv"), FINDING_COLUMNS, rows)
+    (run_dir / "findings-sheet.json").write_text(
+        json.dumps({"jira_url": jira_url, "rows": rows, "warnings": warnings}, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def ensure_sheet(run_dir: Path, spec_files: list[Path]) -> Path | None:
+    """The finished run's sheet, made now if the run is from before sheets existed: findings.xlsx for an
+    exploration, test-cases.xlsx for a test run. None when there is nothing to put in one."""
+    if (run_dir / "explore.json").exists():
+        if not (run_dir / "findings-sheet.json").exists():
+            findings_sheet(run_dir)
+        return run_dir / FINDINGS
+    if (run_dir / "summary.json").exists():
+        if not (run_dir / SHEET).with_suffix(".json").exists():
+            results = load_results(run_dir)
+            if not results:
+                return None
+            sheet_for_old_run(run_dir, results, spec_files)
+        return run_dir / SHEET
+    return None
+
+
+def file_findings_in_jira(run_dir: Path, config: JiraConfig, client: httpx.Client | None = None,
+                          log=None) -> list[tuple[str, str, str]]:
+    """One Jira bug per finding of an exploration, its screenshot attached; a suspected one is labelled
+    needs-review. A finding whose issue is still open gets a "seen again" comment instead, and one already
+    sent from this run is left alone. The keys go back into the sheet."""
+    log = log or (lambda line: None)
+    if not (run_dir / "findings-sheet.json").exists():
+        findings_sheet(run_dir)
+    data = json.loads((run_dir / "findings-sheet.json").read_text(encoding="utf-8"))
+    rows, warnings = data["rows"], data.get("warnings", [])
+    own = client is None
+    client = client or config.client()
+    done, issue_type = [], None
+    try:
+        for row in rows:
+            if row.get("Jira Bug"):
+                done.append((row["Finding ID"], "already sent", row["Jira Bug"]))
+                continue
+            label = "nsf-" + hashlib.sha1(f"{row['Title']}|{page_key(row['Page'])}".encode("utf-8")).hexdigest()[:10]
+            existing = _find_open(client, config, label)
+            if existing:
+                _post(client, f"/rest/api/2/issue/{existing}/comment",
+                      {"body": f"Seen again by Nightshift exploring {row['Page']} in run {run_dir.name}."})
+                row["Jira Bug"] = existing
+                done.append((row["Finding ID"], "commented", existing))
+                continue
+            issue_type = issue_type or _issue_type(client, config, log)
+            suspected = row["Type"] == "Suspected bug"
+            fields = {
+                "project": {"key": config.project},
+                "summary": (f"[Suspected] {row['Title']}" if suspected else row["Title"])[:250],
+                "description": finding_markup(row, run_dir.name),
+                "issuetype": {"name": issue_type},
+                "labels": ["nightshift", "exploration", label] + (["needs-review"] if suspected else []),
+            }
+            key = _post(client, "/rest/api/2/issue", {"fields": fields})["key"]
+            if row.get("Screenshot") and (run_dir / row["Screenshot"]).exists():
+                _attach(client, key, run_dir / row["Screenshot"])
+            row["Jira Bug"] = key
+            done.append((row["Finding ID"], "created", key))
+    finally:
+        if own:
+            client.close()
+        write_findings(rows, warnings, run_dir, jira_url=config.url)  # whatever was filed keeps its key
+    return done
+
+
+def finding_markup(row: dict[str, str], run_name: str) -> str:
+    kind = ("Suspected by the agent: check it by hand before fixing anything." if row["Type"] == "Suspected bug"
+            else "Proven by the browser.")
+    lines = [kind, "", f"*Page:* {row['Page']}", "", "h3. Steps to reproduce"]
+    lines += ["# " + re.sub(r"^\d+\.\s*", "", step) for step in row["Steps to Reproduce"].splitlines()]
+    if row.get("Details"):
+        lines += ["", "h3. What happened", to_jira_markup(row["Details"])]
+    lines += ["", f"Found by Nightshift exploring the site (run {run_name}, {row['Found On']}).",
+              "The screenshot of the moment is attached." if row.get("Screenshot") else ""]
+    return "\n".join(lines).rstrip()
 
 
 def load_rows(run_dir: Path) -> tuple[list[dict[str, str]], str]:

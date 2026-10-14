@@ -526,6 +526,9 @@ def write_explore_outputs(result: ExploreResult) -> None:
     (out_dir / "discovered.json").write_text(json.dumps(discovered, indent=2, ensure_ascii=False), encoding="utf-8")
     (out_dir / "findings.md").write_text(findings_markdown(result), encoding="utf-8")
     (out_dir / "report.html").write_text(explore_report_html(result), encoding="utf-8")
+    from .testsheet import findings_sheet  # the bug list a tester keeps, as Excel and CSV
+
+    findings_sheet(out_dir)
 
 
 def findings_markdown(result: ExploreResult) -> str:
