@@ -409,6 +409,19 @@ def test_a_runs_test_case_sheet_can_be_downloaded_and_sent_to_jira(hosted):
         jira.server_close()
 
 
+def test_a_run_from_before_sheets_gets_one_when_its_page_opens(hosted):
+    admin = client(hosted, ADMIN)
+    slug = admin.post("/api/projects", json={"client": "Acme"}).json()["project"]["slug"]
+    run_id, files = _fake_run(hosted, slug)
+    spec_text = ("name: checkout\nurl: https://shop.test/\nsteps:\n  - buy the coffee\n"
+                 "expect:\n  - the order is placed\ndata:\n  password: ${SHOP_PASSWORD}\n")
+    (files.specs / "checkout.yaml").write_text(spec_text, encoding="utf-8")
+    detail = admin.get(f"/api/projects/{slug}/runs/{run_id}").json()
+    assert set(detail["sheet"]) == {"xlsx", "csv"}
+    sheet = admin.get(detail["sheet"]["csv"]).text
+    assert "1. buy the coffee" in sheet and "Pass" in sheet and "SHOP_PASSWORD" not in sheet
+
+
 def test_jira_and_slack_use_the_projects_secrets(hosted):
     received = []
 

@@ -38,7 +38,7 @@ from ..defects import analyse, load_results, record_issue
 from ..generate import write_specs
 from ..gherkin import GherkinError, parse_feature
 from ..jira import JiraConfig, JiraError, file_jira_issues
-from ..testsheet import SHEET, send_to_jira
+from ..testsheet import SHEET, send_to_jira, sheet_for_old_run
 from ..notify import post_slack, slack_payload
 from ..visual import Baselines
 from .files import ProjectFiles
@@ -366,6 +366,9 @@ class App:
         folder = files.run_folder(run["id"]) / run["run_dir"] if run["run_dir"] else None
         has_results = folder is not None and (folder / "summary.json").exists()
         results = load_results(folder) if has_results else []
+        if results and not (folder / SHEET).with_suffix(".json").exists():
+            # A run from before every run wrote its test-case sheet: made the first time its page opens.
+            sheet_for_old_run(folder, results, sorted(files.specs.glob("*.yaml")))
         secrets = files.secrets()
         jira = JiraConfig.from_mapping(secrets)
         if method == "POST" and action == "/accept-visual":

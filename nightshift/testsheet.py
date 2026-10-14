@@ -72,7 +72,8 @@ def sheet_rows(specs: list[Spec], results: list[RunResult], base: Path) -> list[
             "Preconditions": precondition,
             "Test Steps": "\n".join(f"{i}. {step}" for i, step in enumerate(steps, 1)),
             "Test Data": ", ".join(spec.data),
-            "Expected Result": "\n".join(f"• {item}" for item in spec.expect) or "• each request gets the answer its test expects",
+            "Expected Result": "\n".join(f"• {item}" for item in spec.expect)
+                               or ("• each request gets the answer its test expects" if spec.kind == "api" else ""),
             "Actual Result": _actual(result),
             "Status": STATUS.get(result.verdict, "Not Run") if result else "Not Run",
             "Bug ID": "",
@@ -82,6 +83,27 @@ def sheet_rows(specs: list[Spec], results: list[RunResult], base: Path) -> list[
             "Evidence": evidence,
         })
     return rows
+
+
+def sheet_for_old_run(run_dir: Path, results: list[RunResult], spec_files: list[Path]) -> Path:
+    """The sheet for a run from before sheets existed, from its results and the test files as they are now
+    (a test since deleted keeps its name and result, with its steps left blank)."""
+    from dataclasses import replace
+
+    from .spec import SpecError, load_spec
+
+    specs: dict[str, Spec] = {}
+    for path in spec_files:
+        try:
+            spec = load_spec(path, expand_env=False)  # never needs the secrets: only names reach the sheet
+        except SpecError:
+            continue
+        specs[spec.name] = spec
+    chosen = []
+    for result in results:
+        spec = specs.get(result.spec) or specs.get(result.spec.split("@")[0])  # "checkout@firefox" is checkout
+        chosen.append(replace(spec, name=result.spec) if spec else Spec(name=result.spec, url=result.url, steps=(), expect=()))
+    return write_sheet(sheet_rows(chosen, results, run_dir), run_dir / SHEET)
 
 
 def _actual(result: RunResult | None) -> str:
