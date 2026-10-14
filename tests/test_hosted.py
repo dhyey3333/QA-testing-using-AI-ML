@@ -376,6 +376,39 @@ def test_a_runs_page_lists_each_test_with_its_visual_check_and_a_new_look_can_be
     assert (files.root / "visual" / "checkout@chromium-1280x800.png").read_bytes() == b"\x89PNG today"
 
 
+def test_a_runs_test_case_sheet_can_be_downloaded_and_sent_to_jira(hosted):
+    from nightshift.defects import load_results
+    from nightshift.spec import Spec
+    from nightshift.testsheet import SHEET, sheet_rows, write_sheet
+    from test_jira import FakeJira
+
+    admin = client(hosted, ADMIN)
+    slug = admin.post("/api/projects", json={"client": "Acme"}).json()["project"]["slug"]
+    run_id, files = _fake_run(hosted, slug)
+    folder = files.run_folder(run_id) / "20310105-020000"
+    spec = Spec(name="checkout", url="https://shop.test/", steps=("buy the coffee",), expect=("the order is placed",))
+    write_sheet(sheet_rows([spec], load_results(folder), folder), folder / SHEET)
+    detail = admin.get(f"/api/projects/{slug}/runs/{run_id}").json()
+    assert set(detail["sheet"]) == {"xlsx", "csv"}
+    excel = admin.get(detail["sheet"]["xlsx"])
+    assert excel.status_code == 200 and excel.headers["content-type"].startswith("application/vnd.openxmlformats")
+    assert "checkout" in admin.get(detail["sheet"]["csv"]).text
+
+    jira = FakeJira(cloud=True)
+    threading.Thread(target=jira.serve_forever, daemon=True).start()
+    try:
+        for name, value in {"JIRA_URL": f"http://127.0.0.1:{jira.server_port}", "JIRA_PROJECT": "SHOP",
+                            "JIRA_EMAIL": "qa@agency.test", "JIRA_API_TOKEN": "fake-token"}.items():
+            admin.put(f"/api/projects/{slug}/secrets/{name}", json={"value": value})
+        sent = admin.post(f"/api/projects/{slug}/runs/{run_id}/jira").json()
+        assert [(c["test"], c["action"], c["key"]) for c in sent["cases"]] == [("checkout", "created", "SHOP-1")]
+        assert sent["filed"] == []  # it passed: no bugs
+        assert "SHOP-1" in admin.get(detail["sheet"]["csv"]).text  # the key is in the sheet now
+    finally:
+        jira.shutdown()
+        jira.server_close()
+
+
 def test_jira_and_slack_use_the_projects_secrets(hosted):
     received = []
 

@@ -581,7 +581,9 @@ async function runDetail(section, slug, id) {
     ${isTests && r.status === "done" ? `<div class="stats">${stat(r.passed, "Passed", "ok")}${stat(r.failed, "Failed", "bad")}${stat(r.flaky, "Flaky", "warn")}${stat(r.errors, "Couldn't finish", "block")}</div>` : ""}
     ${isTests && d.tests.length ? `<div class="actions">
       ${changes ? `<button type="button" class="secondary" id="accept-visual">${icon("eye")}Accept the new look (${changes})</button>` : ""}
-      <button type="button" class="secondary" id="jira" ${d.jira ? "" : "disabled"}>${icon("ticket")}File bugs in Jira</button>
+      ${d.sheet.xlsx ? `<a class="btn secondary" href="${esc(d.sheet.xlsx)}" download>${icon("file")}Test cases (Excel)</a>` : ""}
+      ${d.sheet.csv ? `<a class="btn secondary" href="${esc(d.sheet.csv)}" download>${icon("file")}CSV</a>` : ""}
+      <button type="button" class="secondary" id="jira" ${d.jira ? "" : "disabled"}>${icon("ticket")}${d.sheet.xlsx ? "Send to Jira" : "File bugs in Jira"}</button>
       <button type="button" class="secondary" id="slack" ${d.slack ? "" : "disabled"}>${icon("message")}Post to Slack</button>
       ${d.issues.length ? `<span class="muted small">Filed: ${d.issues.map((i) => `<a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.key)}</a>`).join(", ")}</span>` : ""}
     </div>
@@ -598,7 +600,8 @@ async function runDetail(section, slug, id) {
   action(document.getElementById("accept-visual"), () => api("POST", `/api/projects/${slug}/runs/${id}/accept-visual`),
     (res) => `${plural(res.accepted, "new look")} approved`);
   action(document.getElementById("jira"), () => api("POST", `/api/projects/${slug}/runs/${id}/jira`),
-    (res) => (res.filed.length ? `Filed ${res.filed.map((f) => f.key).join(", ")}` : "No bugs to file in this run"));
+    (res) => [res.cases.length ? `${plural(res.cases.length, "test case")} in Jira` : "",
+      res.filed.length ? `bugs ${res.filed.map((f) => f.key).join(", ")}` : "no bugs to file"].filter(Boolean).join("; "));
   action(document.getElementById("slack"), () => api("POST", `/api/projects/${slug}/runs/${id}/slack`), "Posted to Slack");
   if (["queued", "running"].includes(r.status)) poll = setTimeout(route, 4000);
 }

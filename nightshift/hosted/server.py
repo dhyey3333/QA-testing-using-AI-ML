@@ -38,6 +38,7 @@ from ..defects import analyse, load_results, record_issue
 from ..generate import write_specs
 from ..gherkin import GherkinError, parse_feature
 from ..jira import JiraConfig, JiraError, file_jira_issues
+from ..testsheet import SHEET, send_to_jira
 from ..notify import post_slack, slack_payload
 from ..visual import Baselines
 from .files import ProjectFiles
@@ -55,7 +56,8 @@ CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; c
                  ".css": "text/css; charset=utf-8", ".json": "application/json", ".jpg": "image/jpeg",
                  ".png": "image/png", ".svg": "image/svg+xml", ".webm": "video/webm", ".zip": "application/zip",
                  ".md": "text/plain; charset=utf-8", ".log": "text/plain; charset=utf-8",
-                 ".csv": "text/csv; charset=utf-8", ".xml": "application/xml"}
+                 ".csv": "text/csv; charset=utf-8", ".xml": "application/xml",
+                 ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 # The app's own pages load nothing from anywhere else.
 APP_CSP = ("default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
            "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
@@ -378,16 +380,20 @@ class App:
         if method == "POST" and action == "/jira":
             if jira is None:
                 raise HttpError(400, "set JIRA_URL, JIRA_PROJECT, JIRA_EMAIL and JIRA_API_TOKEN under Settings → Secrets first")
-            defects = analyse(results, files.runs)
-            if not defects:
-                return 200, {"filed": []}
             try:
-                filed = file_jira_issues(defects, folder, jira)
+                if (folder / SHEET).with_suffix(".json").exists():
+                    # The test-case sheet into Jira: one issue per test case, one per bug, linked (testsheet.py).
+                    sent = send_to_jira(folder, jira)
+                    cases, filed = sent["cases"], sent["bugs"]
+                else:  # a run from before the sheet existed: its bugs only
+                    defects = analyse(results, files.runs)
+                    cases, filed = [], file_jira_issues(defects, folder, jira) if defects else []
+                    for defect_id, _, key in filed:
+                        record_issue(folder, defect_id, "jira", key, f"{jira.url}/browse/{key}")
             except (JiraError, httpx.HTTPError) as exc:
                 raise HttpError(502, f"Jira refused it: {exc}") from None
-            for defect_id, _, key in filed:
-                record_issue(folder, defect_id, "jira", key, f"{jira.url}/browse/{key}")
-            return 200, {"filed": [{"defect": d, "action": a, "key": k, "url": f"{jira.url}/browse/{k}"} for d, a, k in filed]}
+            return 200, {"cases": [{"test": t, "action": a, "key": k, "url": f"{jira.url}/browse/{k}"} for t, a, k in cases],
+                         "filed": [{"defect": d, "action": a, "key": k, "url": f"{jira.url}/browse/{k}"} for d, a, k in filed]}
         if method == "POST" and action == "/slack":
             webhook = secrets.get("SLACK_WEBHOOK_URL", "")
             if not webhook:
@@ -416,8 +422,10 @@ class App:
                           "duration_s": result.duration_s, "visual": visual, "links": links})
         order = {"fail": 0, "error": 1, "flaky": 2, "pass": 3}
         tests.sort(key=lambda t: (order.get(t["verdict"], 4), t["spec"]))
+        sheet = {kind: f"{base}/{SHEET.with_suffix('.' + kind).name}" for kind in ("xlsx", "csv")
+                 if folder is not None and (folder / SHEET).with_suffix("." + kind).exists()}
         return 200, {"run": self._run_view(project, files, run), "tests": tests, "issues": list(issues.values()),
-                     "jira": jira is not None, "slack": bool(secrets.get("SLACK_WEBHOOK_URL"))}
+                     "sheet": sheet, "jira": jira is not None, "slack": bool(secrets.get("SLACK_WEBHOOK_URL"))}
 
     def file(self, path: str, user: dict | None) -> Path:
         """/files/<project>/<run id>/<path inside that run's folder>"""

@@ -23,6 +23,7 @@ class FakeJira(ThreadingHTTPServer):
         self.issues: dict[str, dict] = {}
         self.comments: list[tuple[str, str]] = []
         self.attachments: list[tuple[str, str]] = []
+        self.links: list[dict] = []
         self.auth: list[str] = []
 
 
@@ -63,6 +64,9 @@ class FakeJiraHandler(BaseHTTPRequestHandler):
         if match := re.fullmatch(r"/rest/api/2/issue/([\w-]+)/comment", path):
             self.server.comments.append((match.group(1), json.loads(body)["body"]))
             return self._send(201, {"id": "1"})
+        if path == "/rest/api/2/issueLink":
+            self.server.links.append(json.loads(body))
+            return self._send(201, {})
         self._send(404, {})
 
     def _send(self, status, payload):

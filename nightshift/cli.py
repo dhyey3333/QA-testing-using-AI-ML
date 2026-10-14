@@ -44,6 +44,7 @@ from .result import RunResult
 from .runner import RunOptions, browser_pool, device_options, expand_targets, open_browser, run_with_retries
 from .sessions import Sessions
 from .spec import Spec, SpecError, goal_spec_yaml, load_spec, load_specs, _expand_env
+from .testsheet import SHEET, send_to_jira, sheet_rows, write_sheet
 from .traceability import build_matrix, write_test_cases, write_traceability
 
 DEFAULT_RECORDINGS = Path(".nightshift/recordings")
@@ -140,10 +141,11 @@ def main(argv: list[str] | None = None) -> int:
     ini = commands.add_parser("init", help="set up a project: a starter spec, a CI workflow, .gitignore")
     ini.add_argument("--url", default="http://localhost:3000/", help="the app's start URL")
 
-    cas = commands.add_parser("cases", help="write the test-case document (CSV and Markdown)")
+    cas = commands.add_parser("cases", help="write the test-case sheet (Excel, CSV) and a Markdown copy")
     cas.add_argument("specs", nargs="+", type=Path)
     cas.add_argument("--run", type=Path, help="a run folder, to include each case's last result")
-    cas.add_argument("--to", type=Path, default=Path("test-cases.csv"), help="output file (default: test-cases.csv)")
+    cas.add_argument("--to", type=Path, default=Path("test-cases.csv"),
+                     help="output file; .xlsx, .md and .json are written beside it (default: test-cases.csv)")
 
     cli_rep = commands.add_parser("client-report", help="the report to send a client: one self-contained HTML file")
     cli_rep.add_argument("run", type=Path, help="the run folder, e.g. runs/20261001-120000")
@@ -370,6 +372,8 @@ def _execute(specs: list[Spec], args: argparse.Namespace, model: HttpModel) -> t
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "summary.json").write_text(json.dumps([r.summary() for r in results], indent=2, ensure_ascii=False),
                                           encoding="utf-8")
+    # The test-case sheet QA teams keep, filled in: Excel, the same rows as CSV (testsheet.py).
+    sheet = write_sheet(sheet_rows(specs, results, run_dir), run_dir / SHEET)
     index = write_run_index(results, run_dir)
     write_history(args.out)
     if args.junit:
@@ -399,8 +403,9 @@ def _execute(specs: list[Spec], args: argparse.Namespace, model: HttpModel) -> t
         for defect in defects:
             print(f"   {defect.id} [{defect.severity.split(':')[0]}] {defect.title}  (affects {len(defect.specs)})")
         print(f"defects: {run_dir / 'defects.html'}")
-        if args.file_jira:
-            _file_in_jira(defects, run_dir)
+    print(f"test cases: {sheet} (and {sheet.with_suffix('.csv').name})")
+    if args.file_jira:
+        _send_to_jira(run_dir)
     if args.pr_comment:
         args.pr_comment.write_text(pr_comment(results, defects, github_run_url()), encoding="utf-8")
     if args.client or args.brand:
@@ -700,7 +705,6 @@ def _validate(args: argparse.Namespace) -> int:
 
     rows = build_matrix(requirements, specs, results, defects)
     matrix = write_traceability(rows, run_dir, results)
-    write_test_cases(specs, run_dir / "test-cases.csv", {r.spec: r for r in results})
     counts = Counter(row.status for row in rows)
     print(f"\nvalidation: {len(rows)} requirement(s): {counts['pass']} passed, {counts['fail']} failed, "
           f"{counts['blocked']} blocked, {counts['untested']} not covered")
@@ -742,6 +746,25 @@ def _triage(args: argparse.Namespace) -> int:
     if args.file_jira and defects:
         _file_in_jira(defects, args.run)
     return 0
+
+
+def _send_to_jira(run_dir: Path) -> None:
+    """The run's test-case sheet into Jira: its test cases, its bugs, linked, and the keys back in the sheet."""
+    config = JiraConfig.from_env()
+    if config is None:
+        print("jira: not set up. Set JIRA_URL, JIRA_PROJECT, and JIRA_EMAIL + JIRA_API_TOKEN (Cloud) "
+              "or JIRA_TOKEN (Data Center).", file=sys.stderr)
+        return
+    try:
+        sent = send_to_jira(run_dir, config, log=print)
+    except (JiraError, httpx.HTTPError) as exc:
+        print(f"jira: could not send the test cases ({exc})", file=sys.stderr)
+        return
+    for test_id, action, key in sent["cases"]:
+        print(f"jira: test case {test_id} {action} {key}  {config.url}/browse/{key}")
+    for defect_id, action, key in sent["bugs"]:
+        print(f"jira: bug {defect_id} {action} {key}  {config.url}/browse/{key}")
+    print(f"jira: the keys are in {run_dir / SHEET}")
 
 
 def _file_in_jira(defects: list[Defect], run_dir: Path) -> None:

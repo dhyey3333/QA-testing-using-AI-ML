@@ -9,6 +9,7 @@ dependencies = [
     "httpx>=0.27",
     # Each Playwright release expects one exact Chromium build; pinning it means
     # `playwright install` never has to re-download a browser behind your back.
+    "openpyxl>=3.1.5",
     "playwright==1.62.0",
     "pyyaml>=6.0",
 ]

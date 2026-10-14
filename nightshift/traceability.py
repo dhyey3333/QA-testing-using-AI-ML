@@ -109,38 +109,14 @@ def write_traceability(rows: list[Row], run_dir: Path, results: list[RunResult])
 
 
 def write_test_cases(specs: list[Spec], path: Path, results: dict[str, RunResult] | None = None) -> Path:
-    """The test-case document: CSV (Excel, test-management import) and Markdown next to it."""
-    results = results or {}
-    header = ["ID", "Title", "Requirements", "Technique", "Priority", "Preconditions", "Steps", "Expected result",
-              "Test data", "Last result"]
-    rows = []
-    for spec in specs:
-        result = results.get(spec.name)
-        rows.append([
-            spec.name, spec.title or spec.steps[0], ", ".join(spec.requirements), spec.technique, spec.priority,
-            f"Fresh browser at {spec.url}",
-            "\n".join(f"{i}. {step}" for i, step in enumerate(spec.steps, 1)),
-            "\n".join(f"- {item}" for item in spec.expect),
-            ", ".join(spec.data) if spec.data else "",
-            f"{result.verdict}: {result.reason}" if result else "",
-        ])
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8-sig") as handle:  # the BOM makes Excel read ₹ correctly
-        writer = csv.writer(handle)
-        writer.writerow(header)
-        writer.writerows(rows)
+    """The test-case document: the same sheet every run writes (testsheet.py), as .xlsx, .csv and .json at
+    `path`, and Markdown next to it. Returns the .csv path."""
+    from .testsheet import sheet_rows, write_markdown, write_sheet
 
-    md = ["# Test cases", "", f"{len(specs)} case(s).", ""]
-    for row in rows:
-        md += [f"## {row[0]}: {row[1]}", "",
-               f"Requirements: {row[2] or 'none'} · Technique: {row[3] or 'n/a'} · Priority: {row[4] or 'n/a'}", "",
-               f"**Preconditions:** {row[5]}", "", "**Steps:**", "", row[6], "", "**Expected:**", "", row[7], ""]
-        if row[8]:
-            md += [f"**Test data:** {row[8]}", ""]
-        if row[9]:
-            md += [f"**Last result:** {row[9]}", ""]
-    path.with_suffix(".md").write_text("\n".join(md), encoding="utf-8")
-    return path
+    rows = sheet_rows(specs, list((results or {}).values()), path.parent)
+    write_sheet(rows, path.with_suffix(".xlsx"))
+    write_markdown(rows, path.with_suffix(".md"))
+    return path.with_suffix(".csv")
 
 
 def _verdict(row: Row, spec: Spec) -> str:

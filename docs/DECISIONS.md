@@ -629,3 +629,22 @@ Three narrow fixes, each with a lab-page test (`tests/test_blind4_fixes.py`, `la
 - Field lines say a field's state: "[field] Nickname: empty (disabled)", "(read-only)", and a disabled
   tick box gets "[field] Cabbage: not checked (disabled)". Judge rule 7 says these can prove a state.
   Password and file fields never show what they hold.
+
+## D58. The test-case sheet: Excel, then CSV, then Jira
+QA teams keep test cases in an Excel sheet, save it as CSV, import it into Jira (or a test tool inside
+it), run the cases, and file bugs against them. Nightshift now produces that chain itself
+(`nightshift/testsheet.py`), so a team doesn't change how it works:
+- Every run writes `test-cases.xlsx` into its run folder, in the columns such sheets use (Test Case ID,
+  Title, Requirement, Priority, Preconditions, Test Steps, Test Data, Expected Result, Actual Result,
+  Status, Bug ID, Jira Test Case, Executed On, Executed By, Evidence), filled in from the run, and the
+  same rows as `test-cases.csv` (and `.json`, so the sheet can be updated later). Status is Pass, Fail,
+  Flaky, Blocked (the tester couldn't test it) or Not Run. `nightshift cases` writes it before a run.
+- `--file-jira` (and the web app's "Send to Jira") creates one issue per test case (issue type
+  JIRA_TEST_ISSUE_TYPE, Test if the project has it, else Task), one per bug (jira.py, unchanged), links
+  each bug to its test case ("Relates"), and writes the keys back into the sheet. Re-sending duplicates
+  nothing: a test case is found again by its label, and a later run adds its result as a comment.
+- Real .xlsx needs openpyxl (the one new dependency): Python can't write Excel files on its own, and a
+  plain CSV can't carry the coloured Status, wrapped text or links.
+- Safety: test data appears by name only, never its value; text that starts like a formula is stored as
+  text in the .xlsx and prefixed with an apostrophe in the .csv, so words from a web page can never run
+  as a formula when the sheet is opened.

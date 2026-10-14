@@ -22,7 +22,8 @@ Design reasoning: `docs/DECISIONS.md`.
 - `uv run nightshift generate --story TEXT [--from discovered.json] [--url URL]`
 - `uv run nightshift export specs/`, `uv run nightshift report`, `uv run nightshift init`
 - `uv run nightshift validate reqs.md --url URL [--data k=v] [--design-only] [--redesign R5,R6] [--from discovered.json | --explore-steps N]`: requirements -> designed test cases (specs/requirements/) -> run -> traceability.html, defects.html, test-cases.csv
-- `uv run nightshift cases specs/ [--run runs/<run>]` (test-case document), `uv run nightshift triage runs/<run> [--file-github owner/repo] [--file-jira]` (defect analysis)
+- `uv run nightshift cases specs/ [--run runs/<run>] [--to test-cases.csv]` (the test-case sheet before a run: .xlsx, .csv, .md), `uv run nightshift triage runs/<run> [--file-github owner/repo] [--file-jira]` (defect analysis, bugs only)
+- Test-case sheet (D58, `nightshift/testsheet.py`, `tests/test_testsheet.py`): every run writes `test-cases.xlsx` and `test-cases.csv` (and `.json`) into its run folder, in the usual QA sheet columns, filled in; `run --file-jira` / the web app's "Send to Jira" (`send_to_jira`) files one Jira issue per test case (JIRA_TEST_ISSUE_TYPE, Test else Task) and per bug, links them, and writes the keys back into the sheet. The run page has "Test cases (Excel)" and "CSV" downloads.
 - `uv run python -m realworld.bakerydemo.validate_demo`: requirement validation on the real app, clean then with 3 bugs (about 20 min)
 - API specs (`requests:` instead of steps, `nightshift/api.py`): `uv run nightshift run specs/api`. No model.
 - Email codes: `{{email_code}}` / `{{email_link}}` in specs, inbox from the spec's `inbox:` or `INBOX_URL` (Mailpit API) or `INBOX_IMAP_*` (`nightshift/inbox.py`). The demo shop's outbox is at `/mail`.

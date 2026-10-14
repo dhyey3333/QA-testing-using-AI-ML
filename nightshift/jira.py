@@ -4,6 +4,7 @@
     JIRA_EMAIL=you@company.com  JIRA_API_TOKEN=...    Jira Cloud: your email and an API token
     JIRA_TOKEN=...                                    Jira Data Center / Server: a personal access token
     JIRA_ISSUE_TYPE=Bug                               optional, Bug by default
+    JIRA_TEST_ISSUE_TYPE=Test                         optional: test cases (testsheet.py), Test, else Task
 
 Each defect becomes one issue: the defect write-up as the description, labels
 `nightshift` and its category, and the failing screenshot and bug report attached.
@@ -41,6 +42,7 @@ class JiraConfig:
     email: str = ""
     token: str = ""
     issue_type: str = "Bug"
+    test_issue_type: str = "Test"
 
     @classmethod
     def from_env(cls) -> JiraConfig | None:
@@ -54,7 +56,8 @@ class JiraConfig:
         if not (url and project and token):
             return None
         return cls(url=url, project=project, email=_clean(values.get("JIRA_EMAIL", "")), token=token,
-                   issue_type=(values.get("JIRA_ISSUE_TYPE") or "Bug").strip())
+                   issue_type=(values.get("JIRA_ISSUE_TYPE") or "Bug").strip(),
+                   test_issue_type=(values.get("JIRA_TEST_ISSUE_TYPE") or "Test").strip())
 
     def client(self) -> httpx.Client:
         # Cloud: basic auth with email + API token. Data Center: a bearer personal access token.
@@ -139,19 +142,21 @@ def file_jira_issues(defects: list[Defect], run_dir: Path, config: JiraConfig,
 _FALLBACK_TYPES = ("Bug", "Defect", "Task", "Story")
 
 
-def _issue_type(client: httpx.Client, config: JiraConfig, log) -> str:
+def _issue_type(client: httpx.Client, config: JiraConfig, log, wanted: str = "",
+                fallbacks: tuple[str, ...] = _FALLBACK_TYPES) -> str:
+    wanted = wanted or config.issue_type
     response = client.get(f"/rest/api/2/project/{config.project}")
     if response.status_code == 404:
         raise JiraError(f"Jira has no project with the key {config.project}, or this account can't see it")
     _raise_for(response, "the project")
     types = [t["name"] for t in _data(response).get("issueTypes") or [] if not t.get("subtask")]
     if not types:
-        return config.issue_type
+        return wanted
     by_name = {name.lower(): name for name in types}
-    chosen = next((by_name[w.lower()] for w in (config.issue_type, *_FALLBACK_TYPES) if w.lower() in by_name),
+    chosen = next((by_name[w.lower()] for w in (wanted, *fallbacks) if w.lower() in by_name),
                   next((n for n in types if n.lower() != "epic"), types[0]))
-    if chosen.lower() != config.issue_type.lower():
-        log(f"jira: project {config.project} has no {config.issue_type} issue type; filing as {chosen}")
+    if chosen.lower() != wanted.lower():
+        log(f"jira: project {config.project} has no {wanted} issue type; filing as {chosen}")
     return chosen
 
 
@@ -188,9 +193,10 @@ def to_jira_markup(markdown: str) -> str:
     return "\n".join(out)
 
 
-def _find_open(client: httpx.Client, config: JiraConfig, label: str) -> str | None:
-    """The key of an open issue carrying this defect's label, if there is one."""
-    jql = f'project = "{config.project}" AND labels = "{label}" AND statusCategory != Done ORDER BY created DESC'
+def _find_open(client: httpx.Client, config: JiraConfig, label: str, open_only: bool = True) -> str | None:
+    """The key of an open issue carrying this label, if there is one (with open_only=False, any issue)."""
+    status = " AND statusCategory != Done" if open_only else ""
+    jql = f'project = "{config.project}" AND labels = "{label}"{status} ORDER BY created DESC'
     # Jira Cloud moved JQL search to /rest/api/3/search/jql; Data Center still has /rest/api/2/search.
     for path in ("/rest/api/3/search/jql", "/rest/api/2/search"):
         response = client.post(path, json={"jql": jql, "fields": ["summary"], "maxResults": 1})

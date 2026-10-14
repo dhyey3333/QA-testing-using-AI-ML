@@ -93,8 +93,9 @@ def test_the_test_case_document_has_one_row_per_case(tmp_path):
     path = write_test_cases(specs, tmp_path / "cases.csv", {"t1": _result("t1", "pass", "fine")})
     with path.open(encoding="utf-8-sig") as handle:
         rows = list(csv.DictReader(handle))
-    assert rows[0]["Last result"] == "pass: fine" and rows[1]["Requirements"] == "R2, R3"
-    assert path.with_suffix(".md").exists()
+    assert (rows[0]["Status"], rows[0]["Actual Result"]) == ("Pass", "As expected.")
+    assert (rows[1]["Status"], rows[1]["Requirement"], rows[1]["Priority"]) == ("Not Run", "R2, R3", "high")
+    assert path.with_suffix(".md").exists() and path.with_suffix(".xlsx").exists()
 
 
 # --- defect analysis --------------------------------------------------------------
