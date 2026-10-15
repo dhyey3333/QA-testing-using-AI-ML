@@ -1,0 +1,8 @@
+# Blind set 5. Right verdict: pass. (needs a drag)
+name: b5-q-drag
+url: https://qavbox.github.io/demo/dragndrop/
+steps:
+- drag Drag me to my target onto Drop here
+expect:
+- the target says Dropped!
+max_steps: 6

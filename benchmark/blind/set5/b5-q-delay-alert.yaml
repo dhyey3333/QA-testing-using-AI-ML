@@ -1,0 +1,8 @@
+# Blind set 5. Right verdict: pass. (the alert comes 5 seconds later)
+name: b5-q-delay-alert
+url: https://qavbox.github.io/demo/alerts/
+steps:
+- press SubmitDelay and wait for the alert
+expect:
+- an alert says I appeared after 5 seconds!
+max_steps: 10

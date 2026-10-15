@@ -1,0 +1,13 @@
+# Blind set 5. Right verdict: pass. (CURA publishes this demo login on its sign-in page; set CURA_PASSWORD to the password it shows)
+name: b5-c-no-date
+url: https://katalon-demo-cura.herokuapp.com/
+steps:
+- press Make Appointment
+- log in with the username and password from the test data
+- press Book Appointment without a visit date
+expect:
+- the browser says the visit date must be filled out
+data:
+  username: John Doe
+  password: ${CURA_PASSWORD}
+max_steps: 12

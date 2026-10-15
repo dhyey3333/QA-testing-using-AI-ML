@@ -1,0 +1,8 @@
+# Blind set 5. Right verdict: pass.
+name: b5-l-dialog
+url: https://www.leafground.com/alert.xhtml
+steps:
+- press Show under Sweet Alert (Simple Dialog)
+expect:
+- a dialog says You have clicked and open a dialog that can be inspectable.
+max_steps: 6

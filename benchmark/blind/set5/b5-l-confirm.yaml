@@ -1,0 +1,8 @@
+# Blind set 5. Right verdict: pass.
+name: b5-l-confirm
+url: https://www.leafground.com/alert.xhtml
+steps:
+- press Show under Alert (Confirm Dialog) and answer OK
+expect:
+- 'the page says User Clicked : OK'
+max_steps: 6

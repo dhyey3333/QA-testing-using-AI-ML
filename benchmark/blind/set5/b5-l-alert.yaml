@@ -1,0 +1,9 @@
+# Blind set 5. Right verdict: pass.
+name: b5-l-alert
+url: https://www.leafground.com/alert.xhtml
+steps:
+- press Show under Alert (Simple Dialog)
+expect:
+- an alert says I am simple alert.
+- the page says You have successfully clicked an alert
+max_steps: 6

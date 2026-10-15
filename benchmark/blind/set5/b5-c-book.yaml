@@ -1,0 +1,17 @@
+# Blind set 5. Right verdict: pass. (CURA publishes this demo login on its sign-in page; set CURA_PASSWORD to the password it shows)
+name: b5-c-book
+url: https://katalon-demo-cura.herokuapp.com/
+steps:
+- press Make Appointment
+- log in with the username and password from the test data
+- choose Hongkong CURA Healthcare Center as the facility
+- type 30/11/2026 as the visit date and Fake test booking as the comment
+- press Book Appointment
+expect:
+- the page says Appointment Confirmation
+- the facility is Hongkong CURA Healthcare Center
+- the visit date is 30/11/2026
+data:
+  username: John Doe
+  password: ${CURA_PASSWORD}
+max_steps: 18

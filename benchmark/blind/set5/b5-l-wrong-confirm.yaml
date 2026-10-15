@@ -1,0 +1,8 @@
+# Blind set 5. Right verdict: fail.
+name: b5-l-wrong-confirm
+url: https://www.leafground.com/alert.xhtml
+steps:
+- press Show under Alert (Confirm Dialog) and answer OK
+expect:
+- 'the page says User Clicked : Cancel'
+max_steps: 6

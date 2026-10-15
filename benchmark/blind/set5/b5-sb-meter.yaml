@@ -1,0 +1,8 @@
+# Blind set 5. Right verdict: pass.
+name: b5-sb-meter
+url: https://seleniumbase.io/demo_page
+steps:
+- choose Set to 75% in the Select Dropdown
+expect:
+- 'the page says HTML Meter: (75%)'
+max_steps: 5

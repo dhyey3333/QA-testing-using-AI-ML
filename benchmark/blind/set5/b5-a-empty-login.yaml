@@ -1,0 +1,8 @@
+# Blind set 5. Right verdict: fail. (the demo logs anyone in, even with empty fields)
+name: b5-a-empty-login
+url: https://demo.applitools.com/
+steps:
+- press Sign in with the username and password left empty
+expect:
+- an error says the username is required
+max_steps: 6

@@ -1,0 +1,8 @@
+# Blind set 5. Right verdict: pass. (the ticked state is only in the page's markup)
+name: b5-sb-precheck
+url: https://seleniumbase.io/demo_page
+steps:
+- read the page
+expect:
+- the Pre-Check Box is ticked
+max_steps: 4

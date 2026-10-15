@@ -1,0 +1,12 @@
+# Blind set 5. Right verdict: pass. (the demo takes any username and password)
+name: b5-a-login
+url: https://demo.applitools.com/
+steps:
+- log in with the username and password from the test data
+expect:
+- the page says Financial Overview
+- the page shows a Total Balance
+data:
+  username: asha
+  password: fake-pass-1
+max_steps: 8

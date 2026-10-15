@@ -1,0 +1,9 @@
+# Blind set 5. Right verdict: pass.
+name: b5-sb-button
+url: https://seleniumbase.io/demo_page
+steps:
+- press Click Me (Green)
+expect:
+- the button now says Click Me (Purple)
+- the paragraph says This Text is Purple
+max_steps: 5

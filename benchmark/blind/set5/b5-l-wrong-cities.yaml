@@ -1,0 +1,9 @@
+# Blind set 5. Right verdict: fail. (Bengaluru, Chennai and Delhi only)
+name: b5-l-wrong-cities
+url: https://www.leafground.com/select.xhtml
+steps:
+- choose India in Select Country
+- open Select City
+expect:
+- the city choices include Mumbai
+max_steps: 10

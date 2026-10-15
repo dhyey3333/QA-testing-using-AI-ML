@@ -1,0 +1,14 @@
+# Blind set 5. Right verdict: pass.
+name: b5-q-signup
+url: https://qavbox.github.io/demo/signup/
+steps:
+- fill in Full Name, Email and Telephone with the test data
+- choose Female as the gender, 3 years of experience and the ManualTesting skill
+- press Submit
+expect:
+- an alert says Registration Done!
+data:
+  full_name: Asha Rao
+  email: asha.rao@example.com
+  phone: '9999999999'
+max_steps: 16

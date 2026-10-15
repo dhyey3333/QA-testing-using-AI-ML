@@ -1,0 +1,8 @@
+# Blind set 5. Right verdict: pass. (the text comes 5 seconds later)
+name: b5-q-delay-text
+url: https://qavbox.github.io/demo/delay/
+steps:
+- press Click me! and wait
+expect:
+- the page says I am here!
+max_steps: 10

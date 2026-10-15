@@ -1,0 +1,8 @@
+# Blind set 5. Right verdict: fail. (it says Purple)
+name: b5-sb-wrong-button
+url: https://seleniumbase.io/demo_page
+steps:
+- press Click Me (Green)
+expect:
+- the button now says Click Me (Blue)
+max_steps: 5

@@ -1,0 +1,12 @@
+# Blind set 5. Right verdict: fail.
+name: b5-c-wrong-login-msg
+url: https://katalon-demo-cura.herokuapp.com/
+steps:
+- press Make Appointment
+- log in with the username and password from the test data
+expect:
+- the page says Welcome back, John Doe
+data:
+  username: John Doe
+  password: wrong-pass-1
+max_steps: 10

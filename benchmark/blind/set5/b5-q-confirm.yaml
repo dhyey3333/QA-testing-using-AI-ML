@@ -1,0 +1,8 @@
+# Blind set 5. Right verdict: pass.
+name: b5-q-confirm
+url: https://qavbox.github.io/demo/alerts/
+steps:
+- press Confirm
+expect:
+- a confirm box says Press a button!
+max_steps: 5

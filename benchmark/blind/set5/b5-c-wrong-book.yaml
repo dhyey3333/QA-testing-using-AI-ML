@@ -1,0 +1,15 @@
+# Blind set 5. Right verdict: fail. (it books Seoul; CURA publishes this demo login on its sign-in page; set CURA_PASSWORD to the password it shows)
+name: b5-c-wrong-book
+url: https://katalon-demo-cura.herokuapp.com/
+steps:
+- press Make Appointment
+- log in with the username and password from the test data
+- choose Seoul CURA Healthcare Center as the facility
+- type 30/11/2026 as the visit date
+- press Book Appointment
+expect:
+- the facility is Tokyo CURA Healthcare Center
+data:
+  username: John Doe
+  password: ${CURA_PASSWORD}
+max_steps: 18

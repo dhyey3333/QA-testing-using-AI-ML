@@ -1,0 +1,8 @@
+# Blind set 5. Right verdict: pass. (the links only show while the mouse is over it)
+name: b5-sb-hover
+url: https://seleniumbase.io/demo_page
+steps:
+- open the Hover Dropdown
+expect:
+- it lists Link One, Link Two and Link Three
+max_steps: 5

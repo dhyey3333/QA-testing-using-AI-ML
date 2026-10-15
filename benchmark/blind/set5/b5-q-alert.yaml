@@ -1,0 +1,8 @@
+# Blind set 5. Right verdict: pass.
+name: b5-q-alert
+url: https://qavbox.github.io/demo/alerts/
+steps:
+- press Submit
+expect:
+- an alert says Have a nice day!!!
+max_steps: 5

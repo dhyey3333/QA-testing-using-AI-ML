@@ -1,0 +1,8 @@
+# Blind set 5. Right verdict: pass.
+name: b5-l-click
+url: https://www.leafground.com/button.xhtml
+steps:
+- press Click under Click and Confirm title.
+expect:
+- the Dashboard page opens
+max_steps: 6

@@ -1,0 +1,12 @@
+# Blind set 5. Right verdict: pass.
+name: b5-c-wrong-login
+url: https://katalon-demo-cura.herokuapp.com/
+steps:
+- press Make Appointment
+- log in with the username and password from the test data
+expect:
+- the page says Login failed! Please ensure the username and password are valid.
+data:
+  username: John Doe
+  password: wrong-pass-1
+max_steps: 10

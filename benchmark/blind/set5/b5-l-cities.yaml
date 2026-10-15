@@ -1,0 +1,9 @@
+# Blind set 5. Right verdict: pass. (PrimeFaces dropdowns: a hidden native select under a styled one)
+name: b5-l-cities
+url: https://www.leafground.com/select.xhtml
+steps:
+- choose India in Select Country
+- open Select City
+expect:
+- the city choices are Bengaluru, Chennai and Delhi
+max_steps: 10
