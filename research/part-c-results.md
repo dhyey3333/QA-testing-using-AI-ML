@@ -732,3 +732,43 @@ Honestly: in the set 3 rerun the same situation came up (the agent skipped Comme
 "Error: all fields are required"), and this time the judge model refused it on its own. The new rule did not
 fire in any of these runs, so it caused no false alarm and caught nothing live; that it catches the recorded
 case is shown by its unit test with the exact quote. It is a backstop for the day the model gets it wrong.
+
+## Blind set 5 (2026-10-15)
+
+Written and committed (91fa96f) after D57 and D59, before any further change, on five sites Nightshift had
+never run on: seleniumbase.io's demo page, Katalon's CURA Healthcare demo, qavbox.github.io, Applitools'
+demo app and LeafGround (PrimeFaces components). 30 specs, right verdicts checked by hand first: 22 working
+flows, 8 wrong expectations. Run once; every verdict checked by hand.
+
+| | Set 3 (before D56) | Set 4 (after D56) | **Set 5 (after D57, D59)** |
+|---|---|---|---|
+| Verdicts right | 21 / 30 | 26 / 30 | **24 / 30** |
+| False passes | 0 | 0 | **0** (18 passes, all checked) |
+| Working flows passed | 13 / 22 | 20 / 23 | 18 / 22 |
+| Working flows failed as a bug | 6 | 3 | 3 (each a true claim the judge couldn't prove) |
+| Working flows it couldn't finish | 3 | 0 | 1 |
+| Wrong expectations failed | 5 / 5 | 6 / 7 | 6 / 8 (2 ran out of steps: errors, not passes) |
+
+New idioms that worked first time: PrimeFaces' styled dropdowns (country, then its cities), a delayed alert
+and delayed text (it waited), a confirm box, a jQuery UI drag, a sign-up whose name box refuses a plain fill.
+
+The 6 it got wrong, each checked by hand:
+- **c-book** (couldn't finish) and **c-wrong-book** (error): CURA's visit date uses a date-picker that only
+  takes keystrokes; Nightshift fills the whole value at once, and the date-picker empties the box when it
+  loses focus (the screenshot shows "Please fill out this field" over an empty date). Typed key by key it works.
+- **sb-readonly** (false bug): the judge quoted the right line, "[field] field: The Color is Green (read-only)",
+  plus a slightly misquoted "[refused]" line without its element number; that line has a number in it
+  ("5000ms"), and "a made-up number sinks the claim" threw out a true claim. Also: typing into a read-only box
+  waited 5 s and timed out instead of saying the box is read-only.
+- **sb-precheck** and **l-disabled-button** (false bugs): the judge has no line for a tick box's ticked state
+  or a button's disabled state, so it rightly refused to pass on the label alone.
+- **a-empty-login** (error): the demo logs anyone in with empty fields; the agent kept trying to log in again
+  instead of failing the test, and ran out of steps.
+
+### Next fix list (not done: set 5 is now seen)
+1. After typing into a field, check it still holds the value once focus moves on; if a widget emptied it,
+   type it again key by key (c-book, c-wrong-book).
+2. "[refused]" lines without element numbers, so the judge can quote them exactly; a refused line is the
+   browser's own record, so a misquote of it shouldn't count as a made-up number (sb-readonly). Say "the box
+   is read-only" instead of timing out.
+3. State lines the judge can quote for ticked tick boxes and disabled buttons (sb-precheck, l-disabled-button).
