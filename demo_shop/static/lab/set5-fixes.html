@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Set 5 fixes lab</title>
+<style>body { font-family: sans-serif; margin: 24px; } td { padding: 4px 8px; }</style>
+</head>
+<body>
+<h1>Set 5 fixes lab</h1>
+
+<h2>A date box that only takes keystrokes</h2>
+<label>Visit date <input id="visit" placeholder="dd/mm/yyyy"></label>
+<label>Comment <input id="comment"></label>
+
+<h2>Search</h2>
+<label>Search <input id="search"></label>
+<p id="searched"></p>
+
+<h2>Boxes that can't be typed into</h2>
+<table>
+  <tr><td>Read-Only Text Field:</td><td><input id="readonly" value="The Color is Green" readonly></td></tr>
+  <tr><td>Disabled Text Field:</td><td><input id="disabled" disabled></td></tr>
+</table>
+
+<h2>Ticks and buttons</h2>
+<p>Pre-Check Box: <input type="checkbox" id="pre" checked> Plain Box: <input type="checkbox" id="plain"></p>
+<button type="button" disabled>Disabled</button>
+<button type="button">Enabled</button>
+
+<script>
+  // The way a date-picker that keeps its own value behaves: it learns the value from keystrokes, and
+  // when focus leaves it writes back what it learned, wiping a value that was set all at once.
+  const visit = document.getElementById('visit');
+  let learned = '';
+  visit.addEventListener('keyup', () => { learned = visit.value; });
+  visit.addEventListener('blur', () => { visit.value = learned; });
+  document.getElementById('search').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('searched').textContent = `Searched for ${e.target.value}`;
+  });
+</script>
+</body>
+</html>

@@ -138,6 +138,18 @@ _OBSERVE_JS = r"""
     found.push({ el, target, extra, inView: r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth });
   };
   const toggle = (el) => el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio');
+  // The text right before a control that has no label of its own: "Read-Only Text Field: <input>", or the
+  // table cell beside it. Found on a practice page (blind set 5): an unlabelled read-only box's line said
+  // "[field] field: ...", so "the Read-Only Text Field cannot be edited" could never be quoted.
+  const nearText = (el) => {
+    const short = (text) => (text && text.length <= 60 ? text.replace(/[\s:*]+$/, '') : '');
+    for (let node = el.previousSibling, hops = 0; node && hops < 4; node = node.previousSibling, hops++) {
+      const text = clean(node.nodeType === Node.TEXT_NODE ? node.data : node.innerText || '');
+      if (text) return short(text);
+    }
+    const cell = el.closest('td, th');
+    return short(cell && cell.previousElementSibling ? clean(cell.previousElementSibling.innerText) : '');
+  };
   // The line of text a control sits on, for one with no name of its own (or only a generic one).
   const rowText = (el) => {
     for (let node = el.parentElement, depth = 0; node && depth < 3; node = node.parentElement, depth++) {
@@ -408,15 +420,22 @@ _OBSERVE_JS = r"""
   // A disabled or read-only field says so, whether or not it holds anything: found on a practice site
   // (blind set 4), "the first text box is disabled" was true and the judge had nothing to quote for it.
   const BUTTONS = ['submit', 'button', 'reset', 'image'];
+  // A field's name for its line: its label, else the text before it, else its name attribute.
+  const fieldName = (el) => {
+    const label = labelOf(el);
+    return (label && label !== el.getAttribute('name') ? label : nearText(el) || label || 'field').replace(/[\s:*]+$/, '');
+  };
   const fields = [];
   for (const el of deepAll('input, select, textarea')) {
     if (el.type === 'hidden' || BUTTONS.includes(el.type)) continue;
     const tick = toggle(el);
     const state = el.disabled ? ' (disabled)' : el.readOnly && !tick ? ' (read-only)' : '';
     if (tick) {
-      // A tick box gets a line only for its state; its label stands in when the box itself is hidden.
-      if (state && (isVisible(el) || [...(el.labels || [])].some(isVisible))) {
-        fields.push(`[field] ${labelOf(el) || el.name || 'field'}: ${el.checked ? 'checked' : 'not checked'}${state}`);
+      // A tick box gets a line when it is ticked or disabled (unticked is the default); its label stands
+      // in when the box itself is hidden. Found on a practice page (blind set 5): "the Pre-Check Box is
+      // ticked" was true, and nothing on the page text said so.
+      if ((state || el.checked) && (isVisible(el) || [...(el.labels || [])].some(isVisible))) {
+        fields.push(`[field] ${fieldName(el)}: ${el.checked ? 'checked' : 'not checked'}${state}`);
       }
       continue;
     }
@@ -425,8 +444,13 @@ _OBSERVE_JS = r"""
     const value = secret ? '' : el.tagName === 'SELECT' ? clean(el.selectedOptions[0]?.text) : clean(el.value);
     if (value || state) {
       const shown = value ? value.slice(0, 120) : secret && el.value ? 'filled' : 'empty';
-      fields.push(`[field] ${labelOf(el) || el.name || 'field'}: ${shown}${state}`);
+      fields.push(`[field] ${fieldName(el)}: ${shown}${state}`);
     }
+  }
+  // A disabled button says so (enabled is the default). Found on a practice page (blind set 5): "the
+  // button labelled Disabled is disabled" could only be quoted by its label, which proves nothing.
+  for (const el of deepAll('button, input[type="submit"], input[type="button"], input[type="reset"]')) {
+    if (el.disabled && isVisible(el)) fields.push(`[button] ${labelOf(el) || 'button'}: disabled`);
   }
   const shown = fields.length ? '\n' + fields.slice(0, 40).join('\n') : '';
   text = text.slice(0, 20000 - shown.length) + shown;  // the page's text gives way, not the fields

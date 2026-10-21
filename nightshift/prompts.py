@@ -103,7 +103,8 @@ form field (the tooltip it shows when it blocks a submit). They are error messag
 page shows, and they can be quoted as evidence.
 7. Lines starting with "[field]" show what a form field holds right now, e.g. \
 "[field] Quantity: 2", and whether it is disabled or read-only, e.g. "[field] Email: \
-empty (disabled)". Quote them as evidence for what a field shows or what state it is in.
+empty (disabled)"; a ticked box is "[field] Remember me: checked", and a disabled button \
+"[button] Save: disabled". Quote them as evidence for what a field shows or what state it is in.
 8. A {{name}} in VISIBLE TEXT is test data the page really shows, hidden from you on \
 purpose. "Welcome {{username}}" welcomes the user by their real username: quote it as is.
 9. Lines under "[browser dialogs shown, oldest first]" are the alert, confirm and prompt \

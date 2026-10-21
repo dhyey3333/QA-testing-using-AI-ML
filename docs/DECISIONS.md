@@ -675,3 +675,16 @@ declined") now fails until someone rewords it, which is the right way round for 
 that a pass is proven. "Shows" and "displays" are left out on purpose: they state values ("the cart link
 shows 2 items", proven by "Cart (2)"), and the first version that included them failed two working flows
 on the demo shop.
+
+## D60. What blind set 5 found
+- After typing, Nightshift moves focus off the field and checks it still holds the value; if a widget
+  emptied it (a date-picker that learns its value from keystrokes and writes it back when focus leaves),
+  it types the value again key by key and says so. Focus then goes back to the field, so a following
+  Enter still lands there. Searchable dropdowns are left to their own rule. (`actions._kept_after_blur`)
+- Typing into a read-only or disabled box is refused at once with that reason, not after a 5 s timeout.
+- Field lines name an unlabelled box by the text right before it or the table cell beside it, so
+  "[field] Read-Only Text Field: ... (read-only)" can prove a claim that names the field (the key-term
+  rule needs "Text" and "Field" in the evidence; "[field] field: ..." never had them). A ticked box gets
+  "[field] Pre-Check Box: checked" (unticked is the default, so it gets no line), and a disabled button
+  "[button] Disabled: disabled". Judge rule 7 says so.
+- D59's message check now takes "says / reads / states" as whole words only: "Read-Only" is not "reads".

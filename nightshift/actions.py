@@ -413,11 +413,17 @@ def _uncover(target: Locator) -> bool:
         return False
 
 
+_LOCKED_JS = "el => el.disabled ? 'disabled' : el.readOnly ? 'read-only' : ''"
+
+
 def _type(page: Page, target: Locator, text: str) -> str:
     """Get `text` into the field the way a person would end up with it there."""
     if len(text) > 1 and _fill_code_boxes(target, text):
         return ""
     _uncover(target)
+    # Found on a practice page (blind set 5): typing into a read-only box waited 5 s and reported a timeout.
+    if locked := target.evaluate(_LOCKED_JS, timeout=ACTION_TIMEOUT_MS):
+        raise ActionFailed(f"the field is {locked}: it can't be typed into")
     target.fill(text, timeout=ACTION_TIMEOUT_MS)
     if any(c.isdigit() for c in text):
         try:
@@ -429,7 +435,32 @@ def _type(page: Page, target: Locator, text: str) -> str:
             # the value fill() set all at once. Typed key by key, like a person, its script keeps up.
             target.fill("", timeout=ACTION_TIMEOUT_MS)
             target.press_sequentially(text, delay=30, timeout=ACTION_TIMEOUT_MS + 60 * len(text))
-    return _pick_choice(page, target, text)
+    try:
+        searchable = bool(target.evaluate(_COMBOBOX_JS, timeout=ACTION_TIMEOUT_MS))
+    except PlaywrightError:
+        searchable = False
+    if searchable:
+        return _pick_choice(page, target, text)
+    return _kept_after_blur(target, text)
+
+
+def _kept_after_blur(target: Locator, text: str) -> str:
+    """Move focus off the field and check it still holds what was typed; if a widget emptied it, type it
+    again key by key. Found on a clinic booking demo (blind set 5): its date box only takes keystrokes, and a
+    value filled in all at once was wiped as soon as focus moved on, so every booking stopped at "Please fill
+    out this field". Focus goes back to the field afterwards, so a following Enter still lands there."""
+    try:
+        value = target.evaluate("el => { el.blur(); return el.value; }", timeout=ACTION_TIMEOUT_MS)
+    except PlaywrightError:
+        return ""
+    if value is None:
+        return ""  # not a form field (contenteditable)
+    if value.strip() or not text.strip():
+        with contextlib.suppress(PlaywrightError):
+            target.focus(timeout=ACTION_TIMEOUT_MS)
+        return ""
+    target.press_sequentially(text, delay=30, timeout=ACTION_TIMEOUT_MS + 60 * len(text))
+    return "typed it key by key: the field emptied itself when it was filled in all at once"
 
 
 # A searchable dropdown (react-select, select2, an ARIA combobox): typing only filters its list, and the
@@ -462,11 +493,6 @@ def _pick_choice(page: Page, target: Locator, typed: str) -> str:
     """After typing into a searchable dropdown, pick the option that is exactly what was typed (or the
     only one left), as a person would. Found on a practice shop (blind set 3): its sign-in has two of
     them; the agent typed the username and password, never picked them, and the login failed."""
-    try:
-        if not target.evaluate(_COMBOBOX_JS, timeout=ACTION_TIMEOUT_MS):
-            return ""
-    except PlaywrightError:
-        return ""
     want = " ".join(typed.split()).casefold()
     deadline = time.monotonic() + CHOICES_WAIT_MS / 1000
     while True:

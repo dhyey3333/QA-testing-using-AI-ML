@@ -72,7 +72,9 @@ _MESSAGE_NEGATION_RE = re.compile(r"\b(not|no|never|cannot|can't|couldn't|won't|
 # Verbs that introduce a message, not a value: "shows 2 items" is a count ("Cart (2)" proves it), and names
 # and numbers already have their own rule. Found on the demo shop: with "shows" included, "the header's cart
 # link shows 2 items" and "the header shows a "Log in" link again" failed on a working shop.
-_MESSAGE_VERB_RE = re.compile(r"\b(says|say|saying|reads|read|states)\b", re.IGNORECASE)
+# A whole word only: "Read-Only Text Field" names a field, it doesn't introduce a message (found by the set 5
+# lab test, where the check went looking for a message in "the Read-Only Text Field cannot be edited").
+_MESSAGE_VERB_RE = re.compile(r"(?<![\w-])(says|say|saying|reads|read|states)(?![\w-])", re.IGNORECASE)
 _SAID_NEGATIVE_RE = re.compile(r"\b(not|no|never|cannot|can't|couldn't|won't|didn't|unable|fail|failed|failure|"
                                r"error|invalid|wrong|denied|rejected|declined|incorrect)\b", re.IGNORECASE)
 

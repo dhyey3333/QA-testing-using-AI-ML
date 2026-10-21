@@ -757,9 +757,10 @@ The 6 it got wrong, each checked by hand:
   takes keystrokes; Nightshift fills the whole value at once, and the date-picker empties the box when it
   loses focus (the screenshot shows "Please fill out this field" over an empty date). Typed key by key it works.
 - **sb-readonly** (false bug): the judge quoted the right line, "[field] field: The Color is Green (read-only)",
-  plus a slightly misquoted "[refused]" line without its element number; that line has a number in it
-  ("5000ms"), and "a made-up number sinks the claim" threw out a true claim. Also: typing into a read-only box
-  waited 5 s and timed out instead of saying the box is read-only.
+  but the key-term rule needs "Text" (from "Read-Only Text Field") in the evidence, and the unlabelled box's
+  line was named "field". (First written up as a misquoted "[refused]" line; re-running the check on the
+  recorded page showed the refused line was quoted correctly and the key-term rule was the cause.) Also:
+  typing into a read-only box waited 5 s and timed out instead of saying the box is read-only.
 - **sb-precheck** and **l-disabled-button** (false bugs): the judge has no line for a tick box's ticked state
   or a button's disabled state, so it rightly refused to pass on the label alone.
 - **a-empty-login** (error): the demo logs anyone in with empty fields; the agent kept trying to log in again
@@ -768,7 +769,19 @@ The 6 it got wrong, each checked by hand:
 ### Next fix list (not done: set 5 is now seen)
 1. After typing into a field, check it still holds the value once focus moves on; if a widget emptied it,
    type it again key by key (c-book, c-wrong-book).
-2. "[refused]" lines without element numbers, so the judge can quote them exactly; a refused line is the
-   browser's own record, so a misquote of it shouldn't count as a made-up number (sb-readonly). Say "the box
-   is read-only" instead of timing out.
+2. Name an unlabelled box's field line by the text before it, so a claim naming the field can be proven
+   (sb-readonly). Say "the box is read-only" instead of timing out.
 3. State lines the judge can quote for ticked tick boxes and disabled buttons (sb-precheck, l-disabled-button).
+
+## Set 5's fixes (D60, 2026-10-15 to 10-21)
+
+Done and tested (8 new tests, 331 pass): a field a widget empties after a fill is retyped key by key,
+read-only boxes are refused at once, field lines name unlabelled boxes by the text before them, ticked
+boxes and disabled buttons get lines the judge can quote, and D59's message check no longer takes
+"Read-Only" for "reads" (found by the new lab test).
+
+Benchmarks so far: shop **23/23, 0/13** (unchanged). The clinic, public-site and set 5 reruns could not be
+measured: on 2026-10-21 every model call was refused because Ollama Cloud's free plan had reached its
+monthly usage limit (all 13 clinic runs, 31 public runs and 30 set 5 runs ended as "model call failed:
+HTTP 429"). Those numbers wait for the limit to reset. The nightly soak test was unaffected (it replays
+saved paths with no model: 24/25 passed that night).

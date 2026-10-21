@@ -23,6 +23,8 @@ from nightshift.spec import Spec
     # "Shows" states a value, not a message (found on the demo shop when it was included):
     ("the header's cart link shows 2 items", "Cart (2)"),
     ('the header shows a "Log in" link again', "Log in"),
+    # "Read-Only" names a field; it is not "reads" introducing a message:
+    ("the Read-Only Text Field cannot be edited", "[field] Read-Only Text Field: The Color is Green (read-only)"),
 ])
 def test_evidence_that_says_the_message_counts(expected, said):
     assert message_unsaid(expected, said) == ""
