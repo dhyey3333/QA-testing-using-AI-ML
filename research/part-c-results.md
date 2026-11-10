@@ -811,3 +811,24 @@ showed fill alone loses the date and fill plus one keyup event books the appoint
 Confirmation"). Nightshift now sends that keyup after every fill (`actions._type`; lab test with a box that
 learns only from keyup and wipes on the next click). It could not be rerun through Nightshift: by
 2026-11-10 the free plan was out of usage again ("HTTP 402: add usage credits or subscribe").
+
+## Its own brain: the local model (2026-11-10)
+
+The user wants Nightshift to run on a model of its own, with no API key: the free cloud plan ran out twice
+in a month. First measurement: the qwen3-vl 4B model already installed, on the laptop's RTX 3050 (6 GB),
+through the local Ollama app. Same code (6159af6), same benchmarks; nothing leaves the machine.
+
+| | Cloud gemma4 31B (2026-11-03) | **Local qwen3-vl 4B** |
+|---|---|---|
+| Shop: planted bugs / false alarms / couldn't finish | 23/23, 0/13, 0 | **22/23, 0/13, 1** |
+| Clinic (holdout): bugs / false alarms | 8/8, 1/5 | **8/8, 3/5** |
+| Public sites: pass / fail / tester errors / environment | 27 / 0 / 0 / 4 | **24 / 1 / 3 / 3** (and 1 flaky) |
+| Median time per test | about 14 s (shop) | **53 s (shop), 43 s (public)** |
+| Cost, limits | free plan, ran out twice | none: unlimited, offline, private |
+
+Where the small model loses (each looked at): the shop's add-wrong-product bug was called "couldn't do a
+step" instead of a bug; demoblaze's sign-up passed on the page ("Welcome" and the username are there) but its
+quote didn't match the page exactly, so the proof rule refused it (a false alarm, not a false pass); three
+public tests ran out of steps or couldn't find a field; one gave three unusable replies. The clinic's two
+extra false alarms are not looked into (it is the holdout). No false pass anywhere: the proof rule holds on
+the small model too; it costs passes, not correctness.
