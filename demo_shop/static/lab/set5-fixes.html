@@ -11,6 +11,7 @@
 <h2>A date box that only takes keystrokes</h2>
 <label>Visit date <input id="visit" placeholder="dd/mm/yyyy"></label>
 <label>Comment <input id="comment"></label>
+<label>Booking date <input id="booking" placeholder="dd/mm/yyyy"></label>
 
 <h2>Search</h2>
 <label>Search <input id="search"></label>
@@ -28,12 +29,18 @@
 <button type="button">Enabled</button>
 
 <script>
-  // The way a date-picker that keeps its own value behaves: it learns the value from keystrokes, and
-  // when focus leaves it writes back what it learned, wiping a value that was set all at once.
+  // The way a date-picker that keeps its own value behaves: it learns the value from real key presses (not
+  // a lone keyup), and when focus leaves it writes back what it learned, wiping a value set all at once.
   const visit = document.getElementById('visit');
   let learned = '';
-  visit.addEventListener('keyup', () => { learned = visit.value; });
+  visit.addEventListener('keypress', () => setTimeout(() => { learned = visit.value; }, 0));
   visit.addEventListener('blur', () => { visit.value = learned; });
+  // Another kind: it learns from keyup and writes back what it learned when the page is clicked anywhere
+  // else (the way a date-picker closes), not when focus leaves.
+  const booking = document.getElementById('booking');
+  let known = '';
+  booking.addEventListener('keyup', () => { known = booking.value; });
+  document.addEventListener('mousedown', (e) => { if (e.target !== booking) booking.value = known; });
   document.getElementById('search').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') document.getElementById('searched').textContent = `Searched for ${e.target.value}`;
   });

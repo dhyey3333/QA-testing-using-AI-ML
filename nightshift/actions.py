@@ -435,6 +435,12 @@ def _type(page: Page, target: Locator, text: str) -> str:
             # the value fill() set all at once. Typed key by key, like a person, its script keeps up.
             target.fill("", timeout=ACTION_TIMEOUT_MS)
             target.press_sequentially(text, delay=30, timeout=ACTION_TIMEOUT_MS + 60 * len(text))
+    # fill() sends an input event but no keystrokes, and some widgets only learn a value from a key going up.
+    # Found on a clinic booking demo (blind set 5 recheck): its date-picker never saw the filled date and wiped
+    # it at the next click elsewhere, so every booking stopped at "Please fill out this field". One keyup, as
+    # a person's last keystroke would give, and it keeps the date.
+    with contextlib.suppress(PlaywrightError):
+        target.dispatch_event("keyup", timeout=ACTION_TIMEOUT_MS)
     try:
         searchable = bool(target.evaluate(_COMBOBOX_JS, timeout=ACTION_TIMEOUT_MS))
     except PlaywrightError:

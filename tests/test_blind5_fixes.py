@@ -30,6 +30,13 @@ def test_a_box_that_empties_a_pasted_value_is_typed_into_key_by_key(lab):
     assert lab.input_value("#visit") == "30/11/2026"
 
 
+def test_a_box_that_learns_from_keystrokes_keeps_a_filled_value(lab):
+    # The clinic demo's kind: it only notices a keyup, and wipes what it didn't notice at the next click.
+    assert execute(lab, Action("type", id=_field(lab, "Booking date").id, text="30/11/2026"), {}) == ""
+    execute(lab, Action("click", id=_field(lab, "Comment").id), {})
+    assert lab.input_value("#booking") == "30/11/2026"
+
+
 def test_an_ordinary_field_is_left_as_typed_and_keeps_the_focus(lab):
     note = execute(lab, Action("type", id=_field(lab, "Search").id, text="kulhad"), {})
     assert note == ""

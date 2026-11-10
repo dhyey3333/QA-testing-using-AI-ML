@@ -785,3 +785,29 @@ measured: on 2026-10-21 every model call was refused because Ollama Cloud's free
 monthly usage limit (all 13 clinic runs, 31 public runs and 30 set 5 runs ended as "model call failed:
 HTTP 429"). Those numbers wait for the limit to reset. The nightly soak test was unaffected (it replays
 saved paths with no model: 24/25 passed that night).
+
+### D60 measured (2026-11-03, after Ollama Cloud's monthly limit reset)
+
+The daily check (a Windows task that sent one five-token call a day) saw the model back on 3 November and
+ran the pending checks; every result was then checked by hand.
+
+| | Before D60 | After D60 |
+|---|---|---|
+| Shop: planted bugs / false alarms | 23/23, 0/13 | **23/23, 0/13** |
+| Clinic (holdout): bugs / false alarms | 8/8, 1/5 | **8/8, 1/5** (the same cancel-appointment) |
+| Public sites: pass / fail / environment | 28 / 0 / 2 | **27 / 0 / 4** (LambdaTest's demo timed out three times; OpenCart's bot check) |
+| Blind set 5 again (seen) | 24/30 at its blind run | **26/30**, 0 false passes |
+
+The three judge-side misses now pass with real proof: "[field] Read-Only Text Field: ... (read-only)" (and
+typing into it is refused at once: "the field is read-only"), "[field] Pre-Check Box: checked" and
+"[button] Disabled: disabled". Still wrong: CURA's booking (the date still didn't stick; see below), its
+wrong-booking twin (ran out of steps), Applitools' empty login (the agent retried instead of failing), and
+one browser crash ("Page crashed") on a wrong-expectation spec. None of the four is a false pass.
+
+**The CURA date, found and fixed afterwards.** The fix that retypes a field a widget empties when focus
+leaves never fired: CURA's date-picker doesn't wipe the box when focus leaves but when the page is clicked
+elsewhere, and it only learns a value from a keystroke, which fill() never sends. A plain script on the page
+showed fill alone loses the date and fill plus one keyup event books the appointment ("Appointment
+Confirmation"). Nightshift now sends that keyup after every fill (`actions._type`; lab test with a box that
+learns only from keyup and wipes on the next click). It could not be rerun through Nightshift: by
+2026-11-10 the free plan was out of usage again ("HTTP 402: add usage credits or subscribe").

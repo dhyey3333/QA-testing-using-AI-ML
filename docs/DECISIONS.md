@@ -688,3 +688,7 @@ on the demo shop.
   "[field] Pre-Check Box: checked" (unticked is the default, so it gets no line), and a disabled button
   "[button] Disabled: disabled". Judge rule 7 says so.
 - D59's message check now takes "says / reads / states" as whole words only: "Read-Only" is not "reads".
+- (2026-11-10) Every fill is followed by one keyup event on the field. fill() sends an input event but no
+  keystrokes, and some widgets (CURA's date-picker) only learn a value from a key going up; without it they
+  wipe the value at the next click elsewhere. The retype-after-blur check stays for widgets that learn from
+  key presses only.
